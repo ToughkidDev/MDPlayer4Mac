@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, Avalonia UI 첫 마일스톤 추가)
+## 현재 상태 (2026-08-19, Avalonia UI 첫 마일스톤 실기 검증 완료)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -271,7 +271,7 @@ cd macos/LivePlayer
 dotnet run -c Release -- <입력.vgm>
 ```
 
-### 🔄 MDPlayerUI — Avalonia GUI 첫 마일스톤 (구현 완료, 실기 빌드/검증 대기)
+### ✅ MDPlayerUI — Avalonia GUI 첫 마일스톤 (완료, 실기 빌드/재생 확인)
 
 `macos/MDPlayerUI/`에 최소 기능의 Avalonia 데스크톱 앱을 새로 만들었습니다:
 "VGM 열기..." 버튼으로 실제 파일 선택 대화상자를 띄우고, 선택한 파일을
@@ -289,14 +289,23 @@ dotnet run -c Release -- <입력.vgm>
   `Dispatcher.UIThread.InvokeAsync`로 되돌아와 처리합니다 (Avalonia UI 스레드가
   블로킹되지 않도록).
 
-**⚠️ 중요한 한계**: 이 프로젝트는 리눅스 샌드박스에서 작성됐는데, 이 샌드박스는
-`nuget.org` 자체에 접근이 막혀 있어서(`api.nuget.org`가 프록시에서 403으로
-차단됨, 직접 확인함) **`dotnet restore`조차 한 번도 못 해봤습니다.** 지금까지의
-다른 모든 프로젝트와 달리 이번엔 `dotnet build` 컴파일 확인조차 못 한 상태로
-동기화하는 것입니다. 패키지 이름/버전과 API 사용법(StorageProvider 파일
-선택기, AppBuilder/XAML 구조)은 웹 검색으로 Avalonia 최신 공식 문서/소스를
-확인하며 작성했지만, 실제 Mac에서 처음 빌드해봐야 진짜로 맞는지 알 수 있고,
-아마 첫 시도에서 몇 가지는 고쳐야 할 가능성이 있습니다.
+이 프로젝트는 리눅스 샌드박스에서 작성됐는데(`nuget.org` 접근이 막혀 있어
+`dotnet restore`조차 한 번도 못 해본 상태로 동기화했습니다), 실제 Mac에서
+빌드해보며 두 가지 문제가 나왔고 둘 다 해결했습니다:
+
+- **NU1102** (`Avalonia.Diagnostics` 12.1.1을 찾을 수 없음) — 이 패키지는
+  12.x로 릴리즈된 적이 없고 `nuget.org`에서 deprecated 처리되어 있었습니다
+  (11.3.20에서 멈춤, 후속은 `AvaloniaUI.DiagnosticsSupport`). F12 DevTools용
+  Debug 전용 패키지라 이번 마일스톤엔 필수가 아니어서 그냥 제거했습니다.
+- **CS0709** (`'App': 정적 클래스 'Application'에서 파생될 수 없습니다`) —
+  `App.axaml.cs`가 `namespace MDPlayer.UI`(=`MDPlayer`의 하위 네임스페이스)에
+  있는데, `MDPlayerCore/CompatShims.cs`에 이미 `MDPlayer.Application`이라는
+  static 클래스(WinForms `Application.ExecutablePath` 흉내용 shim)가 있어서
+  C#의 상위 네임스페이스 우선 조회 규칙 때문에 `using Avalonia;`보다 그쪽이
+  먼저 잡혔던 것입니다. `: Avalonia.Application`으로 명시적으로 고쳤습니다.
+
+두 문제 모두 고친 뒤 실제 Mac에서 빌드 성공 + 창이 뜨고 파일 선택 → 재생 →
+정지가 정상 동작하는 것까지 확인했습니다.
 
 돌리는 법 (Mac에서):
 
@@ -307,10 +316,9 @@ dotnet run -c Release
 
 ## 다음 단계 후보
 
-1. **MDPlayerUI 실기 빌드/검증**: 위 앱을 실제 Mac에서 `dotnet restore` +
-   `dotnet run`으로 돌려서 빌드 에러가 있는지, 창이 뜨는지, 파일 선택 → 재생 →
-   정지가 실제로 동작하는지 확인. 처음 빌드에서 패키지 버전 충돌이나 XAML
-   코드생성 관련 에러가 나올 가능성이 있습니다.
+1. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
+   재생 목록, 재생 시간 표시/탐색바, 볼륨 조절, 최근 파일 목록 같은 실사용에
+   필요한 기본 기능을 추가할 수 있습니다.
 2. **더 많은 칩 배선**: 지금 `VgmEngine`/`EngineSmokeTest`/`LivePlayer`/
    `MDPlayerUI`는 SN76489/YM2612만 다룹니다. 실제 게임 VGM(특히 아케이드/타사
    콘솔 이식)을 재생해보려면 YM2151, YM2608, YM2610 등도 `Audio.VgmPlay`의
