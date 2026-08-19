@@ -11,6 +11,7 @@
 // back onto the UI thread safely.
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -78,6 +79,18 @@ namespace MDPlayer.UI
             // invisible unless a TraceListener happens to be attached, i.e. essentially
             // nowhere when just running via `dotnet run` from a terminal). This makes any
             // failure visible directly in the window instead of silently doing nothing.
+            //
+            // Also prints the RAW sn76489Register/GetPSGVolume snapshot every tick. This
+            // exists because "tick N 정상" alone can't distinguish two very different
+            // situations: (a) the visualizer is broken despite the chip genuinely being
+            // driven, vs (b) the visualizer is fine but this particular file just never
+            // writes to SN76489 at all (common for MD/Genesis tracks that only use
+            // YM2612 - DescribeActiveChips() lists a chip as soon as it's *present* in the
+            // VGM header/clocked, not only once it actually receives register writes). If
+            // this raw snapshot never changes from the SN76489 power-on-reset state
+            // ({0,15,0,15,0,15,0,15} / all-zero volumes), the file simply isn't using the
+            // chip - not a bug. If it visibly changes over time but the LED bars/keyboard
+            // never animate, that confirms a real rendering-pipeline bug.
             int tickCount = 0;
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -87,7 +100,16 @@ namespace MDPlayer.UI
                 {
                     sn76489Visualizer?.ScreenChangeParams();
                     sn76489Visualizer?.ScreenDrawParams();
-                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 정상";
+
+                    string regDump = "-";
+                    int[]? reg = session.ChipRegister.sn76489Register[0];
+                    if (reg != null)
+                    {
+                        int[][] vol = session.ChipRegister.GetPSGVolume(0);
+                        regDump = $"reg=[{string.Join(",", reg)}] vol=[{string.Join(",", vol.Select(v => $"({v[0]},{v[1]})"))}]";
+                    }
+
+                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 정상 | {regDump}";
                 }
                 catch (Exception ex)
                 {
