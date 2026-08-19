@@ -39,8 +39,13 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
-    <!-- Only pulled into Debug builds - keeps the Release output lean. -->
-    <PackageReference Include="Avalonia.Diagnostics" Version="12.1.1" Condition="'$(Configuration)' == 'Debug'" />
+    <!--
+      Avalonia.Diagnostics (the F12 DevTools overlay) never shipped a 12.x release - its
+      NuGet listing caps out at 11.3.20 and is marked deprecated in favor of
+      AvaloniaUI.DiagnosticsSupport. Not essential for this milestone (open/play/stop a
+      file), so just leaving DevTools out entirely rather than chasing the replacement
+      package - can revisit if runtime debugging inside the app turns out to be useful.
+    -->
   </ItemGroup>
 
   <ItemGroup>
