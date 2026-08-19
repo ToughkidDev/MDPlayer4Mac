@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Cross-platform (macOS/Linux/Windows) extraction of MDPlayer's file-format /
+    playback-sequencing layer (originally MDPlayerx64/Driver + a handful of
+    top-level support files), decoupled from WinForms, NAudio device output,
+    and other Windows-only pieces. See macos/README.md for the porting plan.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>MDPlayerCore</AssemblyName>
+    <RootNamespace>MDPlayer</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MDSound\MDSound.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Pure-managed Z80 CPU core used by common.cs / the MSX-family drivers
+      (MGSDRV, AY, MuSICA, NDP, SID) to execute the original driver machine code.
+      MIT licensed, no native/Windows dependency. Could not be restored inside the
+      cloud sandbox this scaffold was built in (nuget.org isn't reachable there) —
+      restore/build this on a machine with normal internet access to verify.
+    -->
+    <PackageReference Include="Z80dotNet" Version="1.0.6" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS/cross-platform port of kuma4649/MDSound (https://github.com/kuma4649/MDSound), GPLv3.
+    Vendored source, unmodified aside from retargeting the TFM below.
+    Upstream license preserved in LICENSE.txt; see UPSTREAM_README.md for origin.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>MDSound</AssemblyName>
+    <RootNamespace>MDSound</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <NoWarn>CS8981</NoWarn>
+  </PropertyGroup>
+
+</Project>
