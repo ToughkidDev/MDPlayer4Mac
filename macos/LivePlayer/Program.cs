@@ -33,7 +33,7 @@ namespace MDPlayer.LivePlayer
             VgmEngineSession session = VgmEngine.Load(vgmBuf);
             if (session == null)
             {
-                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses neither SN76489 nor YM2612 (the only two chips this player wires up)");
+                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses none of the chips VgmEngine.Load wires up (see VgmEngine.cs)");
                 return 1;
             }
 
@@ -41,7 +41,7 @@ namespace MDPlayer.LivePlayer
             MDSound.MDSound mds = session.Mds;
             uint sampleRate = session.SampleRate;
 
-            Console.WriteLine($"VGM version {vgm.Version}, chips: SN76489={vgm.SN76489ClockValue}Hz YM2612={vgm.YM2612ClockValue}Hz");
+            Console.WriteLine($"VGM version {vgm.Version}, chips: {session.DescribeActiveChips()}");
             Console.WriteLine($"Playing live @ {sampleRate}Hz. Press Ctrl+C to stop.");
 
             // framesPerBuffer * bufferCount is roughly how much audio is buffered ahead of

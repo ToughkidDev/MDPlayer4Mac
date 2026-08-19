@@ -41,7 +41,7 @@ namespace MDPlayer.EngineSmokeTest
             VgmEngineSession session = VgmEngine.Load(vgmBuf);
             if (session == null)
             {
-                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses neither SN76489 nor YM2612 (the only two chips this smoke test wires up)");
+                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses none of the chips VgmEngine.Load wires up (see VgmEngine.cs)");
                 return 1;
             }
 
@@ -50,7 +50,7 @@ namespace MDPlayer.EngineSmokeTest
             Setting setting = session.Setting;
             uint sampleRate = session.SampleRate;
 
-            Console.WriteLine($"VGM version {vgm.Version}, chips: SN76489={vgm.SN76489ClockValue}Hz YM2612={vgm.YM2612ClockValue}Hz");
+            Console.WriteLine($"VGM version {vgm.Version}, chips: {session.DescribeActiveChips()}");
 
             setting.other.WavSwitch = true;
             setting.other.WavPath = outDir;

@@ -86,7 +86,7 @@ namespace MDPlayer.UI
                 if (loadedSession == null || stopRequested)
                 {
                     if (!stopRequested)
-                        StatusLabel.Text = "오류: 이 VGM은 재생할 수 없습니다 (SN76489/YM2612만 지원)";
+                        StatusLabel.Text = "오류: 이 VGM은 재생할 수 없습니다 (지원하지 않는 칩만 사용됨, VgmEngine.cs 참고)";
                     OpenButton.IsEnabled = true;
                     PlayButton.IsEnabled = true;
                     StopButton.IsEnabled = false;
@@ -107,8 +107,7 @@ namespace MDPlayer.UI
                     localQueue.Start();
                 });
 
-                StatusLabel.Text = $"재생 중 - SN76489={loadedSession.Vgm.SN76489ClockValue}Hz " +
-                                    $"YM2612={loadedSession.Vgm.YM2612ClockValue}Hz";
+                StatusLabel.Text = $"재생 중 - {loadedSession.DescribeActiveChips()}";
 
                 // Poll for completion off the UI thread; only hop back to update labels/buttons.
                 CoreAudioQueue? watchedQueue = queue;
