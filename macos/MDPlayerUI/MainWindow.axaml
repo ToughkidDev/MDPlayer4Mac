@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MDPlayer.UI.MainWindow"
         Title="MDPlayer4Mac"
-        Width="740" Height="260"
-        CanResize="False">
+        SizeToContent="WidthAndHeight"
+        CanResize="True">
     <StackPanel Margin="16" Spacing="12">
         <TextBlock x:Name="FileLabel" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
         <TextBlock x:Name="StatusLabel" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
@@ -15,19 +15,18 @@
         <!--
           Chip channel visualizer(s) get docked here at runtime (see MainWindow.axaml.cs's
           ShowVisualizerFor/HideVisualizers) - one PixelScreen control per active chip this
-          port has a visualizer for (currently just SN76489; see macos/README.md). Black
+          port has a visualizer for (SN76489 and YM2612 so far; see macos/README.md). Black
           background matches the sprite art's own black background so any native-size
           rounding/gaps at the control's edges aren't visually jarring.
+
+          The window uses SizeToContent instead of a fixed Width/Height because which
+          visualizer(s) show - and therefore how tall this Border ends up - depends on
+          which chips the loaded file actually uses (SN76489 alone is ~80px tall at zoom 2;
+          YM2612 alone is ~368px; both stacked is taller still) - a fixed size would either
+          clip the tall case or leave dead space in the short one.
         -->
         <Border Background="Black" BorderBrush="Gray" BorderThickness="1" Padding="4">
             <StackPanel x:Name="VisualizerHost" Spacing="4" />
         </Border>
-        <!--
-          Temporary diagnostic line (see MainWindow.axaml.cs's visualizerTimer Tick handler)
-          - shows the redraw timer's tick count and, if a ported drawXxx call throws, the
-          exception message. Not part of the original UI; remove once the visualizer is
-          confirmed working reliably on real files.
-        -->
-        <TextBlock x:Name="VisualizerDebugLabel" Text="" Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap" />
     </StackPanel>
 </Window>

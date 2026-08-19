@@ -11,7 +11,6 @@
 // back onto the UI thread safely.
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -44,6 +43,7 @@ namespace MDPlayer.UI
         // playback runs.
         private MusicEngineSession? loadedSession;
         private Sn76489Visualizer? sn76489Visualizer;
+        private Ym2612Visualizer? ym2612Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -57,9 +57,15 @@ namespace MDPlayer.UI
         }
 
         // Builds whichever chip visualizers this session's ChipClocks says are present and
-        // docks them into VisualizerHost, then starts the shared redraw timer. Only SN76489
-        // is ported so far (see macos/README.md's chip-visualizer section) - other chips
-        // simply get no visualizer yet, same as before this feature existed.
+        // docks them into VisualizerHost, then starts the shared redraw timer. Confirmed
+        // working live on real hardware (see macos/README.md's chip-visualizer section) -
+        // the earlier "frozen SN76489 UI" report turned out not to be a rendering bug (a
+        // temporary debug build that dumped raw ChipRegister.sn76489Register/GetPSGVolume
+        // state alongside the tick counter showed the register values themselves changing
+        // and the LED bars/keyboard animating correctly in step - the confusion was just
+        // that the same session also had no YM2612 UI yet, which looked like "nothing is
+        // reacting" at a glance). That diagnostic instrumentation has been removed now that
+        // it's served its purpose.
         private void ShowVisualizersFor(MusicEngineSession session)
         {
             HideVisualizers();
@@ -70,51 +76,21 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(sn76489Visualizer.Screen);
             }
 
-            if (sn76489Visualizer == null) return;
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2612, out uint ym2612Clock))
+            {
+                ym2612Visualizer = new Ym2612Visualizer(session.ChipRegister, ym2612Clock);
+                VisualizerHost.Children.Add(ym2612Visualizer.Screen);
+            }
 
-            // Temporary diagnostic counter/try-catch (see MainWindow.axaml's
-            // VisualizerDebugLabel comment) - a Tick handler exception has nowhere obvious
-            // to surface (DispatcherTimer callbacks aren't awaited, and this app only calls
-            // .LogToTrace() in Program.cs, which writes to System.Diagnostics.Trace -
-            // invisible unless a TraceListener happens to be attached, i.e. essentially
-            // nowhere when just running via `dotnet run` from a terminal). This makes any
-            // failure visible directly in the window instead of silently doing nothing.
-            //
-            // Also prints the RAW sn76489Register/GetPSGVolume snapshot every tick. This
-            // exists because "tick N 정상" alone can't distinguish two very different
-            // situations: (a) the visualizer is broken despite the chip genuinely being
-            // driven, vs (b) the visualizer is fine but this particular file just never
-            // writes to SN76489 at all (common for MD/Genesis tracks that only use
-            // YM2612 - DescribeActiveChips() lists a chip as soon as it's *present* in the
-            // VGM header/clocked, not only once it actually receives register writes). If
-            // this raw snapshot never changes from the SN76489 power-on-reset state
-            // ({0,15,0,15,0,15,0,15} / all-zero volumes), the file simply isn't using the
-            // chip - not a bug. If it visibly changes over time but the LED bars/keyboard
-            // never animate, that confirms a real rendering-pipeline bug.
-            int tickCount = 0;
+            if (sn76489Visualizer == null && ym2612Visualizer == null) return;
+
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
             {
-                tickCount++;
-                try
-                {
-                    sn76489Visualizer?.ScreenChangeParams();
-                    sn76489Visualizer?.ScreenDrawParams();
-
-                    string regDump = "-";
-                    int[]? reg = session.ChipRegister.sn76489Register[0];
-                    if (reg != null)
-                    {
-                        int[][] vol = session.ChipRegister.GetPSGVolume(0);
-                        regDump = $"reg=[{string.Join(",", reg)}] vol=[{string.Join(",", vol.Select(v => $"({v[0]},{v[1]})"))}]";
-                    }
-
-                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 정상 | {regDump}";
-                }
-                catch (Exception ex)
-                {
-                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 예외: {ex}";
-                }
+                sn76489Visualizer?.ScreenChangeParams();
+                sn76489Visualizer?.ScreenDrawParams();
+                ym2612Visualizer?.ScreenChangeParams();
+                ym2612Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -124,6 +100,7 @@ namespace MDPlayer.UI
             visualizerTimer?.Stop();
             visualizerTimer = null;
             sn76489Visualizer = null;
+            ym2612Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
