@@ -47,7 +47,10 @@ namespace MDPlayer.UI
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
-                    new FilePickerFileType("VGM files") { Patterns = new[] { "*.vgm" } },
+                    // .vgz is just a gzip-compressed .vgm (the format most real-world VGM
+                    // downloads come in, e.g. from vgmrips.net) - VgmEngine.Load decompresses
+                    // it transparently, so both extensions are equally valid input here.
+                    new FilePickerFileType("VGM files") { Patterns = new[] { "*.vgm", "*.vgz" } },
                     FilePickerFileTypes.All,
                 },
             });

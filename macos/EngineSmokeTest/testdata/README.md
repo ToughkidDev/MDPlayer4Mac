@@ -34,6 +34,13 @@ against the VGM spec if you want to sanity-check them yourself.
   the same simple single-instance wiring pattern and weren't each given a
   dedicated fixture (see macos/README.md for the full rationale).
 
+- `sn76489-tone.vgz` (63 bytes) — the exact same bytes as `sn76489-tone.vgm`,
+  gzip-compressed (`gzip.compress(data, compresslevel=9)`), to test
+  `VgmEngine.DecompressIfGzip`. Confirmed byte-identical WAV output to
+  `sn76489-tone.vgm` (`cmp` on the two rendered files matches exactly) -
+  proof the decompression path doesn't alter the underlying VGM data at all,
+  not just that it "runs without crashing".
+
 Run any of these with:
 
 ```
@@ -41,4 +48,5 @@ cd macos/EngineSmokeTest
 dotnet run -c Release -- testdata/sn76489-tone.vgm /tmp/out.wav
 dotnet run -c Release -- testdata/ym2612-fm-tone.vgm /tmp/out-fm.wav
 dotnet run -c Release -- testdata/ym2151-tone.vgm /tmp/out-opm.wav
+dotnet run -c Release -- testdata/sn76489-tone.vgz /tmp/out-vgz.wav
 ```

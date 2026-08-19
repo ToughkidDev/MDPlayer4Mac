@@ -16,7 +16,7 @@ namespace MDPlayer.LivePlayer
         {
             if (args.Length < 1)
             {
-                Console.Error.WriteLine("usage: LivePlayer <input.vgm>");
+                Console.Error.WriteLine("usage: LivePlayer <input.vgm|input.vgz>");
                 return 1;
             }
 

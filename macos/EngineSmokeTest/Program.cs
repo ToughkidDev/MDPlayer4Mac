@@ -16,7 +16,7 @@ namespace MDPlayer.EngineSmokeTest
         {
             if (args.Length < 1)
             {
-                Console.Error.WriteLine("usage: EngineSmokeTest <input.vgm> [output.wav]");
+                Console.Error.WriteLine("usage: EngineSmokeTest <input.vgm|input.vgz> [output.wav]");
                 return 1;
             }
 

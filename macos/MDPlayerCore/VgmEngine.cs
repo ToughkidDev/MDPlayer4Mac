@@ -12,6 +12,8 @@
 // (see AudioShim.cs's header comment for the same reasoning applied to file-format
 // detection). Add more chips here (and to EnmChip.* below) following the same pattern as
 // Audio.cs's dispatch block for any chip not yet covered.
+using System.IO.Compression;
+
 namespace MDPlayer
 {
     public class VgmEngineSession
@@ -55,10 +57,31 @@ namespace MDPlayer
 
     public static class VgmEngine
     {
+        // .vgz files (the format most real-world VGM downloads, e.g. from vgmrips.net,
+        // actually come in) are just gzip-compressed .vgm files - detected here via the
+        // gzip magic bytes (0x1f 0x8b) rather than the file extension, so a renamed/
+        // mislabeled file still works. Mirrors the original Windows Audio.cs's
+        // Common.unzipFile, which does the same decompression via
+        // System.IO.Compression.GZipStream (a portable BCL type, no Windows dependency,
+        // so this needed no porting work beyond copying the approach).
+        private static byte[] DecompressIfGzip(byte[] buf)
+        {
+            if (buf.Length < 2 || buf[0] != 0x1f || buf[1] != 0x8b)
+                return buf;
+
+            using MemoryStream input = new(buf);
+            using GZipStream gzip = new(input, CompressionMode.Decompress);
+            using MemoryStream output = new();
+            gzip.CopyTo(output);
+            return output.ToArray();
+        }
+
         // samplingBuffer is MDSound's internal resample buffer size (in frames), not the
         // caller's per-Update() chunk size - unrelated to how many samples you pull per call.
         public static VgmEngineSession Load(byte[] vgmBuf, uint samplingBuffer = 2048)
         {
+            vgmBuf = DecompressIfGzip(vgmBuf);
+
             Setting setting = Setting.Load();
             setting.ApplyChipTypeDefaults();
 
