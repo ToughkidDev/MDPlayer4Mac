@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 — VGM 이외 전 포맷 추가)
+## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 — VGM 이외 전 포맷 추가, 실기(real Mac) 빌드+오디오 검증 완료)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -507,14 +507,28 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   나머지 포맷(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)은 개별
   테스트 픽스처 없이 코드 리뷰 + 위에 적은 버그 수정 수준의 확신에 의존합니다
   (특히 SID/MDX는 `Render()` 우회 경로 자체가 맞게 배선됐는지가 핵심 리스크).
-- **AY는 이번에도 샌드박스에서 빌드 검증이 안 됩니다** — `Driver/AY/AY.cs`가
-  실제 `Konamiman.Z80dotNet` NuGet 패키지(진짜 Z80 CPU 에뮬레이터,
-  `Z80Processor`/`IZ80Registers` 타입)를 쓰는데, 이 클라우드 샌드박스는
-  nuget.org에 접근할 수 없어서 최소 스캇치 스텁(`IMemory`만 구현)으로만
-  나머지 코드를 검증했고 `AY.cs`/`port.cs` 자체는 문법 확인 수준입니다.
-  실제 Mac에서 `dotnet build`로 진짜 패키지가 restore될 때 검증이 필요합니다
-  (`MDPlayerUI`의 Avalonia 패키지, `Driver/SID/**`의 실기 빌드 검증과 동일한
-  패턴).
+- **AY는 샌드박스에서는 빌드 검증이 안 됐지만, 실제 Mac에서는 빌드 확인
+  완료**입니다 — `Driver/AY/AY.cs`가 실제 `Konamiman.Z80dotNet` NuGet
+  패키지(진짜 Z80 CPU 에뮬레이터, `Z80Processor`/`IZ80Registers` 타입)를
+  쓰는데, 이 클라우드 샌드박스는 nuget.org에 접근할 수 없어서 최소 스캇치
+  스텁(`IMemory`만 구현)으로만 나머지 코드를 검증했고 `AY.cs`/`port.cs`
+  자체는 문법 확인 수준이었습니다. 이후 사용자가 실제 Mac에서
+  `MDPlayerCore`/`LivePlayer`/`MDPlayerUI`/`EngineSmokeTest` 4개 프로젝트를
+  전부 `dotnet build -c Release`로 빌드해 진짜 Z80dotNet 패키지가 정상
+  restore/컴파일되는 것을 확인했습니다 (경고는 NU1701 프레임워크 불일치 등
+  기존 패턴뿐, 에러 0). 다만 **AY 파일을 실제로 재생해서 소리를 들어본
+  적은 아직 없습니다** — 검증된 건 빌드 성공까지고, AY8910+ZXBeep 배선의
+  오디오 정확성 자체는 여전히 미검증입니다.
+- **실기(real Mac) 오디오 검증**: 위 빌드 확인에 이어, 새로 추가한 두
+  픽스처(S98 SN76489 톤, NSF APU 톤)를 `LivePlayer` CLI로 실제 Mac
+  스피커에서 재생해 사용자가 직접 듣고 확인했습니다("전부 성공이야") —
+  샌드박스의 Python WAV 분석(무음 아님/파형 주파수 일치)에 더해, 실제
+  오디오 출력 장치를 통한 청취 확인까지 끝난 것입니다. 이어서
+  `MDPlayerUI` GUI로도 파일 열기 → 포맷/칩 정보 표시 → 재생 → 정지 버튼까지
+  전체 플로우를 테스트했고, 기존 VGM 픽스처도 같은 세션에서 함께 확인해
+  회귀가 없음을 재확인했습니다("전부 정상이야"). 나머지 10개 포맷
+  (XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)은 아직 실제 파일로
+  재생 테스트하지 않았습니다.
 - `EngineSmokeTest`/`LivePlayer`/`MDPlayerUI` 세 프론트엔드 모두
   `MusicEngine.Load(buf, fileName)`을 쓰도록(구 `VgmEngine.Load(buf)`)
   갱신했고, `MDPlayerUI`의 파일 열기 다이얼로그 필터도 13개 포맷 확장자를
@@ -525,16 +539,18 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
 ## 다음 단계 후보
 
 1. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
-   있으니, 각 포맷의 실제 파일(vgmrips.net의 VGM, HVSC의 SID/AY, 각종 NSF/GBS/
+   있고, 실제 Mac에서 전체 빌드 성공 + S98/NSF 픽스처 실기 오디오 확인까지
+   끝났으니, 각 포맷의 실제 파일(vgmrips.net의 VGM, HVSC의 SID/AY, 각종 NSF/GBS/
    HES 아카이브 등)을 받아(라이선스/저작권 확인 후) 원본 Windows 빌드와
-   파형/사운드를 비교해보는 게 다음 신뢰도 검증 단계입니다. 이번 라운드에서
+   파형/사운드를 비교해보는 게 다음 신뢰도 검증 단계입니다. 지금까지
    실제 오디오로 검증된 건 VGM의 YM2151/NES APU, 그리고 신규 S98/NSF
    픽스처뿐이고 나머지(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)는
    코드 리뷰 수준입니다. 위에 적은 VGM EOF 오프셋 이슈도 실제 파일에서
    재현되는지 확인이 필요합니다.
-2. **AY 실기 빌드 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
-   컴파일/동작하는지, 실제 Mac에서 `dotnet build` 후 ZX Spectrum AY 파일로
-   확인이 필요합니다 (샌드박스에서는 원천적으로 불가능).
+2. **AY 실제 오디오 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
+   컴파일되는 것은 실제 Mac 빌드로 이미 확인됐습니다 (에러 0). 남은 건
+   실제 ZX Spectrum AY 파일을 `LivePlayer`나 `MDPlayerUI`로 재생해서
+   AY8910+ZXBeep 배선이 실제로 올바른 소리를 내는지 청취 확인하는 것뿐입니다.
 3. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
    재생 목록, 재생 시간 표시/탐색바, 볼륨 조절, 최근 파일 목록 같은 실사용에
    필요한 기본 기능을 추가할 수 있습니다.
