@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Real-time VGM playback through actual speakers, via CoreAudioOutput's Audio Queue
+    Services wrapper. This is the first genuinely "hear it live" milestone in the port -
+    EngineSmokeTest only ever proved the engine renders correct samples to a WAV file.
+    See macos/MDPlayerCore/VgmEngine.cs for the shared load/setup path and
+    macos/CoreAudioOutput/CoreAudioQueue.cs for the playback mechanism.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>LivePlayer</AssemblyName>
+    <RootNamespace>MDPlayer.LivePlayer</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <!--
+      Same reasoning as EngineSmokeTest.csproj: this is an executable project, and the
+      user's Mac only has .NET 10.0.7 installed (no exact 8.0.x runtime), so without
+      RollForward the host refuses to launch with "You must install or update .NET".
+    -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
+    <ProjectReference Include="..\CoreAudioOutput\CoreAudioOutput.csproj" />
+  </ItemGroup>
+
+</Project>

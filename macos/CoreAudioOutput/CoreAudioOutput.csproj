@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Thin P/Invoke wrapper over macOS's Audio Queue Services (AudioToolbox.framework) for
+    real-time 16-bit stereo PCM playback. No third-party dependency (no PortAudio/SDL2
+    install required) - AudioToolbox ships with every macOS install. Deliberately NOT
+    cross-platform: this is the one project in the repo that is macOS-only by nature (it
+    P/Invokes a macOS system framework directly), unlike MDPlayerCore/MDSound which are
+    plain portable net8.0. See CoreAudioQueue.cs for the Audio Queue Services usage.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>CoreAudioOutput</AssemblyName>
+    <RootNamespace>MDPlayer.CoreAudioOutput</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

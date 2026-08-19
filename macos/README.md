@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19)
+## 현재 상태 (2026-08-19, CoreAudio 실시간 재생 추가)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -227,18 +227,65 @@ dotnet run -c Release -- <입력.vgm> [출력.wav]
 지금은 SN76489/YM2612 두 칩만 배선되어 있습니다 (VGM 파일이 다른 칩만 쓴다면
 "이 스모크 테스트는 SN76489/YM2612만 배선되어 있다"는 에러 메시지와 함께 종료).
 
+이 스모크 테스트를 만드는 과정에서, VGM 로딩 + `Setting`/`ChipRegister`/`Vgm`/
+`MDSound` 배선 로직을 `macos/MDPlayerCore/VgmEngine.cs`(`VgmEngine.Load(byte[] vgmBuf)`)
+로 뽑아냈습니다 — WAV 렌더링(`EngineSmokeTest`)과 실시간 재생(`LivePlayer`, 아래)이
+동일한 설정 코드를 공유하기 위해서입니다. 리팩터링 후 두 테스트 VGM으로 회귀
+테스트를 돌려 콘솔 출력이 리팩터링 전과 완전히 동일함을 확인했습니다.
+
+### 🔄 CoreAudioOutput + LivePlayer — 실시간 오디오 출력 (구현 완료, 실기 검증 대기)
+
+`EngineSmokeTest`는 WAV 파일로만 렌더링했는데, 이번엔 실제로 스피커에서 소리가
+나도록 macOS의 **Audio Queue Services**(`AudioToolbox.framework`)를 P/Invoke로
+직접 붙였습니다.
+
+- `macos/CoreAudioOutput/`: `AudioToolbox.framework`를 P/Invoke하는 순수 래퍼
+  라이브러리 (`CoreAudioQueue.cs`). PortAudio/SDL2 같은 외부 설치가 필요 없는
+  방식을 택했습니다 — Audio Queue Services는 모든 macOS에 기본 내장되어 있습니다.
+  AUHAL/AudioUnit 렌더 콜백 방식보다 지연시간은 조금 더 크지만, 버퍼를 "다 썼으면
+  채워달라"고 콜백으로 요청하는 pull 모델이라 `MDSound.MDSound.Update(buf, offset,
+  count, frame)`의 시그니처와 자연스럽게 맞아떨어집니다.
+  - `AudioStreamBasicDescription`/`AudioQueueBuffer`는 Apple 헤더(`AudioQueue.h`,
+    `CoreAudioTypes.h`)에서 필드 순서/타입을 그대로 옮긴 `[StructLayout(LayoutKind.Sequential)]`
+    구조체이고, 버퍼 내부 필드 오프셋은 손으로 계산하지 않고 `Marshal.OffsetOf<T>()`로
+    구합니다 (.NET이 네이티브와 동일한 정렬 규칙을 따르므로).
+  - 생성자에서 버퍼 N개(기본 4개)를 동기적으로 채워 큐에 넣어두고(`AudioQueueStart()`
+    호출 전에), 이후 재생 중에는 CoreAudio가 다 쓴 버퍼를 콜백으로 돌려줄 때마다
+    다시 채워 넣는 트리플(N-tuple) 버퍼링 구조입니다.
+  - `DllImport`는 프레임워크 절대 경로(`/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox`)를
+    사용합니다 — .NET 버전에 상관없이 안정적으로 동작하는 방식입니다.
+- `macos/LivePlayer/`: `VgmEngine.Load()` + `CoreAudioQueue`를 연결하는 콘솔 앱.
+  `dotnet run -c Release -- <입력.vgm>`으로 실행하면 재생이 끝나거나 Ctrl+C를
+  누를 때까지 스피커로 계속 소리를 냅니다.
+
+**⚠️ 중요한 한계**: 이 작업은 Linux 샌드박스에서 이루어졌는데, 리눅스에는
+`AudioToolbox.framework`가 아예 없어서 **`dotnet build`로 컴파일이 되는 것만
+확인했고, 실제로 소리가 나는지는 전혀 검증할 수 없었습니다.** P/Invoke 구조체
+레이아웃, 콜백 마샬링, 오디오 포맷 설정이 실제로 맞는지는 오직 진짜 Mac에서
+`LivePlayer`를 돌려봐야만 알 수 있습니다 — 지금까지의 다른 모든 마일스톤과
+달리, 이번엔 정말로 실기에서 소리가 나는지가 유일한 성공 기준입니다.
+
+돌리는 법 (Mac에서):
+
+```
+cd macos/LivePlayer
+dotnet run -c Release -- <입력.vgm>
+```
+
 ## 다음 단계 후보
 
-1. **더 많은 칩 배선**: 지금 `EngineSmokeTest`는 SN76489/YM2612만 다룹니다.
-   실제 게임 VGM(특히 아케이드/타사 콘솔 이식)을 재생해보려면 YM2151, YM2608,
-   YM2610 등도 `Audio.VgmPlay`의 해당 칩 블록(각각 `MDSound.MDSound.Chip` 하나
-   만드는 패턴)을 참고해서 추가해야 합니다.
-2. **실제 VGM 파일로 검증**: 지금까지는 손으로 만든 최소 테스트 파일만
+1. **CoreAudio 실기 검증**: 위 `LivePlayer`를 실제 Mac에서 돌려서 진짜로 소리가
+   나는지, 끊김/클릭/잡음 없이 재생되는지 확인. 문제가 있다면 버퍼 크기
+   (`framesPerBuffer`/`bufferCount`), 콜백 마샬링, 구조체 레이아웃부터 의심.
+2. **더 많은 칩 배선**: 지금 `VgmEngine`/`EngineSmokeTest`/`LivePlayer`는
+   SN76489/YM2612만 다룹니다. 실제 게임 VGM(특히 아케이드/타사 콘솔 이식)을
+   재생해보려면 YM2151, YM2608, YM2610 등도 `Audio.VgmPlay`의 해당 칩 블록
+   (각각 `MDSound.MDSound.Chip` 하나 만드는 패턴)을 참고해서 추가해야 합니다.
+3. **실제 VGM 파일로 검증**: 지금까지는 손으로 만든 최소 테스트 파일만
    썼습니다. vgmrips.net 등에서 실제 메가드라이브 게임 VGM을 받아 돌려보고
    (라이선스/저작권 확인 후) 원본 Windows 빌드와 파형/사운드를 비교해보는 게
    다음 신뢰도 검증 단계입니다.
-3. 그 다음에야 오디오 출력 레이어(CoreAudio) 붙이기, UI(Avalonia) 시작하기로
-   넘어가는 게 순서상 맞을 것 같습니다.
+4. 그 다음에야 UI(Avalonia) 작업을 시작하는 게 순서상 맞을 것 같습니다.
 
 ## 라이선스 메모
 
