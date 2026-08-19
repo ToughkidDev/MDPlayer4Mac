@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MDPlayer.UI.MainWindow"
+        Title="MDPlayer4Mac"
+        Width="480" Height="220"
+        CanResize="False">
+    <StackPanel Margin="16" Spacing="12">
+        <TextBlock x:Name="FileLabel" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
+        <TextBlock x:Name="StatusLabel" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="OpenButton" Content="VGM 열기..." Click="OnOpenClick" />
+            <Button x:Name="PlayButton" Content="재생" Click="OnPlayClick" IsEnabled="False" />
+            <Button x:Name="StopButton" Content="정지" Click="OnStopClick" IsEnabled="False" />
+        </StackPanel>
+    </StackPanel>
+</Window>

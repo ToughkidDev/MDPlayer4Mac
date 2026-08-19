@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    First GUI milestone for the macOS port: a minimal Avalonia desktop app that lets you
+    pick a VGM file with a real file picker and play it live through CoreAudioOutput,
+    instead of driving LivePlayer from the command line. See macos/README.md for how this
+    fits into the overall port, and macos/MDPlayerCore/VgmEngine.cs / macos/CoreAudioOutput/
+    for the engine/playback plumbing this reuses unchanged.
+
+    IMPORTANT CAVEAT: this project was authored in a Linux sandbox with no network access
+    to nuget.org (api.nuget.org returns 403 through the sandbox's allowlist proxy - verified
+    directly), so none of Avalonia's packages could be restored, and not even a `dotnet
+    build` compile-check was possible here, unlike every other project in this repo. The
+    package names/versions and API usage below (StorageProvider file picker, AppBuilder,
+    XAML structure) were checked against Avalonia's current documentation/source (12.1.1,
+    as of 2026-08) via web search, but this is genuinely unverified code until it's
+    actually restored and built on a machine with real internet access - i.e. the target
+    Mac. Expect this to need a round of fixes after the first real build attempt.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>MDPlayerUI</AssemblyName>
+    <RootNamespace>MDPlayer.UI</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!--
+      Same reasoning as EngineSmokeTest.csproj/LivePlayer.csproj: the user's Mac only has
+      .NET 10.0.7 installed (no exact 8.0.x runtime), so without RollForward the host
+      refuses to launch with "You must install or update .NET".
+    -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <!-- Only pulled into Debug builds - keeps the Release output lean. -->
+    <PackageReference Include="Avalonia.Diagnostics" Version="12.1.1" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
+    <ProjectReference Include="..\CoreAudioOutput\CoreAudioOutput.csproj" />
+  </ItemGroup>
+
+</Project>

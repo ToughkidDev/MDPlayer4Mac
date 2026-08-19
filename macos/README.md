@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, CoreAudio 실시간 재생 실기 검증 완료)
+## 현재 상태 (2026-08-19, Avalonia UI 첫 마일스톤 추가)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -271,17 +271,55 @@ cd macos/LivePlayer
 dotnet run -c Release -- <입력.vgm>
 ```
 
+### 🔄 MDPlayerUI — Avalonia GUI 첫 마일스톤 (구현 완료, 실기 빌드/검증 대기)
+
+`macos/MDPlayerUI/`에 최소 기능의 Avalonia 데스크톱 앱을 새로 만들었습니다:
+"VGM 열기..." 버튼으로 실제 파일 선택 대화상자를 띄우고, 선택한 파일을
+`VgmEngine.Load()` + `CoreAudioOutput.CoreAudioQueue`로 그대로 재생/정지하는
+창(Window) 하나짜리 GUI입니다. 콘솔에서 돌리던 `LivePlayer`와 엔진/오디오
+로직은 완전히 동일하고, 앞단만 GUI로 바뀐 것입니다.
+
+- 패키지: `Avalonia`/`Avalonia.Desktop`/`Avalonia.Themes.Fluent`/`Avalonia.Fonts.Inter`
+  12.1.1 (2026-08 기준 최신 안정 버전, 웹 검색으로 확인), `Avalonia.Diagnostics`는
+  Debug 빌드에서만.
+- 파일 선택은 구버전 `OpenFileDialog`가 아니라 현재 권장되는
+  `TopLevel.StorageProvider.OpenFilePickerAsync(FilePickerOpenOptions)` 방식을
+  사용했습니다.
+- 재생/정지 로직은 전부 `Task.Run`으로 백그라운드 스레드에서 돌리고, UI 갱신만
+  `Dispatcher.UIThread.InvokeAsync`로 되돌아와 처리합니다 (Avalonia UI 스레드가
+  블로킹되지 않도록).
+
+**⚠️ 중요한 한계**: 이 프로젝트는 리눅스 샌드박스에서 작성됐는데, 이 샌드박스는
+`nuget.org` 자체에 접근이 막혀 있어서(`api.nuget.org`가 프록시에서 403으로
+차단됨, 직접 확인함) **`dotnet restore`조차 한 번도 못 해봤습니다.** 지금까지의
+다른 모든 프로젝트와 달리 이번엔 `dotnet build` 컴파일 확인조차 못 한 상태로
+동기화하는 것입니다. 패키지 이름/버전과 API 사용법(StorageProvider 파일
+선택기, AppBuilder/XAML 구조)은 웹 검색으로 Avalonia 최신 공식 문서/소스를
+확인하며 작성했지만, 실제 Mac에서 처음 빌드해봐야 진짜로 맞는지 알 수 있고,
+아마 첫 시도에서 몇 가지는 고쳐야 할 가능성이 있습니다.
+
+돌리는 법 (Mac에서):
+
+```
+cd macos/MDPlayerUI
+dotnet run -c Release
+```
+
 ## 다음 단계 후보
 
-1. **더 많은 칩 배선**: 지금 `VgmEngine`/`EngineSmokeTest`/`LivePlayer`는
-   SN76489/YM2612만 다룹니다. 실제 게임 VGM(특히 아케이드/타사 콘솔 이식)을
-   재생해보려면 YM2151, YM2608, YM2610 등도 `Audio.VgmPlay`의 해당 칩 블록
-   (각각 `MDSound.MDSound.Chip` 하나 만드는 패턴)을 참고해서 추가해야 합니다.
-2. **실제 VGM 파일로 검증**: 지금까지는 손으로 만든 최소 테스트 파일만
+1. **MDPlayerUI 실기 빌드/검증**: 위 앱을 실제 Mac에서 `dotnet restore` +
+   `dotnet run`으로 돌려서 빌드 에러가 있는지, 창이 뜨는지, 파일 선택 → 재생 →
+   정지가 실제로 동작하는지 확인. 처음 빌드에서 패키지 버전 충돌이나 XAML
+   코드생성 관련 에러가 나올 가능성이 있습니다.
+2. **더 많은 칩 배선**: 지금 `VgmEngine`/`EngineSmokeTest`/`LivePlayer`/
+   `MDPlayerUI`는 SN76489/YM2612만 다룹니다. 실제 게임 VGM(특히 아케이드/타사
+   콘솔 이식)을 재생해보려면 YM2151, YM2608, YM2610 등도 `Audio.VgmPlay`의
+   해당 칩 블록(각각 `MDSound.MDSound.Chip` 하나 만드는 패턴)을 참고해서
+   추가해야 합니다.
+3. **실제 VGM 파일로 검증**: 지금까지는 손으로 만든 최소 테스트 파일만
    썼습니다. vgmrips.net 등에서 실제 메가드라이브 게임 VGM을 받아 돌려보고
    (라이선스/저작권 확인 후) 원본 Windows 빌드와 파형/사운드를 비교해보는 게
    다음 신뢰도 검증 단계입니다.
-3. 그 다음에야 UI(Avalonia) 작업을 시작하는 게 순서상 맞을 것 같습니다.
 
 ## 라이선스 메모
 
