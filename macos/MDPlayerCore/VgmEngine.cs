@@ -50,6 +50,31 @@ namespace MDPlayer
             Add("YM2413", Vgm.YM2413ClockValue);
             Add("K051649", Vgm.K051649ClockValue);
             Add("SEGAPCM", Vgm.SEGAPCMClockValue);
+            Add("RF5C68", Vgm.RF5C68ClockValue);
+            Add("RF5C164", Vgm.RF5C164ClockValue);
+            Add("PWM", Vgm.PWMClockValue);
+            Add("C140", Vgm.C140ClockValue);
+            Add("OKIM6258", Vgm.OKIM6258ClockValue);
+            Add("OKIM6295", Vgm.OKIM6295ClockValue);
+            Add("Y8950", Vgm.Y8950ClockValue);
+            Add("YMF278B", Vgm.YMF278BClockValue & 0x7fffffff);
+            Add("YMF271", Vgm.YMF271ClockValue & 0x7fffffff);
+            Add("YMZ280B", Vgm.YMZ280BClockValue & 0x7fffffff);
+            Add("DMG", Vgm.DMGClockValue);
+            Add("NES", Vgm.NESClockValue);
+            Add("MultiPCM", Vgm.MultiPCMClockValue);
+            Add("uPD7759", Vgm.uPD7759ClockValue);
+            Add("K054539", Vgm.K054539ClockValue);
+            Add("HuC6280", Vgm.HuC6280ClockValue & 0x7fffffff);
+            Add("K053260", Vgm.K053260ClockValue);
+            Add("POKEY", Vgm.POKEYClockValue & 0x3fffffff);
+            Add("QSound", Vgm.QSoundClockValue);
+            Add("WSwan", Vgm.WSwanClockValue & 0x3fffffff);
+            Add("SAA1099", Vgm.SAA1099ClockValue & 0x3fffffff);
+            Add("ES5503", Vgm.ES5503ClockValue & 0x3fffffff);
+            Add("X1_010", Vgm.X1_010ClockValue & 0x3fffffff);
+            Add("C352", Vgm.C352ClockValue & 0x7fffffff);
+            Add("GA20", Vgm.GA20ClockValue & 0x7fffffff);
 
             return parts.Count > 0 ? string.Join(" ", parts) : "(no supported chip)";
         }
@@ -125,6 +150,14 @@ namespace MDPlayer
                 EnmChip.YM2151, EnmChip.YM2203, EnmChip.YM2608, EnmChip.YM2610,
                 EnmChip.YM3812, EnmChip.YM3526, EnmChip.YMF262,
                 EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649, EnmChip.SEGAPCM,
+                EnmChip.RF5C68, EnmChip.RF5C164, EnmChip.PWM, EnmChip.C140,
+                EnmChip.OKIM6258, EnmChip.OKIM6295, EnmChip.Y8950, EnmChip.YMF278B,
+                EnmChip.YMF271, EnmChip.YMZ280B, EnmChip.DMG,
+                EnmChip.NES, EnmChip.DMC, EnmChip.FDS,
+                EnmChip.MultiPCM, EnmChip.uPD7759, EnmChip.K054539, EnmChip.HuC6280,
+                EnmChip.K053260, EnmChip.POKEY, EnmChip.QSound, EnmChip.WSwan,
+                EnmChip.SAA1099, EnmChip.ES5503, EnmChip.X1_010, EnmChip.C352,
+                EnmChip.GA20,
             };
             if (!vgm.init(vgmBuf, chipRegister, EnmModel.VirtualModel, useChip, latency, waitTime))
             {
@@ -385,6 +418,532 @@ namespace MDPlayer
                 });
             }
 
+            if (vgm.RF5C68ClockValue != 0)
+            {
+                MDSound.rf5c68 rf5c68 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.RF5C68,
+                    ID = 0,
+                    Instrument = rf5c68,
+                    Update = rf5c68.Update,
+                    Start = rf5c68.Start,
+                    Stop = rf5c68.Stop,
+                    Reset = rf5c68.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.RF5C68Volume,
+                    Clock = vgm.RF5C68ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.RF5C164ClockValue != 0)
+            {
+                // RF5C164 (Sega CD PCM) shares its emulator core with RF5C68 - MDSound
+                // exposes it as the "scd_pcm" class rather than a second rf5c68-named type.
+                MDSound.scd_pcm rf5c164 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.RF5C164,
+                    ID = 0,
+                    Instrument = rf5c164,
+                    Update = rf5c164.Update,
+                    Start = rf5c164.Start,
+                    Stop = rf5c164.Stop,
+                    Reset = rf5c164.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.RF5C164Volume,
+                    Clock = vgm.RF5C164ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.PWMClockValue != 0)
+            {
+                MDSound.pwm pwm = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.PWM,
+                    ID = 0,
+                    Instrument = pwm,
+                    Update = pwm.Update,
+                    Start = pwm.Start,
+                    Stop = pwm.Stop,
+                    Reset = pwm.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.PWMVolume,
+                    Clock = vgm.PWMClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.C140ClockValue != 0)
+            {
+                MDSound.c140 c140 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.C140,
+                    ID = 0,
+                    Instrument = c140,
+                    Update = c140.Update,
+                    Start = c140.Start,
+                    Stop = c140.Stop,
+                    Reset = c140.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.C140Volume,
+                    Clock = vgm.C140ClockValue,
+                    Option = new object[] { vgm.C140Type }, // PCM interleave type (ASIC219 vs. System21 etc.)
+                });
+            }
+
+            if (vgm.OKIM6258ClockValue != 0)
+            {
+                MDSound.okim6258 okim6258 = new();
+                MDSound.MDSound.Chip okim6258Chip = new()
+                {
+                    type = MDSound.MDSound.enmInstrumentType.OKIM6258,
+                    ID = 0,
+                    Instrument = okim6258,
+                    Update = okim6258.Update,
+                    Start = okim6258.Start,
+                    Stop = okim6258.Stop,
+                    Reset = okim6258.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.OKIM6258Volume,
+                    Clock = vgm.OKIM6258ClockValue,
+                    Option = new object[] { (int)vgm.OKIM6258Type },
+                };
+                // OKIM6258 can change its own output rate at runtime (VGM chip-specific
+                // commands) - this callback keeps MDSound's resampler in sync when that
+                // happens. See ChangeChipSampleRate below.
+                okim6258.okim6258_set_srchg_cb(0, (chip, newRate) => ChangeChipSampleRate(chip, newRate, sampleRate), okim6258Chip);
+                lstChips.Add(okim6258Chip);
+            }
+
+            if (vgm.OKIM6295ClockValue != 0)
+            {
+                MDSound.okim6295 okim6295 = new();
+                MDSound.MDSound.Chip okim6295Chip = new()
+                {
+                    type = MDSound.MDSound.enmInstrumentType.OKIM6295,
+                    ID = 0,
+                    Instrument = okim6295,
+                    Update = okim6295.Update,
+                    Start = okim6295.Start,
+                    Stop = okim6295.Stop,
+                    Reset = okim6295.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.OKIM6295Volume,
+                    Clock = vgm.OKIM6295ClockValue,
+                    Option = null,
+                };
+                okim6295.okim6295_set_srchg_cb(0, (chip, newRate) => ChangeChipSampleRate(chip, newRate, sampleRate), okim6295Chip);
+                lstChips.Add(okim6295Chip);
+            }
+
+            if (vgm.Y8950ClockValue != 0)
+            {
+                MDSound.y8950 y8950 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.Y8950,
+                    ID = 0,
+                    Instrument = y8950,
+                    Update = y8950.Update,
+                    Start = y8950.Start,
+                    Stop = y8950.Stop,
+                    Reset = y8950.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.Y8950Volume,
+                    Clock = vgm.Y8950ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.YMF278BClockValue != 0)
+            {
+                MDSound.ymf278b ymf278b = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.YMF278B,
+                    ID = 0,
+                    Instrument = ymf278b,
+                    Update = ymf278b.Update,
+                    Start = ymf278b.Start,
+                    Stop = ymf278b.Stop,
+                    Reset = ymf278b.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.YMF278BVolume,
+                    Clock = vgm.YMF278BClockValue & 0x7fffffff,
+                    // Looks for a yrw801.rom sample ROM next to the app; gracefully plays
+                    // without wavetable samples (FM part still works) if it's not found -
+                    // see ymf278b.cs's ymf278b_load_rom, which File.Exists-guards this.
+                    Option = new object[] { Common.GetApplicationFolder() },
+                });
+            }
+
+            if (vgm.YMF271ClockValue != 0)
+            {
+                MDSound.ymf271 ymf271 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.YMF271,
+                    ID = 0,
+                    Instrument = ymf271,
+                    Update = ymf271.Update,
+                    Start = ymf271.Start,
+                    Stop = ymf271.Stop,
+                    Reset = ymf271.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.YMF271Volume,
+                    Clock = vgm.YMF271ClockValue & 0x7fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.YMZ280BClockValue != 0)
+            {
+                MDSound.ymz280b ymz280b = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.YMZ280B,
+                    ID = 0,
+                    Instrument = ymz280b,
+                    Update = ymz280b.Update,
+                    Start = ymz280b.Start,
+                    Stop = ymz280b.Stop,
+                    Reset = ymz280b.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.YMZ280BVolume,
+                    Clock = vgm.YMZ280BClockValue & 0x7fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.DMGClockValue != 0)
+            {
+                // "DMG" = the Game Boy's built-in APU (Dot Matrix Game).
+                MDSound.gb dmg = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.DMG,
+                    ID = 0,
+                    Instrument = dmg,
+                    Update = dmg.Update,
+                    Start = dmg.Start,
+                    Stop = dmg.Stop,
+                    Reset = dmg.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.DMGVolume,
+                    Clock = vgm.DMGClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.NESClockValue != 0)
+            {
+                // The NES's APU (pulse/triangle/noise) plus its DMC and FDS sub-units all
+                // share one nes_intf instance - matches Audio.cs exactly: only the "Nes"
+                // registration gets an Update delegate (that's what actually pulls audio
+                // each frame), DMC/FDS are registered so ChipRegister can route their
+                // specific VGM write commands to the same instance, not for a second
+                // independent Update call.
+                MDSound.nes_intf nes = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.Nes,
+                    ID = 0,
+                    Instrument = nes,
+                    Update = nes.Update,
+                    Start = nes.Start,
+                    Stop = nes.Stop,
+                    Reset = nes.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.APUVolume,
+                    Clock = vgm.NESClockValue,
+                    Option = null,
+                });
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.DMC,
+                    ID = 0,
+                    Instrument = nes,
+                    Start = nes.Start,
+                    Stop = nes.Stop,
+                    Reset = nes.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.DMCVolume,
+                    Clock = vgm.NESClockValue,
+                    Option = null,
+                });
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.FDS,
+                    ID = 0,
+                    Instrument = nes,
+                    Start = nes.Start,
+                    Stop = nes.Stop,
+                    Reset = nes.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.FDSVolume,
+                    Clock = vgm.NESClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.MultiPCMClockValue != 0)
+            {
+                MDSound.multipcm multipcm = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.MultiPCM,
+                    ID = 0,
+                    Instrument = multipcm,
+                    Update = multipcm.Update,
+                    Start = multipcm.Start,
+                    Stop = multipcm.Stop,
+                    Reset = multipcm.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.MultiPCMVolume,
+                    Clock = vgm.MultiPCMClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.uPD7759ClockValue != 0)
+            {
+                MDSound.upd7759 upd7759 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.uPD7759,
+                    ID = 0,
+                    Instrument = upd7759,
+                    Update = upd7759.Update,
+                    Start = upd7759.Start,
+                    Stop = upd7759.Stop,
+                    Reset = upd7759.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.uPD7759Volume,
+                    Clock = vgm.uPD7759ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.K054539ClockValue != 0)
+            {
+                MDSound.K054539 k054539 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.K054539,
+                    ID = 0,
+                    Instrument = k054539,
+                    Update = k054539.Update,
+                    Start = k054539.Start,
+                    Stop = k054539.Stop,
+                    Reset = k054539.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.K054539Volume,
+                    Clock = vgm.K054539ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.HuC6280ClockValue != 0)
+            {
+                // MDSound's HuC6280 (PC Engine) PSG emulator is ported from the Ootake
+                // emulator, hence the class name.
+                MDSound.Ootake_PSG huc6280 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.HuC6280,
+                    ID = 0,
+                    Instrument = huc6280,
+                    Update = huc6280.Update,
+                    Start = huc6280.Start,
+                    Stop = huc6280.Stop,
+                    Reset = huc6280.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.HuC6280Volume,
+                    Clock = vgm.HuC6280ClockValue & 0x7fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.K053260ClockValue != 0)
+            {
+                MDSound.K053260 k053260 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.K053260,
+                    ID = 0,
+                    Instrument = k053260,
+                    Update = k053260.Update,
+                    Start = k053260.Start,
+                    Stop = k053260.Stop,
+                    Reset = k053260.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.K053260Volume,
+                    Clock = vgm.K053260ClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.POKEYClockValue != 0)
+            {
+                MDSound.pokey pokey = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.POKEY,
+                    ID = 0,
+                    Instrument = pokey,
+                    Update = pokey.Update,
+                    Start = pokey.Start,
+                    Stop = pokey.Stop,
+                    Reset = pokey.Reset,
+                    // matches Audio.cs: POKEY runs its own sampling rate off its clock,
+                    // not the output device rate.
+                    SamplingRate = vgm.POKEYClockValue & 0x3fffffff,
+                    Volume = setting.balance.POKEYVolume,
+                    Clock = vgm.POKEYClockValue & 0x3fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.QSoundClockValue != 0)
+            {
+                MDSound.Qsound_ctr qsound = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.QSoundCtr,
+                    ID = 0,
+                    Instrument = qsound,
+                    Update = qsound.Update,
+                    Start = qsound.Start,
+                    Stop = qsound.Stop,
+                    Reset = qsound.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.QSoundVolume,
+                    Clock = vgm.QSoundClockValue,
+                    Option = null,
+                });
+            }
+
+            if (vgm.WSwanClockValue != 0)
+            {
+                MDSound.ws_audio wswan = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.WSwan,
+                    ID = 0,
+                    Instrument = wswan,
+                    Update = wswan.Update,
+                    Start = wswan.Start,
+                    Stop = wswan.Stop,
+                    Reset = wswan.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.WSwanVolume,
+                    Clock = vgm.WSwanClockValue & 0x3fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.SAA1099ClockValue != 0)
+            {
+                MDSound.saa1099 saa1099 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.SAA1099,
+                    ID = 0,
+                    Instrument = saa1099,
+                    Update = saa1099.Update,
+                    Start = saa1099.Start,
+                    Stop = saa1099.Stop,
+                    Reset = saa1099.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.SAA1099Volume,
+                    Clock = vgm.SAA1099ClockValue & 0x3fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.ES5503ClockValue != 0)
+            {
+                MDSound.Es5503 es5503 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.ES5503,
+                    ID = 0,
+                    Instrument = es5503,
+                    Update = es5503.Update,
+                    Start = es5503.Start,
+                    Stop = es5503.Stop,
+                    Reset = es5503.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.ES5503Volume,
+                    Clock = vgm.ES5503ClockValue & 0x3fffffff,
+                    Option = new object[] { (byte)vgm.ES5503Ch },
+                });
+            }
+
+            if (vgm.X1_010ClockValue != 0)
+            {
+                MDSound.x1_010 x1_010 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.X1_010,
+                    ID = 0,
+                    Instrument = x1_010,
+                    Update = x1_010.Update,
+                    Start = x1_010.Start,
+                    Stop = x1_010.Stop,
+                    Reset = x1_010.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.X1_010Volume,
+                    Clock = vgm.X1_010ClockValue & 0x3fffffff,
+                    Option = null,
+                });
+            }
+
+            if (vgm.C352ClockValue != 0)
+            {
+                MDSound.c352 c352 = new();
+                int divider = vgm.C352ClockDivider != 0 ? vgm.C352ClockDivider : 288;
+                c352.c352_set_options((byte)(vgm.C352ClockValue >> 31));
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.C352,
+                    ID = 0,
+                    Instrument = c352,
+                    Update = c352.Update,
+                    Start = c352.Start,
+                    Stop = c352.Stop,
+                    Reset = c352.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.C352Volume,
+                    Clock = (vgm.C352ClockValue & 0x7fffffff) / (uint)divider,
+                    Option = new object[] { vgm.C352ClockDivider },
+                });
+            }
+
+            if (vgm.GA20ClockValue != 0)
+            {
+                MDSound.iremga20 ga20 = new();
+                lstChips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.GA20,
+                    ID = 0,
+                    Instrument = ga20,
+                    Update = ga20.Update,
+                    Start = ga20.Start,
+                    Stop = ga20.Stop,
+                    Reset = ga20.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.GA20Volume,
+                    Clock = vgm.GA20ClockValue & 0x7fffffff,
+                    Option = null,
+                });
+            }
+
             if (lstChips.Count == 0)
             {
                 return null;
@@ -401,6 +960,30 @@ namespace MDPlayer
                 Vgm = vgm,
                 SampleRate = sampleRate,
             };
+        }
+
+        // OKIM6258/OKIM6295 can change their own output sample rate at runtime via
+        // VGM chip-specific stream commands; MDSound's resampler needs to be told when
+        // that happens so it keeps pulling the right number of source samples per output
+        // sample. Adapted from Audio.cs's static ChangeChipSampleRate - the original reads
+        // the device rate from a global Setting.outputDevice.SampleRate; this port takes
+        // deviceSampleRate as a parameter instead, since Setting is a per-session instance
+        // here rather than a single global (see VgmEngineSession).
+        private static void ChangeChipSampleRate(MDSound.MDSound.Chip chip, int newSmplRate, uint deviceSampleRate)
+        {
+            if (chip.SamplingRate == newSmplRate)
+                return;
+
+            chip.SamplingRate = (uint)newSmplRate;
+            if (chip.SamplingRate < deviceSampleRate)
+                chip.Resampler = 0x01;
+            else if (chip.SamplingRate == deviceSampleRate)
+                chip.Resampler = 0x02;
+            else
+                chip.Resampler = 0x03;
+            chip.SmpP = 1;
+            chip.SmpNext -= chip.SmpLast;
+            chip.SmpLast = 0x00;
         }
     }
 }
