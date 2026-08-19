@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runtime smoke test for MDPlayerCore: loads a VGM file, drives the real Vgm
+    driver + ChipRegister + MDSound chip emulation, and renders the result to a
+    WAV file via the ported WaveWriter.cs. Exists to prove the ported engine
+    doesn't just compile but actually produces correct audio - see
+    macos/README.md's "다음 단계 후보" section for why this is the next milestone
+    after MDPlayerCore's compile-only verification.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>EngineSmokeTest</AssemblyName>
+    <RootNamespace>MDPlayer.EngineSmokeTest</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
+  </ItemGroup>
+
+</Project>

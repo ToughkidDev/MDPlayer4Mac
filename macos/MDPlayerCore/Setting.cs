@@ -6317,6 +6317,253 @@ namespace MDPlayer
             serializer.Serialize(sw, this);
         }
 
+        // macOS port: extracted from the original Audio.Init(Setting) (MDPlayerx64/Audio.cs) -
+        // the block that fills in per-chip ChipType2 defaults (UseEmu[0]=true, i.e. "use the
+        // software emulator, not real hardware") when a fresh Setting has no saved
+        // Setting.xml to deserialize (all *Type arrays start out null - see the field
+        // declarations above). This chunk of Audio.Init had no Windows/NAudio dependency of
+        // its own, so it's promoted here as a proper Setting method any consumer (this smoke
+        // test, and eventually the Avalonia UI) can call after Setting.Load() instead of
+        // duplicating it. Call once, right after Setting.Load()/`new Setting()`, before
+        // constructing a ChipRegister - ChipRegister's constructor dereferences every one of
+        // these *Type[0]/[1] arrays unconditionally.
+        public void ApplyChipTypeDefaults()
+        {
+            if (AY8910Type == null || AY8910Type.Length < 2)
+            {
+                AY8910Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    AY8910Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    AY8910Type[i].UseEmu = new bool[1];
+                    AY8910Type[i].UseEmu[0] = true;
+                    AY8910Type[i].UseReal = new bool[1];
+                }
+            }
+            if (K051649Type == null || K051649Type.Length < 2)
+            {
+                K051649Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    K051649Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    K051649Type[i].UseEmu = new bool[1];
+                    K051649Type[i].UseEmu[0] = true;
+                    K051649Type[i].UseReal = new bool[1];
+                }
+            }
+            if (C140Type == null || C140Type.Length < 2)
+            {
+                C140Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    C140Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    C140Type[i].UseEmu = new bool[1];
+                    C140Type[i].UseEmu[0] = true;
+                    C140Type[i].UseReal = new bool[1];
+                }
+            }
+            if (ES5503Type == null || ES5503Type.Length < 2)
+            {
+                ES5503Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    ES5503Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    ES5503Type[i].UseEmu = new bool[1];
+                    ES5503Type[i].UseEmu[0] = true;
+                    ES5503Type[i].UseReal = new bool[1];
+                }
+            }
+            if (HuC6280Type == null || HuC6280Type.Length < 2)
+            {
+                HuC6280Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    HuC6280Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    HuC6280Type[i].UseEmu = new bool[1];
+                    HuC6280Type[i].UseEmu[0] = true;
+                    HuC6280Type[i].UseReal = new bool[1];
+                }
+            }
+            if (SEGAPCMType == null || SEGAPCMType.Length < 2)
+            {
+                SEGAPCMType = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    SEGAPCMType[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    SEGAPCMType[i].UseEmu = new bool[1];
+                    SEGAPCMType[i].UseEmu[0] = true;
+                    SEGAPCMType[i].UseReal = new bool[1];
+                }
+            }
+            if (SN76489Type == null || SN76489Type.Length < 2)
+            {
+                SN76489Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    SN76489Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    SN76489Type[i].UseEmu = new bool[2];
+                    SN76489Type[i].UseEmu[0] = true;
+                    SN76489Type[i].UseReal = new bool[1];
+                }
+            }
+            if (Y8950Type == null || Y8950Type.Length < 2)
+            {
+                Y8950Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    Y8950Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    Y8950Type[i].UseEmu = new bool[1];
+                    Y8950Type[i].UseEmu[0] = true;
+                    Y8950Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YM2151Type == null || YM2151Type.Length < 2 
+                || (YM2151Type[0].realChipInfo == null && YM2151Type[0].realChipInfo.Length < 2))
+            {
+                Setting.ChipType2[] ct = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    ct[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo(), new Setting.ChipType2.RealChipInfo() };
+                    ct[i].UseEmu = new bool[3];
+                    ct[i].UseEmu[0] = true;
+                    ct[i].UseReal = new bool[2];
+                    if (YM2151Type != null && YM2151Type.Length > i && YM2151Type[i] != null)
+                        ct[i].exchgPAN = YM2151Type[i].exchgPAN;
+                }
+                YM2151Type = ct;
+            }
+            if (YM2203Type == null || YM2203Type.Length < 2)
+            {
+                YM2203Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM2203Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM2203Type[i].UseEmu = new bool[1];
+                    YM2203Type[i].UseEmu[0] = true;
+                    YM2203Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YM2413Type == null || YM2413Type.Length < 2)
+            {
+                YM2413Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM2413Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM2413Type[i].UseEmu = new bool[1];
+                    YM2413Type[i].UseEmu[0] = true;
+                    YM2413Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YM2608Type == null || YM2608Type.Length < 2)
+            {
+                YM2608Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM2608Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM2608Type[i].UseEmu = new bool[1];
+                    YM2608Type[i].UseEmu[0] = true;
+                    YM2608Type[i].UseReal = new bool[1];
+                }
+            }
+
+            if (YM2610Type == null
+                || YM2610Type.Length < 2
+                || YM2610Type[0].UseReal == null
+                || YM2610Type[0].UseReal.Length < 3
+                || YM2610Type[1].UseReal == null
+                || YM2610Type[1].UseReal.Length < 3
+                )
+            {
+                YM2610Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM2610Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo(), new Setting.ChipType2.RealChipInfo(), new Setting.ChipType2.RealChipInfo() };
+                    YM2610Type[i].UseEmu = new bool[1];
+                    YM2610Type[i].UseEmu[0] = true;
+                    YM2610Type[i].UseReal = new bool[3];
+                }
+            }
+
+            if (YM2612Type == null || YM2612Type.Length < 2)
+            {
+                YM2612Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM2612Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM2612Type[i].UseEmu = new bool[3];
+                    YM2612Type[i].UseEmu[0] = true;
+                    YM2612Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YM3526Type == null || YM3526Type.Length < 2)
+            {
+                YM3526Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM3526Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM3526Type[i].UseEmu = new bool[1];
+                    YM3526Type[i].UseEmu[0] = true;
+                    YM3526Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YM3812Type == null || YM3812Type.Length < 2)
+            {
+                YM3812Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YM3812Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YM3812Type[i].UseEmu = new bool[1];
+                    YM3812Type[i].UseEmu[0] = true;
+                    YM3812Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YMF262Type == null || YMF262Type.Length < 2)
+            {
+                YMF262Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YMF262Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YMF262Type[i].UseEmu = new bool[1];
+                    YMF262Type[i].UseEmu[0] = true;
+                    YMF262Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YMF271Type == null || YMF271Type.Length < 2)
+            {
+                YMF271Type = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YMF271Type[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YMF271Type[i].UseEmu = new bool[1];
+                    YMF271Type[i].UseEmu[0] = true;
+                    YMF271Type[i].UseReal = new bool[1];
+                }
+            }
+            if (YMF278BType == null || YMF278BType.Length < 2)
+            {
+                YMF278BType = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YMF278BType[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YMF278BType[i].UseEmu = new bool[1];
+                    YMF278BType[i].UseEmu[0] = true;
+                    YMF278BType[i].UseReal = new bool[1];
+                }
+            }
+            if (YMZ280BType == null || YMZ280BType.Length < 2)
+            {
+                YMZ280BType = new Setting.ChipType2[] { new Setting.ChipType2(), new Setting.ChipType2() };
+                for (int i = 0; i < 2; i++)
+                {
+                    YMZ280BType[i].realChipInfo = new Setting.ChipType2.RealChipInfo[] { new Setting.ChipType2.RealChipInfo() };
+                    YMZ280BType[i].UseEmu = new bool[1];
+                    YMZ280BType[i].UseEmu[0] = true;
+                    YMZ280BType[i].UseReal = new bool[1];
+                }
+            }
+
+        }
+
         public static Setting Load()
         {
             try

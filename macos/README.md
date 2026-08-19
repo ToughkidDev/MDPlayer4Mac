@@ -175,19 +175,70 @@ dotnet build -c Release
 되면, CS0649/CS0414 계열(필드가 할당 안 됨) 중 일부가 진짜 버그였는지 다시 한번
 살펴볼 가치는 있습니다.
 
+### ✅ EngineSmokeTest — VGM → WAV 렌더링 검증 (완료, 실제 소리 확인)
+
+`macos/EngineSmokeTest/`에 콘솔 앱을 새로 만들어서, VGM 파일을 실제로 읽어 `Vgm`
+드라이버 + `ChipRegister` + `MDSound` 칩 에뮬레이션을 진짜로 돌리고 결과를
+`WaveWriter.cs`로 WAV 파일에 떨어뜨리는 것까지 끝까지 검증했습니다. 컴파일만
+되는 게 아니라 **실제로 올바른 파형이 나오는 것**을 프로그램적으로 확인했습니다:
+
+- SN76489(PSG) 톤 레지스터를 손으로 채운 76바이트짜리 최소 VGM을 만들어 돌려보니,
+  실제로 나온 WAV의 제로크로싱 기반 주파수 추정치가 654.2Hz(계산값) 대비 653.2Hz로
+  거의 정확히 일치했습니다.
+- YM2612(FM) 레지스터(알고리즘/TL/AR/DR/SR/RR/주파수/키온)를 채운 158바이트짜리
+  최소 VGM도 만들어 돌려봤고, 어택 엔벌로프가 실제로 상승하는 파형과 함께 정상
+  진동하는 오디오가 나왔습니다.
+
+이 과정에서 발견/처리한 것들:
+
+- `ChipRegister`의 생성자는 `setting.YM2612Type[0]` 등 모든 칩 타입 배열을
+  무조건 역참조하는데, `new Setting()`으로 새로 만든 인스턴스는 이 배열들이
+  전부 `null`이라 즉시 NRE가 납니다. 원본 `Audio.Init(Setting)`(`MDPlayerx64/Audio.cs`)
+  안에 "null이면 UseEmu[0]=true인 기본값으로 채워넣는" 235줄짜리 블록이 있었는데
+  (Windows 의존성 없는 순수 로직), 이걸 `Setting.ApplyChipTypeDefaults()`라는
+  정식 메서드로 승격시켜 `Setting.cs`에 추가했습니다 — `Setting.Load()`/`new Setting()`
+  직후 한 번 호출하면 됩니다. Audio 클래스 전체를 이식하지 않고도 이 부분만
+  깔끔하게 꺼내 쓸 수 있었습니다.
+- `WaveWriter.cs`를 처음으로 실사용해보니, `Open(filename)`이 넘겨받은 경로에서
+  파일명만 뽑아 `.wav`로 바꾼 뒤 `setting.other.WavPath`와 합쳐 실제 출력 경로를
+  스스로 계산하는 방식이라는 걸 알게 됐습니다 (원곡 파일 경로를 넘기면 옆에
+  `.wav`를 만드는 용도). 미리 만든 `.wav` 경로를 그대로 넘기면 "입력과 같은
+  이름"으로 오인해 `_0` 접미사가 붙는 충돌 방지 로직이 걸리므로, VGM 원본 경로를
+  그대로 넘기도록 스모크 테스트를 맞췄습니다.
+- `Audio.VgmPlay`/`TrdVgmVirtualMainFunction`(원본, `MDPlayerx64/Audio.cs`)을 그대로
+  포팅하지 않고, `MDSound.MDSound.Update(buffer, offset, sampleCount, frame)`가
+  `frame` 콜백으로 `vgm.oneFrameProc`를 받는 것과 같은 핵심 패턴만 뽑아 새로 짰습니다.
+  풀 버전은 SN76489/YM2612뿐 아니라 VGM이 지원하는 20여 가지 칩 전부를 담당하고
+  페이드아웃/히요리미/MIDI 패스스루/실물 하드웨어까지 처리하는 라이브 플레이어용
+  로직이라, 이번 스모크 테스트 범위(MDPlayer라는 프로젝트 이름에 걸맞게 세가
+  메가드라이브의 핵심 칩 두 개)에는 과합니다 — 나머지 칩들은 `Audio` 클래스를
+  본격적으로 이식할 때(또는 필요해질 때마다) 이 스모크 테스트에도 하나씩 추가하면
+  됩니다.
+- `log.cs`, `Tables.cs` 등과 마찬가지로 `WaveWriter.cs`도 이번에 처음 이식
+  (Windows 의존성 없음, 그대로 복사).
+
+돌리는 법:
+
+```
+cd macos/EngineSmokeTest
+dotnet run -c Release -- <입력.vgm> [출력.wav]
+```
+
+지금은 SN76489/YM2612 두 칩만 배선되어 있습니다 (VGM 파일이 다른 칩만 쓴다면
+"이 스모크 테스트는 SN76489/YM2612만 배선되어 있다"는 에러 메시지와 함께 종료).
+
 ## 다음 단계 후보
 
-MDPlayerCore가 라이브러리로서는 컴파일되지만, 아직 "VGM 파일을 실제로 읽어서 뭔가
-출력하는" 실행 가능한 진입점은 없습니다. 다음으로 하면 좋을 것:
-
-1. **VGM → WAV 스모크 테스트용 콘솔 앱** (`macos/EngineSmokeTest/` 같은 이름으로)을
-   새로 만들어서 `Vgm` 드라이버 + `ChipRegister` + `MDSound`를 실제로 초기화하고
-   VGM 파일 하나를 끝까지 재생시켜 `WaveWriter.cs`로 WAV 파일에 떨어뜨려보는 것.
-   여기서 십중팔구 "컴파일은 되는데 런타임에 null 참조" 같은 issue들이 나올 텐데,
-   그게 진짜 다음 산 넘기입니다 (Setting 초기화 순서, ChipRegister 생성자 인자로
-   뭘 넘겨야 하는지 등 — 원래 UI 코드(`frmMain.cs`)가 어떻게 조립하는지 참고 필요).
-2. 그 다음에야 오디오 출력 레이어(CoreAudio) 붙이기, UI(Avalonia) 시작하기로 넘어가는
-   게 순서상 맞을 것 같습니다.
+1. **더 많은 칩 배선**: 지금 `EngineSmokeTest`는 SN76489/YM2612만 다룹니다.
+   실제 게임 VGM(특히 아케이드/타사 콘솔 이식)을 재생해보려면 YM2151, YM2608,
+   YM2610 등도 `Audio.VgmPlay`의 해당 칩 블록(각각 `MDSound.MDSound.Chip` 하나
+   만드는 패턴)을 참고해서 추가해야 합니다.
+2. **실제 VGM 파일로 검증**: 지금까지는 손으로 만든 최소 테스트 파일만
+   썼습니다. vgmrips.net 등에서 실제 메가드라이브 게임 VGM을 받아 돌려보고
+   (라이선스/저작권 확인 후) 원본 Windows 빌드와 파형/사운드를 비교해보는 게
+   다음 신뢰도 검증 단계입니다.
+3. 그 다음에야 오디오 출력 레이어(CoreAudio) 붙이기, UI(Avalonia) 시작하기로
+   넘어가는 게 순서상 맞을 것 같습니다.
 
 ## 라이선스 메모
 
