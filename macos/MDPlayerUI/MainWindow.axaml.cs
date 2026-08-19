@@ -71,11 +71,28 @@ namespace MDPlayer.UI
 
             if (sn76489Visualizer == null) return;
 
+            // Temporary diagnostic counter/try-catch (see MainWindow.axaml's
+            // VisualizerDebugLabel comment) - a Tick handler exception has nowhere obvious
+            // to surface (DispatcherTimer callbacks aren't awaited, and this app only calls
+            // .LogToTrace() in Program.cs, which writes to System.Diagnostics.Trace -
+            // invisible unless a TraceListener happens to be attached, i.e. essentially
+            // nowhere when just running via `dotnet run` from a terminal). This makes any
+            // failure visible directly in the window instead of silently doing nothing.
+            int tickCount = 0;
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
             {
-                sn76489Visualizer?.ScreenChangeParams();
-                sn76489Visualizer?.ScreenDrawParams();
+                tickCount++;
+                try
+                {
+                    sn76489Visualizer?.ScreenChangeParams();
+                    sn76489Visualizer?.ScreenDrawParams();
+                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 정상";
+                }
+                catch (Exception ex)
+                {
+                    VisualizerDebugLabel.Text = $"[디버그] tick {tickCount} 예외: {ex}";
+                }
             };
             visualizerTimer.Start();
         }

@@ -22,5 +22,12 @@
         <Border Background="Black" BorderBrush="Gray" BorderThickness="1" Padding="4">
             <StackPanel x:Name="VisualizerHost" Spacing="4" />
         </Border>
+        <!--
+          Temporary diagnostic line (see MainWindow.axaml.cs's visualizerTimer Tick handler)
+          - shows the redraw timer's tick count and, if a ported drawXxx call throws, the
+          exception message. Not part of the original UI; remove once the visualizer is
+          confirmed working reliably on real files.
+        -->
+        <TextBlock x:Name="VisualizerDebugLabel" Text="" Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap" />
     </StackPanel>
 </Window>
