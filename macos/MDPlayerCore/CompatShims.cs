@@ -46,6 +46,75 @@ namespace MDPlayer
         // Mirrors Properties.Resources.cntSettingFileName from the Windows build.
         public const string cntSettingFileName = "Setting.xml";
     }
+
+    // TODO(macOS port): real physical sound-chip hardware support (SCCI / C86Ctrl / NiseC86Ctrl
+    // boards — see the original RealChip.cs) is stubbed out. Those interfaces are Windows-only
+    // driver libraries (NScci, Nc86ctl, NiseC86ctl — not vendored here) for people who own actual
+    // FM synth chip add-in hardware; out of scope for a software-emulation-only macOS build.
+    // RSoundChip itself (below) is copied verbatim from RealChip.cs — it's the plain abstract
+    // base class ChipRegister programs against and has no external dependency; only the concrete
+    // Windows-hardware subclasses (RScciSoundChip etc.) were left out.
+    public class RSoundChip
+    {
+        protected int SoundLocation;
+        protected int BusID;
+        protected int SoundChip;
+
+        public uint dClock = 3579545;
+
+        public RSoundChip(int soundLocation, int busID, int soundChip)
+        {
+            SoundLocation = soundLocation;
+            BusID = busID;
+            SoundChip = soundChip;
+        }
+
+        virtual public void Init()
+        {
+            throw new NotImplementedException();
+        }
+
+        virtual public void SetRegister(int adr, int dat)
+        {
+            throw new NotImplementedException();
+        }
+
+        virtual public int GetRegister(int adr)
+        {
+            throw new NotImplementedException();
+        }
+
+        virtual public bool IsBufferEmpty()
+        {
+            throw new NotImplementedException();
+        }
+
+        virtual public uint SetMasterClock(uint mClock)
+        {
+            throw new NotImplementedException();
+        }
+
+        virtual public void SetSSGVolume(byte vol)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class RealChip : IDisposable
+    {
+        public RealChip(bool sw)
+        {
+        }
+
+        public void SendData()
+        {
+            // no-op: nothing to flush to real hardware in the macOS build.
+        }
+
+        public void Dispose()
+        {
+        }
+    }
 }
 
 namespace NAudio.Midi
