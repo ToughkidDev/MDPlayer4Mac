@@ -16,6 +16,16 @@
     <RootNamespace>MDPlayer.EngineSmokeTest</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <!--
+      This is the only executable project in the repo (MDPlayerCore/MDSound are
+      libraries, so this doesn't apply to them) - without RollForward, the .NET
+      host requires the exact 8.0.x *runtime* to be installed side-by-side with
+      whatever newer SDK/runtime is present, and fails with "You must install or
+      update .NET" if only a later major version (e.g. 10.0.x) is on the machine.
+      LatestMajor lets it run on any installed runtime >= 8.0, which is what we
+      actually want here (we're not relying on any 8.0-specific runtime behavior).
+    -->
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
