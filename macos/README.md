@@ -21,30 +21,35 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 - 즉 MDPlayer에서 가장 위험 부담이 큰 부분(칩 에뮬레이션 정확도)은 이미 검증된 코드를
   그대로 재사용할 수 있다는 뜻입니다.
 
-### 🚧 MDPlayerCore — 파일 포맷 파싱/시퀀싱 레이어 (진행 중)
+### ✅ MDPlayerCore — 파일 포맷 파싱/시퀀싱 레이어 (컴파일 성공)
 
 `MDPlayerx64/Driver/` 이하와 그 지원 클래스들을 WinForms/NAudio 출력/레지스트리 등
-Windows 전용 요소로부터 떼어내는 작업입니다. `macos/MDPlayerCore/`에 지금까지 옮긴 파일:
+Windows 전용 요소로부터 떼어내는 작업입니다. `macos/MDPlayerCore/`에 옮긴 파일:
 
 - `Driver/baseDriver.cs`, `Driver/vgm.cs` (VGM/메가드라이브 포맷 드라이버)
 - `Setting.cs`, `common.cs`, `ChipRegister.cs`, `dacControl.cs`
 - `Tone.cs`, `dgvColumnInfo.cs`, `midiOutInfo.cs`, `VST/vstInfo.cs`
+- `PlayList.cs`, `MIDIExport.cs`, `MIDIParam.cs`, `ChipLEDs.cs`
+- `PianoRollMng.cs` + `PianoRoll/*.cs` (건반 시각화 로직 — 칩별 note on/off 계산.
+  실제 그리기가 아니라 로직만이라 Windows 의존성 없음)
+- `Driver/SID/**` — libsidplayfp를 통째로 이식한 SID 드라이버 (88개 파일, 3만 줄대.
+  MOS 6510 CPU 에뮬레이터까지 포함. Windows 의존성 0개로 그대로 붙었습니다)
 - `CompatShims.cs` — 아래 "이식하며 손댄 부분" 참고
 
-**남은 작업 (다음 세션에서 이어서):** 아래 6개 파일을 같은 방식으로 복사해오면
-(Windows 전용 의존성 없는 것 확인 완료) `ChipRegister.cs`가 요구하는 나머지 타입이
-채워집니다.
+**리눅스 샌드박스에서 (Z80dotNet 패키지만 로컬 스텁으로 대체해서) `dotnet build` 0 error
+확인했습니다.** 실제 Mac에서 `Z80dotNet`이 nuget.org에서 정상 restore되는 것도
+확인됐으니 (net8.0 호환성 경고만 뜨고 실패는 아님) 이제 Mac에서도 끝까지
+컴파일될 것으로 보입니다 — `dotnet build` 결과를 알려주세요.
 
-- `RealChip.cs` (내부에 `RSoundChip` 포함 — 실물 하드웨어 시리얼 출력 기능. 당장은
-  빌드만 되게 하고 실제 시리얼 포트 연동은 나중 과제로 미뤄도 됩니다)
-- `PlayList.cs`
-- `MIDIExport.cs`, `MIDIParam.cs`
-- `PianoRollMng.cs` (+ 아마 `PianoRoll/*.cs` 전체 — 건반 시각화 로직)
-- `ChipLEDs.cs`
-- `Driver/SID/sid.cs` (SID 드라이버 — `MDPlayer.Driver.SID` 네임스페이스)
-
-이 6개를 채운 뒤 `dotnet build`를 다시 돌려서 나오는 에러를 그대로 따라가면 됩니다
-(지금까지 패턴상 대부분 "또 다른 타입 하나 못 찾음" 수준의 잔잔한 연쇄일 가능성이 높음).
+`RealChip.cs`는 그대로 가져오지 않았습니다. 열어보니 `NScci`/`Nc86ctl`/`NiseC86ctl`
+(SCCI/C86Ctrl 계열 — 실제 FM 신디사이저 칩 확장 카드를 시리얼/전용 인터페이스로
+제어하는 Windows 전용 드라이버 라이브러리, 저장소에 없음)에 의존하고 있어서,
+`ChipRegister.cs`가 실제로 쓰는 부분만 골라 `CompatShims.cs`에 넣었습니다:
+Windows 의존성이 전혀 없는 `RSoundChip` 베이스 클래스는 원본 그대로 옮기고,
+`RealChip` 자체는 (생성자 / `SendData()` / `Dispose()`만 있으면 되길래) 아무 동작
+안 하는 스텁으로 대체했습니다. 실물 FM 칩 확장 카드를 macOS에서 쓰는 기능은
+사실상 없는 셈인데, 애초에 그런 하드웨어 자체가 Windows PC 전용 애드인 카드라
+macOS에서 의미가 크지 않은 기능입니다.
 
 ### 아직 손 안 댄 것
 
@@ -93,9 +98,21 @@ cd macos/MDPlayerCore
 dotnet build -c Release
 ```
 
-`Z80dotNet` NuGet 패키지 restore가 필요해서 인터넷 연결이 있어야 합니다 (이 스캐폴드를
-만든 클라우드 샌드박스는 nuget.org가 막혀 있어 실제 Mac에서의 최종 빌드 검증은
-아직 못 했습니다 — 다음 단계에서 꼭 확인해주세요).
+`Z80dotNet` NuGet 패키지 restore가 필요해서 인터넷 연결이 있어야 합니다.
+
+## 다음 단계 후보
+
+MDPlayerCore가 라이브러리로서는 컴파일되지만, 아직 "VGM 파일을 실제로 읽어서 뭔가
+출력하는" 실행 가능한 진입점은 없습니다. 다음으로 하면 좋을 것:
+
+1. **VGM → WAV 스모크 테스트용 콘솔 앱** (`macos/EngineSmokeTest/` 같은 이름으로)을
+   새로 만들어서 `Vgm` 드라이버 + `ChipRegister` + `MDSound`를 실제로 초기화하고
+   VGM 파일 하나를 끝까지 재생시켜 `WaveWriter.cs`로 WAV 파일에 떨어뜨려보는 것.
+   여기서 십중팔구 "컴파일은 되는데 런타임에 null 참조" 같은 issue들이 나올 텐데,
+   그게 진짜 다음 산 넘기입니다 (Setting 초기화 순서, ChipRegister 생성자 인자로
+   뭘 넘겨야 하는지 등 — 원래 UI 코드(`frmMain.cs`)가 어떻게 조립하는지 참고 필요).
+2. 그 다음에야 오디오 출력 레이어(CoreAudio) 붙이기, UI(Avalonia) 시작하기로 넘어가는
+   게 순서상 맞을 것 같습니다.
 
 ## 라이선스 메모
 
