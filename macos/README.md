@@ -36,13 +36,49 @@ Windows 전용 요소로부터 떼어내는 작업입니다. `macos/MDPlayerCore
   MOS 6510 CPU 에뮬레이터까지 포함. Windows 의존성 0개로 그대로 붙었습니다)
 - `CompatShims.cs` — 아래 "이식하며 손댄 부분" 참고
 
-**실제 Mac에서 `dotnet build` 0 error로 확인 완료했습니다** (MDSound, MDPlayerCore 둘 다).
-마지막에 걸렸던 `MDChipParams.cs`, `Driver/MNDRV/*`(둘 다 Windows 의존성 없음)를
-채우고, `PlayList.cs`가 실제 `DataGridView`(WinForms 그리드 컨트롤)에 행을 직접
-만들어 넣는 구조인 걸 뒤늦게 발견해서 `CompatShims.cs`에 컴파일만 되게 하는
-최소 `DataGridView`/`DataGridViewRow`/`DataGridViewColumn` 셈으로 대체했습니다
-(지금은 아무것도 실제로 채워주지 않는 빈 그리드 — UI 붙일 때 `PlayList.cs`를
-데이터/화면 분리하는 리팩터링을 하든, 이 셈에 진짜 저장소를 붙이든 결정 필요).
+**샌드박스에서 `dotnet build` 0 error로 확인했습니다** (MDSound, MDPlayerCore 둘 다;
+`Z80dotNet` NuGet 패키지만 이 클라우드 샌드박스 프록시가 nuget.org를 막고 있어
+스크래치용 스텁 프로젝트로 대체해 검증 — 실제 패키지 restore는 사용자의 Mac에서
+최종 확인 필요). 이번 라운드에 추가로 채운 것:
+
+- `MDChipParams.cs`, `Driver/MNDRV/*`, `Driver/ZMS/**`, `Driver/MXDRV/*` — 전부
+  Windows 의존성 없음.
+- `PlayList.cs`가 실제 `DataGridView`(WinForms 그리드 컨트롤)에 행을 직접
+  만들어 넣는 구조인 걸 발견해서 `CompatShims.cs`에 컴파일만 되게 하는
+  최소 `DataGridView`/`DataGridViewRow`/`DataGridViewColumn` 셈으로 대체했습니다
+  (지금은 아무것도 실제로 채워주지 않는 빈 그리드 — UI 붙일 때 `PlayList.cs`를
+  데이터/화면 분리하는 리팩터링을 하든, 이 셈에 진짜 저장소를 붙이든 결정 필요).
+- `log.cs`, `Tables.cs`, `M3U.cs`, `UnZDF.cs`, `PodcastFeedParser.cs`,
+  `Driver/xgm.cs`, `Driver/xgm2.cs` — 전부 Windows 의존성 없음, 원본 그대로 이식
+  (`PodcastFeedParser.cs`/`Driver/xgm2.cs`는 원래 `MDPlayerx64`/`MDPlayerx64.Driver`
+  네임스페이스였는데, 이 포팅 프로젝트는 전부 `MDPlayer` 네임스페이스 하나로 통일해서
+  쓰고 있어 맞춰 고쳤습니다).
+- `Resources` 셈에 `log.cs`가 쓰는 문자열 상수 4개 추가 (`cntLogFilename`,
+  `cntTimeFormat`, `cntExceptionFormat`, `cntInnerExceptionFormat`).
+- `Application.ExecutablePath`, `MessageBox`/`MessageBoxButtons`/`MessageBoxIcon` —
+  WinForms 셈 추가. `MessageBox.Show()`는 지금은 콘솔에 로그만 남기는 무동작 스텁
+  (실제 UI 붙을 때 다이얼로그 서비스로 교체 예정).
+- `RC86ctlSoundChip`(`RSoundChip`의 구체 서브클래스) + `Nc86ctl.ChipType` 열거형 —
+  `ChipRegister.cs`가 실물 OPNA/OPN3L/YM2149/OPL3 하드웨어 클럭 2배 로직에서 직접
+  타입 체크/캐스팅하는 걸 뒤늦게 발견. `RealChip`이 이미 무동작 스텁이라 실제로
+  이 타입이 생성되진 않지만, 컴파일을 위해 최소한의 형태로 추가.
+- `UnlhaWrap.UnlhaCmd` — Windows 전용 `unlha32.dll`(LHA 압축 해제) 래퍼. 실제
+  `PlayList.cs`가 LHA로 압축된 플레이리스트 항목을 열 때 씀. `RealChip`과 같은
+  패턴으로, 호출부가 요구하는 시그니처(`GetFileList`/`GetFileByte`)만 갖춘 스텁으로
+  대체 — 지금은 호출하면 `NotImplementedException`. 나중에 셸 커맨드(`lha`/`7z`)나
+  관리 코드 LHA 디코더로 교체 필요.
+- `Audio` 클래스 — 원본 `Audio.cs`(약 1만 3600줄)는 NAudio 기반 실제 오디오 출력,
+  MIDI 장치 열거, Ogg/Vorbis/FLAC 디코딩, 그리고 아직 이식 안 한 여러 드라이버
+  계열(MGSDRV/MuSICA/NDP/FMP/PMDDotNET/MoonDriverDotNET/muapDotNET/NRTDRV/
+  MucomDotNET)까지 아우르는 재생 오케스트레이션 엔진이라 통째로 가져오지 않았습니다.
+  `ChipRegister.cs`/`PlayList.cs`/`PianoRoll/*.cs`가 "지금 재생 중인 게 뭔지"
+  참조하려고 쓰는 정적 멤버 몇 개만(`ClockAY8910` 등 칩 클럭 캐시, `DriverVirtual`,
+  `PlayingFileFormat`) `AudioShim.cs`에 최소 구현했고, 진짜 파일 포맷 감지/메타데이터
+  추출 로직인 `GetMusic()`은 아직 이식 안 한 드라이버들에 발목 잡혀 있어 호출하면
+  `NotImplementedException`을 던지는 스텁으로 남겨뒀습니다 — 다음 단계 후보의
+  VGM→WAV 스모크 테스트를 만들 때 결정할 문제 (진짜 `GetMusic` + 필요한 드라이버들을
+  이식하거나, 이미 이식된 드라이버들(VGM/XGM/SID/MNDRV/ZMS/MXDRV)만 다루도록
+  `PlayList`의 요구 범위를 좁히거나).
 
 `RealChip.cs`는 그대로 가져오지 않았습니다. 열어보니 `NScci`/`Nc86ctl`/`NiseC86ctl`
 (SCCI/C86Ctrl 계열 — 실제 FM 신디사이저 칩 확장 카드를 시리얼/전용 인터페이스로
@@ -70,8 +106,12 @@ macOS에서 의미가 크지 않은 기능입니다.
   `form/` 5만 줄, 특히 커스텀 GDI+ 드로잉인 `drawBuff.cs`가 제일 큰 작업이 될 것).
 - **MIDI 출력**: `ChipRegister.cs`의 실시간 MIDI 패스스루는 `CompatShims.cs`에
   아무 동작 안 하는 스텁으로 막아뒀습니다. 실제로 쓰려면 CoreMIDI 연동이 필요.
-- **LHA 압축 해제** (`UnlhaWrap/`): Windows 전용 `unlha32.dll` 래퍼. 대체 라이브러리
-  또는 셸 커맨드로 교체 필요. 아직 안 건드림.
+- **LHA 압축 해제** (`UnlhaWrap/`): Windows 전용 `unlha32.dll` 래퍼. 컴파일만 되는
+  스텁(`CompatShims.cs`의 `UnlhaWrap.UnlhaCmd`)으로 막아뒀고, 호출하면
+  `NotImplementedException`. 대체 라이브러리 또는 셸 커맨드(`lha`/`7z`)로 교체 필요.
+- **`Audio` 클래스(오디오 출력 오케스트레이션 본체)**: `AudioShim.cs`에 다른 파일들이
+  참조하는 정적 멤버 몇 개만 최소 스텁으로 있고, 실제 재생/디코딩/파일 포맷 감지
+  로직은 이식 안 함 (위 "MDPlayerCore" 섹션 참고).
 
 ## 이식하며 손댄 부분 (`CompatShims.cs`)
 

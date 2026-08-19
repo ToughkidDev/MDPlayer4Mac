@@ -120,8 +120,13 @@ namespace MDPlayer
 
     internal static class Resources
     {
-        // Mirrors Properties.Resources.cntSettingFileName from the Windows build.
+        // Mirrors the handful of Properties.Resources string entries from the Windows
+        // build's Resources.resx that the ported code actually reads (log.cs, Setting.cs).
         public const string cntSettingFileName = "Setting.xml";
+        public const string cntLogFilename = "log.txt";
+        public const string cntTimeFormat = "yyMMddHHmmssfff";
+        public const string cntExceptionFormat = "例外発生:\r\n- Type ------\r\n{0}\r\n- Message ------\r\n{1}\r\n- Source ------\r\n{2}\r\n- StackTrace ------\r\n{3}\r\n";
+        public const string cntInnerExceptionFormat = "内部例外:\r\n- Type ------\r\n{0}\r\n- Message ------\r\n{1}\r\n- Source ------\r\n{2}\r\n- StackTrace ------\r\n{3}\r\n";
     }
 
     // TODO(macOS port): real physical sound-chip hardware support (SCCI / C86Ctrl / NiseC86Ctrl
@@ -190,6 +195,103 @@ namespace MDPlayer
 
         public void Dispose()
         {
+        }
+    }
+
+    // TODO(macOS port): ChipRegister.cs also directly type-checks/casts to the concrete
+    // C86Ctrl-backed subclass (RC86ctlSoundChip) and reads its ChipType, beyond just the
+    // abstract RSoundChip base above (clock-doubling logic for OPNA/OPN3L/YM2149/OPL3 real
+    // hardware). Since RealChip itself is a no-op stub, nothing in this build actually
+    // constructs an RC86ctlSoundChip, but the type still needs to exist and be a
+    // RSoundChip for ChipRegister.cs to compile. Bare-minimum stub; extend with real
+    // Nc86ctl.ChipType members if/when real hardware support returns.
+    public class RC86ctlSoundChip : RSoundChip
+    {
+        public RC86ctlSoundChip(int soundLocation, int busID, int soundChip)
+            : base(soundLocation, busID, soundChip)
+        {
+        }
+
+        public Nc86ctl.ChipType ChipType { get; set; }
+    }
+
+    // TODO(macOS port): WinForms Application shim — only the tiny subset the ported code
+    // actually reads (ExecutablePath, used to locate the app's own directory for settings/
+    // plugin files) is provided. No real Application/message-loop semantics here.
+    public static class Application
+    {
+        public static string ExecutablePath { get; set; } =
+            System.Reflection.Assembly.GetExecutingAssembly().Location;
+    }
+
+    // TODO(macOS port): WinForms MessageBox shim. There is no UI layer yet in this portable
+    // build, so .Show() just logs to the console instead of popping a dialog. Revisit once
+    // the Avalonia UI layer exists — likely routed through a real dialog service instead.
+    public enum MessageBoxButtons
+    {
+        OK,
+        OKCancel,
+        YesNo,
+        YesNoCancel,
+    }
+
+    public enum MessageBoxIcon
+    {
+        None,
+        Error,
+        Warning,
+        Information,
+        Question,
+    }
+
+    public static class MessageBox
+    {
+        public static void Show(string text)
+        {
+            System.Console.WriteLine("[MessageBox] " + text);
+        }
+
+        public static void Show(string text, string caption)
+        {
+            System.Console.WriteLine($"[MessageBox] {caption}: {text}");
+        }
+
+        public static void Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            System.Console.WriteLine($"[MessageBox:{icon}] {caption}: {text}");
+        }
+    }
+}
+
+// TODO(macOS port): out-of-scope real-hardware chip-type enum (see RC86ctlSoundChip above).
+// Only the members ChipRegister.cs actually compares against are included.
+namespace Nc86ctl
+{
+    public enum ChipType
+    {
+        CHIP_OPNA,
+        CHIP_OPN3L,
+        CHIP_YM2149,
+        CHIP_OPL3,
+    }
+}
+
+// TODO(macOS port): UnlhaWrap wraps the Windows-only unlha32.dll (LHA archive extraction)
+// via LoadLibrary/GetProcAddress P/Invoke — genuinely not portable. Stubbed with the two
+// members PlayList.cs calls (LHA-archived playlist entries); throws until a real
+// cross-platform LHA extractor is wired in (shell out to `lha`/`7z`, or a managed decoder).
+namespace UnlhaWrap
+{
+    public class UnlhaCmd
+    {
+        public System.Collections.Generic.List<System.Tuple<string, ulong>> GetFileList(string archiveFile, string wildCard)
+        {
+            throw new NotImplementedException("LHA archive support is not yet ported to macOS.");
+        }
+
+        public byte[] GetFileByte(string archiveFile, string fileName)
+        {
+            throw new NotImplementedException("LHA archive support is not yet ported to macOS.");
         }
     }
 }
