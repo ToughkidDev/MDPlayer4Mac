@@ -16,7 +16,7 @@ namespace MDPlayer.LivePlayer
         {
             if (args.Length < 1)
             {
-                Console.Error.WriteLine("usage: LivePlayer <input.vgm|input.vgz>");
+                Console.Error.WriteLine("usage: LivePlayer <input file>  (see MusicEngine.cs for supported formats)");
                 return 1;
             }
 
@@ -30,18 +30,17 @@ namespace MDPlayer.LivePlayer
             byte[] vgmBuf = File.ReadAllBytes(vgmPath);
             Console.WriteLine($"Loaded {vgmPath} ({vgmBuf.Length} bytes)");
 
-            VgmEngineSession session = VgmEngine.Load(vgmBuf);
+            MusicEngineSession session = MusicEngine.Load(vgmBuf, vgmPath);
             if (session == null)
             {
-                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses none of the chips VgmEngine.Load wires up (see VgmEngine.cs)");
+                Console.Error.WriteLine("error: driver init() failed, or the file's format/chips aren't supported by MusicEngine.cs");
                 return 1;
             }
 
-            Vgm vgm = session.Vgm;
-            MDSound.MDSound mds = session.Mds;
+            baseDriver driver = session.Driver;
             uint sampleRate = session.SampleRate;
 
-            Console.WriteLine($"VGM version {vgm.Version}, chips: {session.DescribeActiveChips()}");
+            Console.WriteLine($"{session.Format} version {driver.Version}, chips: {session.DescribeActiveChips()}");
             Console.WriteLine($"Playing live @ {sampleRate}Hz. Press Ctrl+C to stop.");
 
             // framesPerBuffer * bufferCount is roughly how much audio is buffered ahead of
@@ -59,9 +58,12 @@ namespace MDPlayer.LivePlayer
 
             int FillCallback(short[] buf, int sampleCount)
             {
-                if (stopRequested || vgm.Stopped)
+                if (stopRequested || driver.Stopped)
                     return 0;
-                return mds.Update(buf, 0, sampleCount, vgm.oneFrameProc);
+                // session.RenderSamples, not mds.Update() directly - see EngineSmokeTest/
+                // Program.cs's identical comment (SID/NSF/MDX bypass MDSound.MDSound.Chip.
+                // Update() entirely).
+                return session.RenderSamples(buf, 0, sampleCount);
             }
 
             using CoreAudioQueue queue = new(sampleRate, framesPerBuffer, bufferCount, FillCallback);

@@ -78,6 +78,49 @@ against the VGM spec if you want to sanity-check them yourself.
   encode this field the spec-correct way, so this is worth keeping in mind
   once real VGM files are tested (see macos/README.md's "다음 단계 후보").
 
+- `s98-sn76489-tone.s98` (60 bytes) - a hand-built S98 v3 file (the format
+  `MusicEngine.LoadS98` reads: 0x20-byte header + one 0x10-byte device table
+  entry declaring SN76489 at clock 3579545 + a tiny register-dump command
+  stream). Sets the tone frequency (timer value 254, ~440.4Hz) then the
+  channel-0 volume to max via two SN76489 data-byte writes (S98's per-device
+  command format only uses the second payload byte for this chip, mirroring
+  VGM's own single-byte SN76489 write), then a single `0xFE` "wait N syncs"
+  command (N=40, ~0.4s at the default 10ms/sync rate) before the `0xFD` end
+  command (no loop address set, so playback stops there). Verified via Python
+  WAV analysis: 18431/18432 nonzero samples, max amplitude 2048/32767, and a
+  duty-cycle transition period working out to ~440.40Hz - almost exactly the
+  440Hz target. This is the first (and, this round, only) S98 fixture -
+  chosen because S98 is architecturally closest to VGM (a per-file dynamic
+  chip list read from a register-dump command stream) among the 6 newly
+  ported formats, so it's the cheapest to hand-encode and gives the most
+  direct confidence in `MusicEngine.LoadS98`'s dynamic per-`DeviceType` chip
+  wiring.
+
+- `nsf-apu-tone.nsf` (155 bytes) - a hand-built minimal NSF file: a full
+  0x80-byte NSF 1.0 header (load/init/play addresses 0x8000/0x8000/0x801A,
+  1 song, NTSC-only, no expansion audio chips) followed by real 6502 machine
+  code - unlike every other fixture here, NSF playback runs actual CPU
+  instructions rather than a register-write command stream. The `init`
+  routine (at 0x8000) writes the NES APU's pulse channel 1 registers
+  directly ($4015=$01 enable, $4001=$00 disable sweep, $4000=$BF duty
+  10%/halt/constant volume 15, $4002/$4003=timer 253 low/high, expected freq
+  1789773 / (16 * 254) ~= 440.19Hz) and returns; the `play` routine (at
+  0x801A) is just `RTS` since the tone is already latched and doesn't need
+  per-frame updates. This exercises the `MusicEngine.LoadNsf` →
+  `nsf.Render()` bypass path (see macos/README.md's "SID/NSF/MDX는
+  `MDSound.MDSound.Chip.Update()`... 아예 안 씁니다" note) end-to-end,
+  including the CPU actually executing the init routine's ten instructions
+  in the right order with the right operands (confirmed via `km6502.cs`'s
+  built-in `#if TRACE` CPU trace, which Release builds enable by default -
+  harmless but noisy if you run this fixture directly and watch stdout).
+  Verified via Python WAV analysis: all 20000 sampled frames nonzero, and a
+  duty-cycle transition period working out to ~440.47Hz. Building this
+  fixture also surfaced an unrelated but real bug: `nsf.cs`'s
+  `getGD3Info()` unconditionally calls `Encoding.GetEncoding(932)` to decode
+  the title/artist tags, and this port's Shift-JIS codepage registration was
+  dead code (see macos/README.md) - any NSF (or S98/MXDRV/MNDRV) file would
+  have thrown `NotSupportedException` before this was fixed.
+
 Run any of these with:
 
 ```
@@ -87,4 +130,10 @@ dotnet run -c Release -- testdata/ym2612-fm-tone.vgm /tmp/out-fm.wav
 dotnet run -c Release -- testdata/ym2151-tone.vgm /tmp/out-opm.wav
 dotnet run -c Release -- testdata/sn76489-tone.vgz /tmp/out-vgz.wav
 dotnet run -c Release -- testdata/nes-apu-tone.vgm /tmp/out-nes.wav
+dotnet run -c Release -- testdata/s98-sn76489-tone.s98 /tmp/out-s98.wav
+dotnet run -c Release -- testdata/nsf-apu-tone.nsf /tmp/out-nsf.wav
 ```
+
+Note: SID/NSF tunes have no defined end (they can loop or idle forever), so
+`nsf-apu-tone.nsf` will run until `EngineSmokeTest`'s ~60s safety cap rather
+than stopping on its own - this is expected, not a hang.

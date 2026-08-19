@@ -16,20 +16,38 @@ using System.IO.Compression;
 
 namespace MDPlayer
 {
-    public class VgmEngineSession
+    // Renamed from VgmEngineSession: this is now the shared result type for ANY supported
+    // music format (see MusicEngine.cs), not just VGM. `Driver` is deliberately typed as the
+    // common `baseDriver` base class (Vgm/xgm/xgm2/sid/mndrv/ZMS/MXDRV/nsf/gbs/hes/S98/zgm/AY
+    // all derive from it) rather than a concrete driver type, since callers (EngineSmokeTest/
+    // LivePlayer/MDPlayerUI) only ever need baseDriver's shared surface (`Stopped`,
+    // `oneFrameProc()`, `Version`) regardless of which format was actually loaded.
+    public class MusicEngineSession
     {
         public Setting Setting;
         public ChipRegister ChipRegister;
         public MDSound.MDSound Mds;
-        public Vgm Vgm;
+        public baseDriver Driver;
         public uint SampleRate;
+        public EnmFileFormat Format;
 
-        // Human-readable "which chips does this file actually use" summary, built from
-        // whichever of Vgm's *ClockValue fields came back nonzero after Vgm.init(). Shared
-        // by EngineSmokeTest/LivePlayer/MDPlayerUI so all three report the same chip list
-        // instead of each hard-coding "SN76489/YM2612" (stale now that VgmEngine wires up
-        // more chips than just those two).
-        public string DescribeActiveChips()
+        // Human-readable "which chips does this file actually use" summary. For VGM/VGZ this
+        // is computed dynamically from the Vgm instance's *ClockValue fields (see
+        // VgmEngine.Load, the only format where the chip set varies per-file); every other
+        // format uses a fixed chip set for its whole platform, so MusicEngine.cs just sets
+        // this to a fixed string at load time. Stored rather than computed live so this class
+        // doesn't need per-format knowledge of internal driver fields.
+        public string ActiveChips = "(no supported chip)";
+        public string DescribeActiveChips() => ActiveChips;
+
+        // How a caller pulls rendered stereo samples out of this session. For every format
+        // except SID this is just `mds.Update(buf, off, count, driver.oneFrameProc)` (set by
+        // MusicEngine.Finish); SID substitutes a delegate that calls sid.Render(...) directly
+        // instead, since it bypasses MDSound.MDSound.Update()/oneFrameProc entirely (see
+        // MusicEngine.LoadSid's header comment).
+        public System.Func<short[], int, int, int> RenderSamples;
+
+        internal static string DescribeVgmActiveChips(Vgm Vgm)
         {
             List<string> parts = new();
             void Add(string name, uint clock)
@@ -103,7 +121,7 @@ namespace MDPlayer
 
         // samplingBuffer is MDSound's internal resample buffer size (in frames), not the
         // caller's per-Update() chunk size - unrelated to how many samples you pull per call.
-        public static VgmEngineSession Load(byte[] vgmBuf, uint samplingBuffer = 2048)
+        public static MusicEngineSession Load(byte[] vgmBuf, uint samplingBuffer = 2048)
         {
             vgmBuf = DecompressIfGzip(vgmBuf);
 
@@ -952,13 +970,16 @@ namespace MDPlayer
             chipRegister.initChipRegister(lstChips.ToArray());
             mds.Init(sampleRate, samplingBuffer, lstChips.ToArray());
 
-            return new VgmEngineSession
+            return new MusicEngineSession
             {
                 Setting = setting,
                 ChipRegister = chipRegister,
                 Mds = mds,
-                Vgm = vgm,
+                Driver = vgm,
                 SampleRate = sampleRate,
+                Format = EnmFileFormat.VGM,
+                ActiveChips = MusicEngineSession.DescribeVgmActiveChips(vgm),
+                RenderSamples = (b, off, count) => mds.Update(b, off, count, vgm.oneFrameProc),
             };
         }
 
@@ -968,7 +989,7 @@ namespace MDPlayer
         // sample. Adapted from Audio.cs's static ChangeChipSampleRate - the original reads
         // the device rate from a global Setting.outputDevice.SampleRate; this port takes
         // deviceSampleRate as a parameter instead, since Setting is a per-session instance
-        // here rather than a single global (see VgmEngineSession).
+        // here rather than a single global (see MusicEngineSession).
         private static void ChangeChipSampleRate(MDSound.MDSound.Chip chip, int newSmplRate, uint deviceSampleRate)
         {
             if (chip.SamplingRate == newSmplRate)

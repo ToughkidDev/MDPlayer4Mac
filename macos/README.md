@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, 칩 배선 13개 → 38개 확장)
+## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 — VGM 이외 전 포맷 추가)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -419,25 +419,122 @@ ES5503, X1_010(세타), C352(남코), GA20(아이렘). 이제 SN76489/YM2612까�
   별도 판단 필요 — 원본 Windows `Audio.cs`도 동일한 방식일 가능성이 있어
   포팅 과정에서 새로 생긴 문제가 아닐 수 있습니다).
 
+### ✅ 음악 파일 포맷 확장 — VGM 이외 13개 포맷 지원 (완료, VGM 회귀 + 신규 2개 포맷 실제 오디오 검증)
+
+"MDPlayer가 지원하는 모든 음악 파일 포맷과 모든 칩을 이번에 전부 추가해달라"는
+요청에 따라, `VgmEngine.cs`(VGM 전용)를 일반화한 `MusicEngine.cs`를 새로 만들어
+VGM/VGZ 포함 총 **13개 포맷**을 하나의 진입점(`MusicEngine.Load(buf, fileNameHint)`)
+으로 로드할 수 있게 했습니다: VGM/VGZ, XGM/XGM2(세가 제네시스), SID(코모도어64),
+MND(PC-98), ZMS/ZMD(X68000 "Zmusic"), MDX/MDR(X68000 MXDRV), **NSF**(NES/패미컴 —
+이번 요청에서 콕 집은 NES APU 관련 포맷), GBS(게임보이), HES(PC엔진), S98(아케이드/
+PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
+
+- **`MusicEngineSession`**(구 `VgmEngineSession`)이 이제 모든 포맷의 공통 반환
+  타입입니다. `Driver` 필드가 `baseDriver` 공통 인터페이스 타입으로 바뀌었고,
+  새 `RenderSamples` 델리게이트 필드가 추가됐습니다 — 대부분의 포맷은 그냥
+  `mds.Update(buf, off, count, driver.oneFrameProc)`을 감싸지만, SID/NSF/MDX
+  세 포맷은 이 델리게이트가 각 드라이버 자신의 `Render()`를 직접 호출하도록
+  다르게 배선됩니다 (아래 참고). **`EngineSmokeTest`/`LivePlayer`/`MDPlayerUI`
+  세 프론트엔드 모두 `mds.Update()`를 직접 부르던 걸 `session.RenderSamples()`
+  호출로 바꿨습니다** — 처음엔 `RenderSamples` 필드만 추가하고 이 호출부
+  세 곳을 안 고쳐서, SID/NSF/MDX가 항상 무음으로 나가는 버그가 있었는데
+  검증 도중 발견해서 고쳤습니다.
+- **SID/NSF/MDX는 `MDSound.MDSound.Chip.Update()`/`ChipRegister` 레지스터
+  쓰기 경로를 아예 안 씁니다.** 원본 `Audio.cs`의 재생 루프
+  (`TrdVgmVirtualMainFunction`)를 다시 읽어보니 `DriverVirtual is nsf`/
+  `is Driver.SID.sid`/`is Driver.MXDRV.MXDRV`일 때 `mds.Update()` 대신
+  각 드라이버의 `Render()`를 직접 호출하는 특수 분기가 있었습니다 — SID는
+  이미 이 패턴대로 포팅되어 있었는데, **NSF도 원래 `MDSound.nes_intf`(VGM의
+  NES 배선이 쓰는 것과 다른, 완전히 별개의 칩 인스턴스)를 배선하도록 짰다가
+  이 특수 분기를 발견하고 다시 짰습니다** — `nsf.cs`는 자기 전용 6502 CPU +
+  APU/DMC/FDS/확장음원 에뮬레이터를 `chipRegister.nes_cpu`/`nes_apu`/... 필드에
+  직접 만들어서(`nsfInit()`) 실제 6502 머신 코드를 실행하며 오디오를
+  만들어내고, `cAPU`/`cDMC`/... 필드는 `Render()`가 각 서브칩 볼륨을 읽는
+  용도로만 쓰입니다 (Update 델리게이트는 하나도 안 붙음). **MDX/MDR도
+  마찬가지**입니다 — X68000 IOCS 사운드 드라이버 전체(`MDSound.NX68Sound.
+  X68Sound`/`sound_iocs`, `ym2151_x68sound` 인스턴스 하나)가 OPM+PCM8을
+  통째로 자체 렌더링하고, `MXDRV.Render(buffer, offset, 2)`를 원본과
+  동일하게 2샘플(1프레임)씩 반복 호출해야 합니다 (`MXDRV.cs`의 내부
+  `OneFrameProc2` 타이머 콜백이 이 호출 단위에 맞춰져 있음). 배선용
+  `MDSound.MDSound.Chip` 항목 하나는 `Update`/`Start`/`Stop`/`Reset`을
+  전부 `null`로 남긴 채로만 등록합니다 (원본도 동일).
+- **YM2151을 쓰는 모든 새 포맷(MND/ZMS/MDX/S98)에서 `SamplingRate` 버그를
+  하나 잡았습니다**: OPM의 내부 샘플링 레이트는 `Clock/64`인데(원본
+  `Audio.cs`의 `MdxPlay`/`MndPlay`/`ZmdPlay`가 전부 `chip.SamplingRate =
+  (UInt32)chip.Clock / 64;`로 명시), 처음엔 출력 디바이스 샘플레이트를 그대로
+  넣어서 리샘플링 소스 레이트가 틀려 음정/속도가 왜곡되는 버그가 있었습니다.
+  `VgmEngine.cs`의 VGM YM2151 배선(이미 검증됨)과 대조해서 발견/수정했습니다.
+  같은 이유로 YM2608(OPNA)도 고정 `55467`이어야 하는데 출력 샘플레이트를
+  넣고 있던 걸 MND/S98에서 같이 고쳤습니다.
+- **MND/ZMS는 mpcmpp 드라이버 역참조 필드(`driver.mpcmpp`/`driver.mpcmtype`)를
+  안 채우고 있어서 ADPCM 레지스터 쓰기가 갈 곳이 없는 버그**도 있었습니다 —
+  원본 `MndPlay`/`ZmdPlay`가 `((Driver.MNDRV.mndrv)DriverVirtual).mpcmpp = mpcmpp;
+  mpcmtype = 1;` 식으로 역참조를 반드시 세팅하는 걸 보고 맞춰 채웠습니다.
+- **Shift-JIS(코드페이지 932) 디코딩이 이 포팅에서는 항상 예외를 던지는
+  버그**를 NSF 테스트 픽스처를 만들다 발견했습니다 — `log.cs`가
+  `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`를 부르긴
+  하는데 `#if X64`로 감싸져 있고, 이 크로스플랫폼 포팅은 `X64`를 정의하지
+  않아서 등록이 그냥 통째로 스킵됩니다(그리고 `log` 클래스의 정적 생성자가
+  먼저 안 돌면 등록 자체가 안 일어남). NSF/S98/MXDRV/MNDRV 전부
+  `Encoding.GetEncoding(932)`를 직접 호출하는 코드가 있어서, 제목/아티스트
+  태그가 있는 파일은 전부 이 문제를 겪었을 것입니다. `common.cs`에
+  `[ModuleInitializer]`로 등록 메서드를 추가해서 어셈블리 로드 시 무조건
+  한 번 실행되게 고쳤습니다 (특정 클래스가 먼저 쓰이는 순서에 의존하지 않음).
+- **포맷별 칩 배선**: XGM/XGM2는 YM2612+SN76489 고정(세가 제네시스 하드웨어
+  클럭). SID는 칩 배선이 전혀 없이 libsidplayfp 기반 자체 렌더링만 씀. MND는
+  YM2151+YM2608+mpcmpp(X68000 ADPCM 변형 중 기본값 하나만 채택). ZMS/ZMD는
+  YM2151+mpcmpp(실제로는 `Driver/ZMS/nise68/` 안의 68000 CPU+Human68k OS
+  에뮬레이터 전체가 Zmusic 드라이버 프로그램을 돌리지만, MDSound 레벨
+  칩셋은 이 두 개뿐). NSF는 APU/DMC/FDS/MMC5/N106/VRC6/VRC7/FME7 8칸을
+  전부 만들지만 실제 오디오는 전용 6502 CPU 실행으로 나옴. GBS/HES는 이미
+  VGM 경로에서 검증된 `MDSound.gb`/`MDSound.Ootake_PSG`를 그대로 재사용.
+  S98은 VGM처럼 파일이 선언하는 칩 목록(`S98.cs`의 `S98Info.DeviceInfos`,
+  `DeviceType` 1/2/3/4/5/6/7/8/9/15/16)을 동적으로 배선. ZGM은 원본
+  `ChipFactory.Create()` 자체가 YM2609 말고는 전부 미구현(`null` 반환)이라
+  YM2609만 배선하는 게 이 포팅이 새로 좁힌 게 아니라 업스트림 자체의 한계.
+  AY는 AY8910+ZXBeep 고정(스펙트럼 클럭 1789773/2).
+- **검증**: 기존 VGM 5개 픽스처가 새 `MusicEngine.Load`→`VgmEngine.Load`
+  경로로도 동일하게(동일 샘플 수/파형) 재생되는 걸 재확인했고, 새로
+  **S98**(`testdata/s98-sn76489-tone.s98`, 60바이트 — SN76489 440Hz 톤,
+  헤더+디바이스테이블+레지스터 덤프 커맨드를 직접 인코딩)과 **NSF**
+  (`testdata/nsf-apu-tone.nsf`, 155바이트 — 진짜 6502 머신코드로 APU 펄스
+  채널1을 설정하는 init 루틴 + no-op play 루틴)를 손으로 만들어 렌더링/분석
+  했습니다: 둘 다 무음이 아니고(전체 샘플 대부분 0이 아님), 파형 전환
+  주기로 역산한 주파수가 S98은 440.40Hz, NSF는 440.47Hz로 목표 440Hz와
+  거의 정확히 일치했습니다. NSF는 CPU 트레이스 로그로 init 루틴의 레지스터
+  쓰기(`$4015`/`$4001`/`$4000`/`$4002`/`$4003`)가 의도한 순서/값대로
+  전부 실행되는 것도 직접 확인했습니다.
+  나머지 포맷(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)은 개별
+  테스트 픽스처 없이 코드 리뷰 + 위에 적은 버그 수정 수준의 확신에 의존합니다
+  (특히 SID/MDX는 `Render()` 우회 경로 자체가 맞게 배선됐는지가 핵심 리스크).
+- **AY는 이번에도 샌드박스에서 빌드 검증이 안 됩니다** — `Driver/AY/AY.cs`가
+  실제 `Konamiman.Z80dotNet` NuGet 패키지(진짜 Z80 CPU 에뮬레이터,
+  `Z80Processor`/`IZ80Registers` 타입)를 쓰는데, 이 클라우드 샌드박스는
+  nuget.org에 접근할 수 없어서 최소 스캇치 스텁(`IMemory`만 구현)으로만
+  나머지 코드를 검증했고 `AY.cs`/`port.cs` 자체는 문법 확인 수준입니다.
+  실제 Mac에서 `dotnet build`로 진짜 패키지가 restore될 때 검증이 필요합니다
+  (`MDPlayerUI`의 Avalonia 패키지, `Driver/SID/**`의 실기 빌드 검증과 동일한
+  패턴).
+- `EngineSmokeTest`/`LivePlayer`/`MDPlayerUI` 세 프론트엔드 모두
+  `MusicEngine.Load(buf, fileName)`을 쓰도록(구 `VgmEngine.Load(buf)`)
+  갱신했고, `MDPlayerUI`의 파일 열기 다이얼로그 필터도 13개 포맷 확장자를
+  전부 받도록(`*.vgm`/`*.vgz`/`*.xgm`/`*.xgz`/`*.sid`/`*.mnd`/`*.zms`/
+  `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
+  넓혔습니다.
+
 ## 다음 단계 후보
 
-1. **실제 VGM 파일로 검증**: 이제 `.vgz`까지 지원하고 VGM 스펙의 칩 38개가
-   전부 배선되어 있으니, vgmrips.net 등에서 실제 게임 VGM을 받아
-   돌려보고(라이선스/저작권 확인 후) 원본 Windows 빌드와 파형/사운드를
-   비교해보는 게 다음 신뢰도 검증 단계입니다. YM2151/NES APU 두 칩을
-   제외한 나머지는 아직 실제 오디오로 검증되지 않았고, 위에 적은 EOF
-   오프셋 이슈도 실제 파일에서 재현되는지 확인이 필요합니다.
-2. **VGM 이외의 음악 파일 포맷 지원**: MDPlayer가 지원하는 포맷은 VGM/VGZ뿐만이
-   아닙니다 — `MDPlayerCore/Driver/`에 이미 이식되어 있는 것만 봐도 SID
-   (`Driver/SID/**`), MXDRV(`Driver/MXDRV/*`), MNDRV(`Driver/MNDRV/*`),
-   ZMS(`Driver/ZMS/**`), XGM/XGM2(`Driver/xgm.cs`/`xgm2.cs`)가 있고, 이
-   드라이버들을 실제로 로드해서 재생하는 파일 포맷 감지/디스패치 로직
-   (`AudioShim.cs`의 `GetMusic()`)은 아직 `NotImplementedException` 스텁
-   상태입니다. `VgmEngine.cs`처럼 각 드라이버를 실제로 로드→재생하는
-   경로를 만들고(포맷 감지, `baseDriver` 공통 인터페이스 활용), 최소
-   하나씩 스모크 테스트로 검증하는 게 다음 큰 작업입니다 — VGM 칩 확장과는
-   별도로 스코프를 잡아야 할 정도로 큰 작업이라 착수 전 별도 조사가
-   필요합니다.
+1. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
+   있으니, 각 포맷의 실제 파일(vgmrips.net의 VGM, HVSC의 SID/AY, 각종 NSF/GBS/
+   HES 아카이브 등)을 받아(라이선스/저작권 확인 후) 원본 Windows 빌드와
+   파형/사운드를 비교해보는 게 다음 신뢰도 검증 단계입니다. 이번 라운드에서
+   실제 오디오로 검증된 건 VGM의 YM2151/NES APU, 그리고 신규 S98/NSF
+   픽스처뿐이고 나머지(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)는
+   코드 리뷰 수준입니다. 위에 적은 VGM EOF 오프셋 이슈도 실제 파일에서
+   재현되는지 확인이 필요합니다.
+2. **AY 실기 빌드 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
+   컴파일/동작하는지, 실제 Mac에서 `dotnet build` 후 ZX Spectrum AY 파일로
+   확인이 필요합니다 (샌드박스에서는 원천적으로 불가능).
 3. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
    재생 목록, 재생 시간 표시/탐색바, 볼륨 조절, 최근 파일 목록 같은 실사용에
    필요한 기본 기능을 추가할 수 있습니다.

@@ -30,6 +30,14 @@ namespace MDPlayer
         public static baseDriver DriverVirtual { get; set; } = null;
         public static EnmFileFormat PlayingFileFormat;
 
+        // hes.cs/S98.cs check these to coordinate with the original's real-hardware output
+        // thread (Audio.cs's TrdMain) - e.g. S98.cs only reads them under
+        // `model == EnmModel.RealModel`, a path this port's MusicEngine/VgmEngine never
+        // takes (always EnmModel.VirtualModel), so fixed `false` defaults are safe: there is
+        // no real-hardware playback thread here to be stopped/closed in the first place.
+        public static bool IsStopped { get; set; } = false;
+        public static bool TrdClosed { get; set; } = false;
+
         public static System.Collections.Generic.List<PlayList.Music> GetMusic(string file, byte[] buf, string zipFile = null, object entry = null)
         {
             throw new System.NotImplementedException(

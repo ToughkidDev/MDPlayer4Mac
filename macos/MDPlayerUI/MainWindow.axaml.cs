@@ -27,6 +27,7 @@ namespace MDPlayer.UI
         private const int BufferCount = 4;
 
         private byte[]? loadedVgmBytes;
+        private string? loadedFileName;
         private CoreAudioQueue? queue;
         private volatile bool stopRequested;
 
@@ -43,14 +44,23 @@ namespace MDPlayer.UI
 
             var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "VGM 파일 열기",
+                Title = "음악 파일 열기",
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
                     // .vgz is just a gzip-compressed .vgm (the format most real-world VGM
                     // downloads come in, e.g. from vgmrips.net) - VgmEngine.Load decompresses
                     // it transparently, so both extensions are equally valid input here.
-                    new FilePickerFileType("VGM files") { Patterns = new[] { "*.vgm", "*.vgz" } },
+                    // The rest are the other formats MusicEngine.cs dispatches on (see its
+                    // header comment for the full list and per-format verification status).
+                    new FilePickerFileType("Music files")
+                    {
+                        Patterns = new[]
+                        {
+                            "*.vgm", "*.vgz", "*.xgm", "*.xgz", "*.sid", "*.mnd", "*.zms", "*.zmd",
+                            "*.mdx", "*.mdr", "*.nsf", "*.gbs", "*.hes", "*.s98", "*.ay", "*.zgm",
+                        },
+                    },
                     FilePickerFileTypes.All,
                 },
             });
@@ -64,6 +74,7 @@ namespace MDPlayer.UI
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             loadedVgmBytes = ms.ToArray();
+            loadedFileName = file.Name;
 
             FileLabel.Text = file.Name;
             StatusLabel.Text = $"로드됨 ({loadedVgmBytes.Length} bytes) - 재생 준비";
@@ -74,6 +85,7 @@ namespace MDPlayer.UI
         private async void OnPlayClick(object? sender, RoutedEventArgs e)
         {
             byte[]? vgmBuf = loadedVgmBytes;
+            string? fileName = loadedFileName;
             if (vgmBuf == null) return;
 
             OpenButton.IsEnabled = false;
@@ -85,11 +97,11 @@ namespace MDPlayer.UI
 
             try
             {
-                VgmEngineSession? loadedSession = await Task.Run(() => VgmEngine.Load(vgmBuf));
+                MusicEngineSession? loadedSession = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
                 if (loadedSession == null || stopRequested)
                 {
                     if (!stopRequested)
-                        StatusLabel.Text = "오류: 이 VGM은 재생할 수 없습니다 (지원하지 않는 칩만 사용됨, VgmEngine.cs 참고)";
+                        StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
                     OpenButton.IsEnabled = true;
                     PlayButton.IsEnabled = true;
                     StopButton.IsEnabled = false;
@@ -102,8 +114,12 @@ namespace MDPlayer.UI
                         loadedSession.SampleRate, FramesPerBuffer, BufferCount,
                         (buf, count) =>
                         {
-                            if (stopRequested || loadedSession.Vgm.Stopped) return 0;
-                            return loadedSession.Mds.Update(buf, 0, count, loadedSession.Vgm.oneFrameProc);
+                            if (stopRequested || loadedSession.Driver.Stopped) return 0;
+                            // loadedSession.RenderSamples, not Mds.Update() directly - see
+                            // EngineSmokeTest/Program.cs's identical comment (SID/NSF/MDX
+                            // bypass MDSound.MDSound.Chip.Update() entirely and pull PCM
+                            // straight from their own driver's Render()).
+                            return loadedSession.RenderSamples(buf, 0, count);
                         });
 
                     queue = localQueue;

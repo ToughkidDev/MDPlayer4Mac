@@ -16,7 +16,7 @@ namespace MDPlayer.EngineSmokeTest
         {
             if (args.Length < 1)
             {
-                Console.Error.WriteLine("usage: EngineSmokeTest <input.vgm|input.vgz> [output.wav]");
+                Console.Error.WriteLine("usage: EngineSmokeTest <input file> [output.wav]  (see MusicEngine.cs for supported formats)");
                 return 1;
             }
 
@@ -38,19 +38,18 @@ namespace MDPlayer.EngineSmokeTest
             byte[] vgmBuf = File.ReadAllBytes(vgmPath);
             Console.WriteLine($"Loaded {vgmPath} ({vgmBuf.Length} bytes)");
 
-            VgmEngineSession session = VgmEngine.Load(vgmBuf);
+            MusicEngineSession session = MusicEngine.Load(vgmBuf, vgmPath);
             if (session == null)
             {
-                Console.Error.WriteLine("error: Vgm.init() failed, or the file uses none of the chips VgmEngine.Load wires up (see VgmEngine.cs)");
+                Console.Error.WriteLine("error: driver init() failed, or the file's format/chips aren't supported by MusicEngine.cs");
                 return 1;
             }
 
-            Vgm vgm = session.Vgm;
-            MDSound.MDSound mds = session.Mds;
+            baseDriver driver = session.Driver;
             Setting setting = session.Setting;
             uint sampleRate = session.SampleRate;
 
-            Console.WriteLine($"VGM version {vgm.Version}, chips: {session.DescribeActiveChips()}");
+            Console.WriteLine($"{session.Format} version {driver.Version}, chips: {session.DescribeActiveChips()}");
 
             setting.other.WavSwitch = true;
             setting.other.WavPath = outDir;
@@ -69,9 +68,14 @@ namespace MDPlayer.EngineSmokeTest
             long totalSamplesWritten = 0;
             int safetyLimitChunks = 60 * (int)(sampleRate * 2 / chunkSamples) + 1000; // ~60s hard cap so a driver bug can't hang forever
 
-            for (int chunk = 0; chunk < safetyLimitChunks && !vgm.Stopped; chunk++)
+            for (int chunk = 0; chunk < safetyLimitChunks && !driver.Stopped; chunk++)
             {
-                int written = mds.Update(buffer, 0, chunkSamples, vgm.oneFrameProc);
+                // session.RenderSamples, NOT mds.Update() directly - for most formats
+                // RenderSamples just forwards to mds.Update(driver.oneFrameProc), but SID/NSF/
+                // MDX bypass MDSound.MDSound.Chip.Update() entirely and pull PCM straight from
+                // their own driver's Render() (see MusicEngine.cs's LoadSid/LoadNsf/LoadMdx) -
+                // calling mds.Update() directly here would silently produce silence for them.
+                int written = session.RenderSamples(buffer, 0, chunkSamples);
                 if (written <= 0) break;
                 waveWriter.Write(buffer, 0, written);
                 totalSamplesWritten += written / 2;

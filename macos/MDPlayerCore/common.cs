@@ -9,6 +9,23 @@ namespace MDPlayer
 {
     public static class Common
     {
+        // Several format parsers (NSF/S98/MXDRV/MNDRV title tags, M3U/PlayList, this port's
+        // own GetOPNARyhthmStream helper etc.) call Encoding.GetEncoding(932) directly to
+        // decode Shift-JIS text. .NET only ships the codepage-number encodings (932 among
+        // them) through a provider that has to be registered before first use - log.cs used
+        // to do this itself, but gated behind `#if X64`, a symbol this cross-platform port
+        // never defines, so the registration silently never ran and any of the paths above
+        // would throw NotSupportedException the moment they touched a non-empty Shift-JIS
+        // string (e.g. an NSF file's title/artist tag - first hit while building this port's
+        // NSF test fixture). A [ModuleInitializer] is the reliable fix - it's guaranteed by
+        // the runtime to run once, before any other code in this assembly, rather than
+        // depending on some particular class's static constructor happening to run first.
+        [System.Runtime.CompilerServices.ModuleInitializer]
+        public static void RegisterCodePages()
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        }
+
         public const int DEV_WaveOut = 0;
         public const int DEV_DirectSound = 1;
         public const int DEV_WasapiOut = 2;
