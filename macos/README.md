@@ -36,10 +36,13 @@ Windows 전용 요소로부터 떼어내는 작업입니다. `macos/MDPlayerCore
   MOS 6510 CPU 에뮬레이터까지 포함. Windows 의존성 0개로 그대로 붙었습니다)
 - `CompatShims.cs` — 아래 "이식하며 손댄 부분" 참고
 
-**리눅스 샌드박스에서 (Z80dotNet 패키지만 로컬 스텁으로 대체해서) `dotnet build` 0 error
-확인했습니다.** 실제 Mac에서 `Z80dotNet`이 nuget.org에서 정상 restore되는 것도
-확인됐으니 (net8.0 호환성 경고만 뜨고 실패는 아님) 이제 Mac에서도 끝까지
-컴파일될 것으로 보입니다 — `dotnet build` 결과를 알려주세요.
+**실제 Mac에서 `dotnet build` 0 error로 확인 완료했습니다** (MDSound, MDPlayerCore 둘 다).
+마지막에 걸렸던 `MDChipParams.cs`, `Driver/MNDRV/*`(둘 다 Windows 의존성 없음)를
+채우고, `PlayList.cs`가 실제 `DataGridView`(WinForms 그리드 컨트롤)에 행을 직접
+만들어 넣는 구조인 걸 뒤늦게 발견해서 `CompatShims.cs`에 컴파일만 되게 하는
+최소 `DataGridView`/`DataGridViewRow`/`DataGridViewColumn` 셈으로 대체했습니다
+(지금은 아무것도 실제로 채워주지 않는 빈 그리드 — UI 붙일 때 `PlayList.cs`를
+데이터/화면 분리하는 리팩터링을 하든, 이 셈에 진짜 저장소를 붙이든 결정 필요).
 
 `RealChip.cs`는 그대로 가져오지 않았습니다. 열어보니 `NScci`/`Nc86ctl`/`NiseC86ctl`
 (SCCI/C86Ctrl 계열 — 실제 FM 신디사이저 칩 확장 카드를 시리얼/전용 인터페이스로
