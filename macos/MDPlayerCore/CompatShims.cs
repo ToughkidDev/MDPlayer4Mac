@@ -41,6 +41,83 @@ namespace MDPlayer
         Maximized,
     }
 
+    // TODO(macOS port): PlayList.cs builds its rows directly against a bound WinForms
+    // DataGridView (by column name -> index lookup, CreateCells, Cells[i].Value/.ToolTipText,
+    // Rows.Add) instead of keeping a plain data model — the original app has no separation
+    // between "playlist data" and "playlist grid presentation". Rather than refactor
+    // PlayList.cs itself (which would ripple into every caller, and we don't know yet what
+    // shape the Avalonia UI will want), this is a compile-time-only shim reproducing just the
+    // subset of DataGridView's API PlayList.cs touches. Nothing constructs/wires a real grid
+    // here yet, so calling these at runtime today gets you an empty, unpopulated grid, not a
+    // crash — but also not a populated playlist. Revisit when the UI layer needs playlist
+    // display: either give this shim real backing storage, or refactor PlayList.cs to expose
+    // a plain list and let the UI layer build rows itself.
+    public class DataGridViewCell
+    {
+        public object Value { get; set; }
+        public string ToolTipText { get; set; }
+    }
+
+    public class DataGridViewCellCollection : System.Collections.Generic.List<DataGridViewCell>
+    {
+    }
+
+    public class DataGridViewRow
+    {
+        public DataGridViewCellCollection Cells { get; } = new();
+        public object Tag { get; set; }
+
+        public void CreateCells(DataGridView dgv)
+        {
+            Cells.Clear();
+            for (int i = 0; i < dgv.Columns.Count; i++)
+            {
+                Cells.Add(new DataGridViewCell());
+            }
+        }
+    }
+
+    public class DataGridViewRowCollection : System.Collections.Generic.List<DataGridViewRow>
+    {
+    }
+
+    public class DataGridViewColumn
+    {
+        public string Name { get; set; }
+        public int Index { get; set; }
+    }
+
+    public class DataGridViewColumnCollection
+    {
+        private readonly System.Collections.Generic.List<DataGridViewColumn> columns = new();
+
+        public int Count => columns.Count;
+
+        public DataGridViewColumn this[string name]
+        {
+            get
+            {
+                foreach (DataGridViewColumn c in columns)
+                {
+                    if (c.Name == name) return c;
+                }
+                throw new System.Collections.Generic.KeyNotFoundException(name);
+            }
+        }
+
+        public void Add(DataGridViewColumn column)
+        {
+            column.Index = columns.Count;
+            columns.Add(column);
+        }
+    }
+
+    public class DataGridView
+    {
+        public DataGridViewColumnCollection Columns { get; } = new();
+        public DataGridViewRowCollection Rows { get; } = new();
+    }
+
     internal static class Resources
     {
         // Mirrors Properties.Resources.cntSettingFileName from the Windows build.
