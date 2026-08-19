@@ -47,6 +47,17 @@ namespace MDPlayer
         // MusicEngine.LoadSid's header comment).
         public System.Func<short[], int, int, int> RenderSamples;
 
+        // Per-chip clock (Hz) actually used to wire up MDSound for this session, keyed by
+        // chip type - e.g. ChipClocks[MDSound.MDSound.enmInstrumentType.SN76489] gives the
+        // SN76489 clock a channel visualizer needs to turn a raw tone-register divisor into
+        // a note/frequency (mirrors Audio.ClockSN76489 on the Windows side, which the
+        // per-chip visualizer forms - e.g. frmSN76489.cs's SearchSSGNote - read directly).
+        // Populated once per Load() call from the same Chip list MDSound.Init() consumes, so
+        // it's always in sync with what's actually playing; absent entries (chip not present
+        // in this file) simply aren't in the dictionary.
+        public System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> ChipClocks
+            = new();
+
         internal static string DescribeVgmActiveChips(Vgm Vgm)
         {
             List<string> parts = new();
@@ -970,6 +981,9 @@ namespace MDPlayer
             chipRegister.initChipRegister(lstChips.ToArray());
             mds.Init(sampleRate, samplingBuffer, lstChips.ToArray());
 
+            System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> chipClocks = new();
+            foreach (MDSound.MDSound.Chip c in lstChips) chipClocks[c.type] = c.Clock;
+
             return new MusicEngineSession
             {
                 Setting = setting,
@@ -980,6 +994,7 @@ namespace MDPlayer
                 Format = EnmFileFormat.VGM,
                 ActiveChips = MusicEngineSession.DescribeVgmActiveChips(vgm),
                 RenderSamples = (b, off, count) => mds.Update(b, off, count, vgm.oneFrameProc),
+                ChipClocks = chipClocks,
             };
         }
 

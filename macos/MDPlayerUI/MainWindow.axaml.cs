@@ -18,6 +18,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using MDPlayer;
 using MDPlayer.CoreAudioOutput;
+using MDPlayer.UI.Visualizer;
 
 namespace MDPlayer.UI
 {
@@ -26,15 +27,65 @@ namespace MDPlayer.UI
         private const int FramesPerBuffer = 2048;
         private const int BufferCount = 4;
 
+        // ~30fps - lighter than the original Windows app's default 60fps
+        // (Setting.other.ScreenFrameRate, frmMain.cs's screenMainLoop), plenty smooth for
+        // LED-bar/piano-key style content and one less thing to tune blind before a real
+        // build. Easy to raise once this is confirmed working on the real Mac.
+        private static readonly TimeSpan VisualizerInterval = TimeSpan.FromMilliseconds(33);
+
         private byte[]? loadedVgmBytes;
         private string? loadedFileName;
         private CoreAudioQueue? queue;
         private volatile bool stopRequested;
 
+        // Retained across the play flow (previously only a local in OnPlayClick) so the
+        // visualizer redraw timer can keep polling ChipRegister/ChipClocks for as long as
+        // playback runs.
+        private MusicEngineSession? loadedSession;
+        private Sn76489Visualizer? sn76489Visualizer;
+        private DispatcherTimer? visualizerTimer;
+
         public MainWindow()
         {
             InitializeComponent();
-            Closing += (_, _) => StopPlayback();
+            Closing += (_, _) =>
+            {
+                StopPlayback();
+                HideVisualizers();
+            };
+        }
+
+        // Builds whichever chip visualizers this session's ChipClocks says are present and
+        // docks them into VisualizerHost, then starts the shared redraw timer. Only SN76489
+        // is ported so far (see macos/README.md's chip-visualizer section) - other chips
+        // simply get no visualizer yet, same as before this feature existed.
+        private void ShowVisualizersFor(MusicEngineSession session)
+        {
+            HideVisualizers();
+
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.SN76489, out uint sn76489Clock))
+            {
+                sn76489Visualizer = new Sn76489Visualizer(session.ChipRegister, sn76489Clock);
+                VisualizerHost.Children.Add(sn76489Visualizer.Screen);
+            }
+
+            if (sn76489Visualizer == null) return;
+
+            visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
+            visualizerTimer.Tick += (_, _) =>
+            {
+                sn76489Visualizer?.ScreenChangeParams();
+                sn76489Visualizer?.ScreenDrawParams();
+            };
+            visualizerTimer.Start();
+        }
+
+        private void HideVisualizers()
+        {
+            visualizerTimer?.Stop();
+            visualizerTimer = null;
+            sn76489Visualizer = null;
+            VisualizerHost.Children.Clear();
         }
 
         private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -68,6 +119,7 @@ namespace MDPlayer.UI
             if (files.Count < 1) return;
 
             StopPlayback();
+            HideVisualizers();
 
             var file = files[0];
             await using var stream = await file.OpenReadAsync();
@@ -97,8 +149,9 @@ namespace MDPlayer.UI
 
             try
             {
-                MusicEngineSession? loadedSession = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
-                if (loadedSession == null || stopRequested)
+                loadedSession = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
+                MusicEngineSession? session = loadedSession;
+                if (session == null || stopRequested)
                 {
                     if (!stopRequested)
                         StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
@@ -111,22 +164,23 @@ namespace MDPlayer.UI
                 await Task.Run(() =>
                 {
                     CoreAudioQueue localQueue = new(
-                        loadedSession.SampleRate, FramesPerBuffer, BufferCount,
+                        session.SampleRate, FramesPerBuffer, BufferCount,
                         (buf, count) =>
                         {
-                            if (stopRequested || loadedSession.Driver.Stopped) return 0;
+                            if (stopRequested || session.Driver.Stopped) return 0;
                             // loadedSession.RenderSamples, not Mds.Update() directly - see
                             // EngineSmokeTest/Program.cs's identical comment (SID/NSF/MDX
                             // bypass MDSound.MDSound.Chip.Update() entirely and pull PCM
                             // straight from their own driver's Render()).
-                            return loadedSession.RenderSamples(buf, 0, count);
+                            return session.RenderSamples(buf, 0, count);
                         });
 
                     queue = localQueue;
                     localQueue.Start();
                 });
 
-                StatusLabel.Text = $"재생 중 - {loadedSession.DescribeActiveChips()}";
+                StatusLabel.Text = $"재생 중 - {session.DescribeActiveChips()}";
+                ShowVisualizersFor(session);
 
                 // Poll for completion off the UI thread; only hop back to update labels/buttons.
                 CoreAudioQueue? watchedQueue = queue;
@@ -144,6 +198,7 @@ namespace MDPlayer.UI
                             OpenButton.IsEnabled = true;
                             PlayButton.IsEnabled = true;
                             StopButton.IsEnabled = false;
+                            HideVisualizers();
                         });
                     }
                 });
@@ -154,6 +209,7 @@ namespace MDPlayer.UI
                 OpenButton.IsEnabled = true;
                 PlayButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
+                HideVisualizers();
             }
         }
 
@@ -164,6 +220,7 @@ namespace MDPlayer.UI
             OpenButton.IsEnabled = true;
             PlayButton.IsEnabled = true;
             StopButton.IsEnabled = false;
+            HideVisualizers();
         }
 
         private void StopPlayback()

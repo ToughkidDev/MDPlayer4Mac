@@ -26,6 +26,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Visualizer/PixelScreen.cs uses unsafe/fixed for a direct buffer-to-bitmap memcpy. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!--
       Same reasoning as EngineSmokeTest.csproj/LivePlayer.csproj: the user's Mac only has
       .NET 10.0.7 installed (no exact 8.0.x runtime), so without RollForward the host
@@ -51,6 +53,16 @@
   <ItemGroup>
     <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
     <ProjectReference Include="..\CoreAudioOutput\CoreAudioOutput.csproj" />
+  </ItemGroup>
+
+  <!--
+    Chip channel visualizer sprite sheets (see Visualizer/SpriteAtlas.cs's header comment
+    for why these are a custom raw ".rgba32" format rather than PNGs decoded at runtime).
+    AvaloniaResource embeds arbitrary files for avares:// lookup, not just recognized image
+    formats, so the non-standard extension here is fine.
+  -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
 </Project>

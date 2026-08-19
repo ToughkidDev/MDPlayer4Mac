@@ -150,6 +150,9 @@ namespace MDPlayer
             chipRegister.initChipRegister(lstChips.ToArray());
             mds.Init(sampleRate, samplingBuffer, lstChips.ToArray());
 
+            System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> chipClocks = new();
+            foreach (MDSound.MDSound.Chip c in lstChips) chipClocks[c.type] = c.Clock;
+
             return new MusicEngineSession
             {
                 Setting = setting,
@@ -160,6 +163,7 @@ namespace MDPlayer
                 Format = format,
                 ActiveChips = activeChips,
                 RenderSamples = (b, off, count) => mds.Update(b, off, count, driver.oneFrameProc),
+                ChipClocks = chipClocks,
             };
         }
 

@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 — VGM 이외 전 포맷 추가, 실기(real Mac) 빌드+오디오 검증 완료)
+## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 + SN76489 칩 채널 표시계 1차 구현 — 실기 빌드/시각 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,9 +536,75 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
+### 🚧 칩 채널 표시계(visualizer) — SN76489 1차 구현 (완료, 실기 빌드/시각 검증 대기)
+
+MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
+팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업의 첫 단계로,
+SN76489(PSG) 표시계를 원본 스프라이트를 그대로 이식해 구현했습니다. YM2612는
+이 1차 구현이 실기에서 확인된 뒤 같은 패턴으로 이어갈 예정입니다.
+
+- **원본 구조 조사 결과**: 원본은 GDI+ 커스텀 픽셀 버퍼 blit 엔진
+  (`drawBuff.cs` 5167줄 + `FrameBuffer.cs`)으로 `Resources/plane*.png`
+  스프라이트시트(209장)를 직접 blit합니다. 배경 이미지(`planeYM2612.png` 등)를
+  화면에 한 번 그린 뒤, 매 프레임 바뀐 값만 작은 스프라이트로 그 위에 opaque
+  blit하는 방식(더티-diff)입니다. 이 데이터가 읽는 소스(`ChipRegister.cs`,
+  `MDChipParams.cs`, `Tables.cs`)는 이미 macOS에 거의 1:1로 포팅되어 있어서,
+  부족한 건 100% 화면(프레젠테이션) 레이어뿐이었습니다.
+- **Avalonia 재현 아키텍처**: `FrameBuffer.cs`/`DoubleBuffer.cs`를 그대로
+  포팅하는 대신, Avalonia의 `WriteableBitmap` 기반 커스텀 컨트롤
+  (`MDPlayerUI/Visualizer/PixelScreen.cs`)로 대체했습니다 — Avalonia는 이미
+  자체 컴포지터로 더블버퍼링을 하므로 원본의 그 부분은 불필요합니다.
+  `drawIntArray`(무조건 opaque 복사) 프리미티브만 포팅했는데, 이번에 이식한
+  SN76489 표시계 함수들이 전부 이 경로만 쓰기 때문입니다(`drawByteArrayTransp`의
+  컬러키 투명 처리는 이번 범위에서 미사용).
+- **스프라이트 에셋**: PNG를 런타임에 디코딩하지 않고, 커스텀 `.rgba32` 바이너리
+  포맷(폭/높이 + ARGB int32 픽셀 나열)으로 미리 변환해 임베드했습니다
+  (`macos/tools/export_sprites.py`로 재현 가능). 이유: `MDPlayerUI` 프로젝트는
+  이 샌드박스에서 `dotnet build`조차 한 번도 못 해봤을 만큼(nuget.org 접근 불가)
+  검증이 안 된 코드가 많이 쌓여 있어서, Avalonia의 PNG 디코드 API
+  (`Bitmap.CopyPixels` 등)에 대한 불확실성까지 추가로 얹고 싶지 않았습니다.
+  `BinaryReader.ReadInt32()`만으로 읽는 방식은 플랫폼/버전에 상관없이 항상
+  동작이 보장됩니다. SN76489용으로 9개 파일만 내보냈습니다 (`planeSN76489`,
+  `rVol_01`, `rKBD_01`, `rFont_01/02/03`, `rType_01/02`, `rPan_01`) — 원본
+  스프라이트는 `tp`(에뮬레이션/실칩) 파라미터로 2~3가지 색상 변형을 고르는데,
+  이 포트의 엔진은 실제 하드웨어 출력을 지원하지 않으므로(`VgmEngine.cs` 참고)
+  `tp=0`(에뮬레이션) 변형만 필요합니다.
+- **데이터 소스**: 원본 `frmSN76489.cs`는 `Audio.GetPSGRegister`/`GetPSGVolume`/
+  `GetPSGRegisterGGPanning`/`ClockSN76489`를 거치는데, 이들은 전부
+  `ChipRegister`의 필드/메서드로 바로 연결되는 얇은 래퍼였습니다. 이 포트는
+  `MusicEngineSession.ChipRegister`로 그 필드에 직접 접근합니다. 칩 클럭값만
+  기존에 노출되지 않아서, `MusicEngineSession`에 `ChipClocks`
+  (`Dictionary<enmInstrumentType, uint>`) 필드를 새로 추가하고
+  `VgmEngine.Load`/`MusicEngine.Finish` 양쪽에서 채우도록 했습니다 — 향후 다른
+  칩 표시계를 추가할 때도 같은 방식으로 재사용됩니다.
+- **새 파일**: `MDPlayerUI/Visualizer/SpriteAtlas.cs`(로더),
+  `PixelScreen.cs`(렌더링 엔진), `DrawBuffSn76489.cs`(drawBuff.cs 서브셋 포팅),
+  `Sn76489Visualizer.cs`(frmSN76489.cs의 ScreenChangeParams/ScreenDrawParams
+  포팅). `MainWindow.axaml`에 표시계를 붙일 `VisualizerHost` 패널을 추가하고,
+  `MainWindow.axaml.cs`는 재생 시작 시 `MusicEngineSession`을 필드로 유지하며
+  ~30fps `DispatcherTimer`로 표시계를 갱신하도록 갱신했습니다(원본은 기본
+  60fps 스레드 루프 — 일단 가볍게 시작해서 실기 확인 후 조정 예정).
+- **검증 상태 (중요)**: `MDPlayerCore`(엔진) 쪽 변경(`ChipClocks` 배선)은
+  이 세션에서 스텁 빌드로 컴파일 확인했지만(`0 error`), **`MDPlayerUI`
+  (Avalonia) 쪽 새 코드 4개 파일은 이 샌드박스에서 전혀 빌드 검증할 수
+  없었습니다** — `MDPlayerUI` 프로젝트 자체가 nuget.org 접근 불가로 한 번도
+  로컬 빌드된 적이 없기 때문입니다(기존과 동일한 제약). `WriteableBitmap`/
+  `DrawingContext.PushRenderOptions`/`AssetLoader` 같은 Avalonia API 사용법은
+  문서/기억에 기반해 신중하게 작성했지만, 실제 동작은 사용자가 실기에서
+  `dotnet build` + GUI로 SN76489 파일을 열어봐야 확인됩니다. 첫 실기 빌드 후
+  수정이 필요할 가능성을 염두에 두세요(`MDPlayerUI` 자체가 처음 그랬던 것처럼).
+
 ## 다음 단계 후보
 
-1. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
+1. **SN76489 표시계 실기 검증**: 위 시각화 작업을 실제 Mac에서 빌드하고,
+   SN76489를 쓰는 VGM/S98 파일을 `MDPlayerUI`로 열어 LED 볼륨미터/건반/팬
+   표시가 실제로 올바르게 그려지는지 확인이 필요합니다. 문제가 있다면
+   `PixelScreen.cs`(렌더링 엔진)나 `DrawBuffSn76489.cs`(좌표/스프라이트
+   인덱싱)를 의심해보세요.
+2. **YM2612 표시계 포팅**: SN76489가 실기에서 확인되면, 같은 패턴으로
+   `frmYM2612.cs`의 9채널 FM 표시계(오퍼레이터 파라미터 표 포함, SN76489보다
+   훨씬 복잡)를 포팅합니다.
+3. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
    있고, 실제 Mac에서 전체 빌드 성공 + S98/NSF 픽스처 실기 오디오 확인까지
    끝났으니, 각 포맷의 실제 파일(vgmrips.net의 VGM, HVSC의 SID/AY, 각종 NSF/GBS/
    HES 아카이브 등)을 받아(라이선스/저작권 확인 후) 원본 Windows 빌드와
@@ -547,11 +613,11 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
    픽스처뿐이고 나머지(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)는
    코드 리뷰 수준입니다. 위에 적은 VGM EOF 오프셋 이슈도 실제 파일에서
    재현되는지 확인이 필요합니다.
-2. **AY 실제 오디오 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
+4. **AY 실제 오디오 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
    컴파일되는 것은 실제 Mac 빌드로 이미 확인됐습니다 (에러 0). 남은 건
    실제 ZX Spectrum AY 파일을 `LivePlayer`나 `MDPlayerUI`로 재생해서
    AY8910+ZXBeep 배선이 실제로 올바른 소리를 내는지 청취 확인하는 것뿐입니다.
-3. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
+5. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
    재생 목록, 재생 시간 표시/탐색바, 볼륨 조절, 최근 파일 목록 같은 실사용에
    필요한 기본 기능을 추가할 수 있습니다.
 
