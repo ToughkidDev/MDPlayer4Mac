@@ -2038,6 +2038,14 @@ namespace MDPlayer
         }
 
 
+        // Audio.cs:12075 GetK051649Register - one-line forward to scc_k051649's own
+        // GetK051649_State (the original comments out an mds.ReadK051649Status alternative
+        // but uses this path instead), added for K051649's Visualizer.
+        public MDSound.K051649.k051649_state GetK051649Register(int chipID)
+        {
+            return scc_k051649.GetK051649_State((byte)chipID);
+        }
+
         public MDSound.K054539.k054539_state GetK054539State(int chipID)
         {
             return mds.ReadK054539Status((byte)chipID);
