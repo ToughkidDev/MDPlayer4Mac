@@ -2059,6 +2059,14 @@ namespace MDPlayer
             return mds.getK053260State(chipID);
         }
 
+        // Audio.cs:12090 GetRf5c164Register - one-line forward to mds.ReadRf5c164Register (mds
+        // is private on this class, same reason as GetK053260Register above), added for
+        // MegaCD/RF5C164's Visualizer.
+        public MDSound.scd_pcm.pcm_chip_ GetRf5c164Register(int chipID)
+        {
+            return mds.ReadRf5c164Register(chipID);
+        }
+
 
         public MDSound.np.np_nes_fds.NES_FDS getFDSRegister(int chipID, EnmModel model)
         {
