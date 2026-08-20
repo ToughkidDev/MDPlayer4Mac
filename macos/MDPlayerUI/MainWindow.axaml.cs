@@ -73,6 +73,7 @@ namespace MDPlayer.UI
         private K053260Visualizer? k053260Visualizer;
         private K054539Visualizer? k054539Visualizer;
         private MegaCDVisualizer? megaCdVisualizer;
+        private MpcmX68kVisualizer? mpcmX68kVisualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -285,6 +286,16 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(megaCdVisualizer.Screen);
             }
 
+            // MpcmX68k is architecturally unlike every other chip: frmMpcmX68k.cs reads
+            // driver-internal state directly (see MpcmX68kVisualizer.cs's header), not via
+            // ChipRegister, and there is no distinct enmInstrumentType.MpcmX68k - only
+            // .mpcmpp (this port's MND/ZMS loaders always wire the mpcmpp chip model).
+            if (session.ChipClocks.ContainsKey(MDSound.MDSound.enmInstrumentType.mpcmpp) && session.Driver != null)
+            {
+                mpcmX68kVisualizer = new MpcmX68kVisualizer(session.Driver);
+                VisualizerHost.Children.Add(mpcmX68kVisualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -295,7 +306,8 @@ namespace MDPlayer.UI
                 && n106Visualizer == null && dmgVisualizer == null && huc6280Visualizer == null
                 && k051649Visualizer == null && c140Visualizer == null && c352Visualizer == null
                 && ga20Visualizer == null && k053260Visualizer == null
-                && k054539Visualizer == null && megaCdVisualizer == null) return;
+                && k054539Visualizer == null && megaCdVisualizer == null
+                && mpcmX68kVisualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -362,6 +374,8 @@ namespace MDPlayer.UI
                 k054539Visualizer?.ScreenDrawParams();
                 megaCdVisualizer?.ScreenChangeParams();
                 megaCdVisualizer?.ScreenDrawParams();
+                mpcmX68kVisualizer?.ScreenChangeParams();
+                mpcmX68kVisualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -401,6 +415,7 @@ namespace MDPlayer.UI
             k053260Visualizer = null;
             k054539Visualizer = null;
             megaCdVisualizer = null;
+            mpcmX68kVisualizer = null;
             VisualizerHost.Children.Clear();
         }
 
