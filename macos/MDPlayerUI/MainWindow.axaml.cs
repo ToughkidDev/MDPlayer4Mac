@@ -53,6 +53,7 @@ namespace MDPlayer.UI
         private Y8950Visualizer? y8950Visualizer;
         private Ymf262Visualizer? ymf262Visualizer;
         private Ymf278bVisualizer? ymf278bVisualizer;
+        private Ym2203Visualizer? ym2203Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -145,10 +146,16 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ymf278bVisualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2203, out uint ym2203Clock))
+            {
+                ym2203Visualizer = new Ym2203Visualizer(session.ChipRegister, ym2203Clock);
+                VisualizerHost.Children.Add(ym2203Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
-                && ymf262Visualizer == null && ymf278bVisualizer == null) return;
+                && ymf262Visualizer == null && ymf278bVisualizer == null && ym2203Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -175,6 +182,8 @@ namespace MDPlayer.UI
                 ymf262Visualizer?.ScreenDrawParams();
                 ymf278bVisualizer?.ScreenChangeParams();
                 ymf278bVisualizer?.ScreenDrawParams();
+                ym2203Visualizer?.ScreenChangeParams();
+                ym2203Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -194,6 +203,7 @@ namespace MDPlayer.UI
             y8950Visualizer = null;
             ymf262Visualizer = null;
             ymf278bVisualizer = null;
+            ym2203Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
