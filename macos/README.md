@@ -545,13 +545,17 @@ SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함)가 실기에
 같은 패턴(칩별 `DrawBuffXxx.cs` + `XxxVisualizer.cs`, `ChipRegister` 필드
 직접 참조, 자체 스프라이트 로딩)으로 표시계를 계속 이식하는 중입니다.
 YM2151(OPM, 8채널 FM)/AY8910(PSG/SSG)/S5B(Sunsoft FME-7)/YM2413(OPLL)/
-YM3526(OPL/OPL1)가 이번 라운드에서 완료됐습니다.
+YM3526(OPL/OPL1)/YM3812(OPL2)가 이번 라운드에서 완료됐습니다.
 
 - **YM3526(OPL/OPL1): 이번 라운드에서 신규 구현, 아직 실기 미검증.** 원본
   `frmYM3526.cs`를 그대로 포팅 — 9개 FM 채널이 각자 독자적인 2-오퍼레이터
   파라미터 표(AR/DR/SL/RR/KL/TL/MT/AM/VB/EG/KR × 2 + 채널당 BL/F-Num/CN/FB)를
   갖는 구조(YM2413처럼 칩 전역 공유 표가 아님) + LED 볼륨미터/건반 + 5개 고정
   리듬 채널(BD/SD/TOM/CYM/HH) + ADPCM 관련 DA/DV 온오프 플래그.
+- **YM3812(OPL2): 이번 라운드에서 신규 구현, 아직 실기 미검증.** 원본
+  `frmYM3812.cs`를 그대로 포팅 — YM3526과 채널 구조가 거의 동일하고(같은
+  9+5채널, 같은 레지스터 오프셋), OPL2의 특징인 오퍼레이터별 파형 선택
+  (Waveform Select, WS 0..3) 필드 하나만 추가됐습니다.
 
 - **YM2413(OPLL): 이번 라운드에서 신규 구현, 아직 실기 미검증.** 원본
   `frmYM2413.cs`를 그대로 포팅 — 9개 멜로디 FM 채널(LED 볼륨미터/건반/
