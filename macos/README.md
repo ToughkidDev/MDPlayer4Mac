@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k 완료 — NES 계열 + WF 계열 전체 완료, PCM 계열 진행 중(7/15), 실기 검증 대기)
+## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM 완료 — NES 계열 + WF 계열 전체 완료, PCM 계열 진행 중(8/15), 실기 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,7 +536,7 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
-### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~13개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k 완료 — NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열 7/15 진행 중, 실기 검증 대기)
+### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~12개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM 완료 — NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열 8/15 진행 중, 실기 검증 대기)
 
 MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
 팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업입니다.
@@ -562,10 +562,13 @@ Z80과 짝을 이룸)/K054539(코나미 8채널 PCM 샘플 재생 칩, 채널당
 같은 `MDSound.scd_pcm` 클래스를 공유)/MpcmX68k(X68000의 MPCM ADPCM/PCM
 샘플 재생 서브시스템, ZMS/MND 시퀀스 음악 포맷용 — 데이터 접근 구조가
 지금까지의 다른 모든 칩과 근본적으로 달라 생성자 시그니처 예외를 둔
-첫 사례)가 이번 라운드에서 완료됐습니다 — 이로써 NES 계열 8종(NESDMC/
-FDS/MMC5/VRC6/VRC7/N106/DMG + 이미 완료된 S5B(FME-7))과 WF 계열 2종
-(HuC6280/K051649)이 모두 끝났고, PCM 계열(~15종)도 C140/C352/GA20/
-K053260/K054539/MegaCD/MpcmX68k 7종째까지 진행했습니다.
+첫 사례)/MultiPCM(야마하 YMW258-F, 세가 아케이드/콘솔 기판에서 널리
+쓰인 28채널 웨이브테이블/PCM 샘플 재생 칩 — 채널 배지를 그리지 않는
+원본의 별난 동작을 그대로 보존)가 이번 라운드에서 완료됐습니다 — 이로써
+NES 계열 8종(NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG + 이미 완료된
+S5B(FME-7))과 WF 계열 2종(HuC6280/K051649)이 모두 끝났고, PCM 계열
+(~15종)도 C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM
+8종째까지 진행했습니다.
 
 - **MegaCD(세가 메가 CD/세가 CD 내장 RF5C164 8채널 PCM 샘플 재생 칩):
   이번 라운드에서 신규 구현, 아직 실기 미검증.** 원본 `frmMegaCD.cs`를
@@ -624,6 +627,32 @@ K053260/K054539/MegaCD/MpcmX68k 7종째까지 진행했습니다.
   옮겼고(예: 주소 필드들은 `(67 + 9*k) * 4`), `32`/`40`처럼 원본이 이미
   raw 픽셀 값으로 쓴 좌표는 곱하지 않고 그대로 옮겼습니다 — 원본 소스의
   좌표 표현 방식 차이를 그대로 존중.
+- **MultiPCM(야마하 YMW258-F, 세가 아케이드/콘솔 기판에서 널리 쓰인
+  28채널 웨이브테이블/PCM 샘플 재생 칩): 이번 라운드에서 신규 구현,
+  아직 실기 미검증.** 원본 `frmMultiPCM.cs`를 그대로 포팅 — 채널 28개,
+  채널당 8px 행 하나씩 바이트로 압축된 2타일 팬 아이콘, "키온" 플래그
+  아이콘, 악기 번호, 12비트 주파수 표시, "TL 보간" 플래그 아이콘,
+  TL/LFO 주파수/PLFO/ALFO, 24비트 샘플 시작/16비트 끝/16비트 루프 주소
+  표시, LFO 비브라토/어택/디케이1/디케이2/디케이 레벨/릴리스/키 레이트
+  스케일/AM 16진 표시, 독립된 L/R 볼륨 LED 바(원시 픽셀 좌표 오버로드
+  `VolumeXY`), 키보드/노트 표시가 나열됩니다. **데이터 소스**:
+  `chipRegister.getMultiPCMRegister(chipId)`를 직접 호출합니다 — 이미
+  `ChipRegister`의 public 메서드라(Windows판 `Audio.GetMultiPCMRegister`
+  도 `chipRegister.getMultiPCMRegister`를 그대로 포워딩) 새 게터가
+  필요 없었습니다. **클록 처리 불필요**: 원본 `screenChangeParams`는
+  클록 값을 전혀 읽지 않습니다(원본에 있던 `searchMultiPCMNote`는 전체가
+  주석 처리된 죽은 코드이자 실제로 호출되지도 않아 — 노트 계산은 옥타브/
+  피치 레지스터에서 직접 이뤄짐 — 이 포트에서는 아예 이식하지 않고
+  생략했습니다). **채널 배지 미표시라는 원본의 별난 동작 보존**: 원본
+  `screenDrawParams`는 `ChMultiPCM`/`ChMultiPCM_P` 호출이 통째로 주석
+  처리돼 있어서 — 즉 이 칩은 원본에서도 채널 배지를 프레임마다 다시
+  그리지 않습니다 — 이 포트도 채널 배지를 그리지 않습니다("고쳐서" 넣지
+  않음). **키보드 오버로드 별난 동작 보존**: `KeyBoardToMultiPCM`은
+  다른 칩들의 `KeyBoard`/`KeyBoardXYFX`와 달리 옥타브 범위 검사가
+  `< 10`이 아니라 `< 8`이고(이 칩의 노트 범위가 7옥타브로 클램프되기
+  때문), 음수 노트로 갈 때만 공백 텍스트를 지우는 등(다른 칩처럼
+  무조건 먼저 지우고 조건부로 덮어쓰는 게 아니라) 구조 자체가 다른데,
+  모두 원본 그대로 포팅했습니다.
 - **K054539(코나미 8채널 PCM 샘플 재생 칩): 이번 라운드에서 신규 구현,
   아직 실기 미검증.** 원본 `frmK054539.cs`를 그대로 포팅 — 같은 배경
   이미지 안에 특이한 2단 레이아웃을 씁니다: 1~8행(위쪽)에는 키보드/노트,
@@ -1192,13 +1221,13 @@ K053260/K054539/MegaCD/MpcmX68k 7종째까지 진행했습니다.
 
 ## 다음 단계 후보
 
-1. **남은 ~13개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
+1. **남은 ~12개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
    YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/
    YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/
-   GA20/K053260/K054539/MegaCD/MpcmX68k는 완료했고(NES 계열 8종 + WF 계열
-   2종 전체 완료, PCM 계열 15종 중 C140/C352/GA20/K053260/K054539/
-   MegaCD/MpcmX68k 완료), 이어서 나머지 칩들(PCM 계열 나머지 8종:
-   MultiPCM/OKIM6258/OKIM6295/PCM8/PWM/QSound/Rf5c68/SegaPCM, 그리고
+   GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM는 완료했고(NES 계열 8종 +
+   WF 계열 2종 전체 완료, PCM 계열 15종 중 C140/C352/GA20/K053260/
+   K054539/MegaCD/MpcmX68k/MultiPCM 완료), 이어서 나머지 칩들(PCM 계열
+   나머지 7종: OKIM6258/OKIM6295/PCM8/PWM/QSound/Rf5c68/SegaPCM, 그리고
    YMZ280B — SAA1099는 범위 제외)을 순서대로 이식 중입니다. 각 칩마다
    `DrawBuffXxx.cs`+
    `XxxVisualizer.cs` 작성 → 필요한 스프라이트 `export_sprites.py`로 추출 →
