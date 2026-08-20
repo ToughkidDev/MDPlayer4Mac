@@ -44,6 +44,7 @@ namespace MDPlayer.UI
         private MusicEngineSession? loadedSession;
         private Sn76489Visualizer? sn76489Visualizer;
         private Ym2612Visualizer? ym2612Visualizer;
+        private Ym2151Visualizer? ym2151Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -82,7 +83,13 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2612Visualizer.Screen);
             }
 
-            if (sn76489Visualizer == null && ym2612Visualizer == null) return;
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2151, out uint ym2151Clock))
+            {
+                ym2151Visualizer = new Ym2151Visualizer(session.ChipRegister, ym2151Clock);
+                VisualizerHost.Children.Add(ym2151Visualizer.Screen);
+            }
+
+            if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -91,6 +98,8 @@ namespace MDPlayer.UI
                 sn76489Visualizer?.ScreenDrawParams();
                 ym2612Visualizer?.ScreenChangeParams();
                 ym2612Visualizer?.ScreenDrawParams();
+                ym2151Visualizer?.ScreenChangeParams();
+                ym2151Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -101,6 +110,7 @@ namespace MDPlayer.UI
             visualizerTimer = null;
             sn76489Visualizer = null;
             ym2612Visualizer = null;
+            ym2151Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 

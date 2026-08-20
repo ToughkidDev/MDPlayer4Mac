@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-19, 음악 파일 포맷 13개 지원 + SN76489 칩 채널 표시계 실기 검증 완료 + YM2612 표시계 구현 — 실기 검증 대기)
+## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151 완료, 실기 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,12 +536,32 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
-### 🚧 칩 채널 표시계(visualizer) — SN76489 실기 검증 완료, YM2612 구현 (실기 검증 대기)
+### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~36개 칩 순차 구현 중 (YM2151 완료, 실기 검증 대기)
 
 MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
-팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업으로,
-SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함) 두 칩의 표시계를 원본
-스프라이트를 그대로 이식해 구현했습니다.
+팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업입니다.
+SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함)가 실기에서 정상 동작
+확인됐고("정상적으로 작동하고 있어"), 이제 남은 모든 칩(~36개)에 대해서도
+같은 패턴(칩별 `DrawBuffXxx.cs` + `XxxVisualizer.cs`, `ChipRegister` 필드
+직접 참조, 자체 스프라이트 로딩)으로 표시계를 계속 이식하는 중입니다.
+YM2151(OPM, 8채널 FM, PCM/확장슬롯 없음)이 이번 라운드에서 완료됐습니다.
+
+- **YM2151: 이번 라운드에서 신규 구현, 아직 실기 미검증.** 원본
+  `frmYM2151.cs`를 그대로 포팅 — 8개 FM 채널(LED 볼륨미터/건반/팬/Key
+  Code·Key Fraction 16진 표시) + 채널당 4개 오퍼레이터의
+  AR/DR/SR/RR/SL/TL/KS/ML/DT/DT2/AM 음색표(InstOPM) + 칩 전역 Noise
+  Enable/Frequency, 하드웨어 LFO(Frequency/Waveform/AMD/PMD/Sync),
+  타이머A/B 표시. YM2612와 달리 PCM 채널이나 Ch3류 확장 슬롯 모드가 없어서
+  채널마다 동일한 그리기 경로 하나만 탑니다.
+  의도적 단순화 한 가지: 원본의 노트(건반 하이라이트) 계산은
+  `Audio.DriverVirtual.YM2151Hosei[chipID]`라는 드라이버 인스턴스 상태(칩
+  클럭 보정값)를 더하는데, 이 값은 `ChipRegister`에 저장되지 않고
+  `setYM2151Register`를 거쳐 MIDI 내보내기용으로만 쓰입니다
+  (`ChipRegister.cs`의 해당 메서드 본문 확인 완료) — 이 포트의 "ChipRegister를
+  직접 읽는다" 패턴상 가져올 방법이 없어서 `hosei=0`으로 고정했습니다. 이는
+  원본이 `Audio.DriverVirtual`이 null일 때 쓰는 기본값과 동일하며, 최악의 경우
+  건반 하이라이트가 한두 음 어긋나는 정도이지 레지스터/음량/음색표 값 자체는
+  전혀 영향받지 않습니다.
 
 - **SN76489: 실기 검증 완료.** 처음 실기 테스트에서 "배경만 그려지고 재생 중
   전혀 갱신되지 않는다"는 버그가 보고됐는데, 원인 규명을 위해 디버그
@@ -594,37 +614,48 @@ SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함) 두 칩의 �
   `VgmEngine.Load`/`MusicEngine.Finish` 양쪽에서 채우도록 했습니다 — 향후 다른
   칩 표시계를 추가할 때도 같은 방식으로 재사용됩니다.
 - **새 파일**: `MDPlayerUI/Visualizer/SpriteAtlas.cs`(로더),
-  `PixelScreen.cs`(렌더링 엔진), `DrawBuffSn76489.cs`/`DrawBuffYm2612.cs`
-  (drawBuff.cs 서브셋 포팅, 칩별로 독립적인 파일 — 한쪽 칩만 쓰는 VGM이어도
-  다른 칩 표시계 로딩에 의존하지 않도록), `Sn76489Visualizer.cs`/
-  `Ym2612Visualizer.cs`(각 frmXxxx.cs의 ScreenChangeParams/ScreenDrawParams
-  포팅). `MainWindow.axaml`에 표시계를 붙일 `VisualizerHost` 패널을 추가하고,
-  `MainWindow.axaml.cs`는 재생 시작 시 `MusicEngineSession`을 필드로 유지하며
-  ~30fps `DispatcherTimer`로 두 표시계를 모두 갱신하도록 했습니다(원본은
+  `PixelScreen.cs`(렌더링 엔진), `DrawBuffSn76489.cs`/`DrawBuffYm2612.cs`/
+  `DrawBuffYm2151.cs` (drawBuff.cs 서브셋 포팅, 칩별로 독립적인 파일 — 한쪽
+  칩만 쓰는 VGM이어도 다른 칩 표시계 로딩에 의존하지 않도록),
+  `Sn76489Visualizer.cs`/`Ym2612Visualizer.cs`/`Ym2151Visualizer.cs`(각
+  frmXxxx.cs의 ScreenChangeParams/ScreenDrawParams 포팅). `MainWindow.axaml`에
+  표시계를 붙일 `VisualizerHost` 패널을 추가하고, `MainWindow.axaml.cs`는
+  재생 시작 시 `MusicEngineSession`을 필드로 유지하며 ~30fps
+  `DispatcherTimer`로 화면에 실린 표시계를 모두 갱신하도록 했습니다(원본은
   기본 60fps 스레드 루프 — 일단 가볍게 시작해서 실기 확인 후 조정 예정).
   창 크기는 어느 칩이 표시되는지에 따라 세로 길이가 크게 달라지므로
   (`SN76489`만 ~80px vs `YM2612`만 ~368px) 고정 크기 대신
-  `SizeToContent="WidthAndHeight"`로 바꿨습니다.
+  `SizeToContent="WidthAndHeight"`로 바꿨습니다. 칩을 추가할 때마다
+  `MainWindow.axaml.cs`에 필드 하나 + `ChipClocks` 조회 한 줄 + Tick 핸들러
+  두 줄을 추가하는 패턴이 확립되어 있습니다.
 - **검증 상태 (중요)**: `MDPlayerCore`(엔진) 쪽 변경(`ChipClocks` 배선)은
   이 세션에서 스텁 빌드로 컴파일 확인했지만(`0 error`), **`MDPlayerUI`
   (Avalonia) 쪽 새 코드는 이 샌드박스에서 전혀 빌드 검증할 수 없었습니다**
   — `MDPlayerUI` 프로젝트 자체가 nuget.org 접근 불가로 한 번도 로컬 빌드된
-  적이 없기 때문입니다(기존과 동일한 제약). SN76489 쪽은 실기에서 정상
-  동작이 이미 확인됐고(위 항목 참고), 그 렌더링 파이프라인(`PixelScreen.cs`/
-  `WriteableBitmap`/`DrawingContext.PushRenderOptions`/`AssetLoader`)을
-  YM2612도 그대로 재사용하므로 그 부분은 검증된 셈이지만, YM2612 고유의
-  레지스터 파싱/좌표 로직(`Ym2612Visualizer.cs`/`DrawBuffYm2612.cs`)은 아직
-  실기 확인 전입니다.
+  적이 없기 때문입니다(기존과 동일한 제약). SN76489/YM2612 쪽은 실기에서
+  정상 동작이 이미 확인됐고(위 항목 참고), 그 렌더링 파이프라인
+  (`PixelScreen.cs`/`WriteableBitmap`/`DrawingContext.PushRenderOptions`/
+  `AssetLoader`)을 이후 모든 칩이 그대로 재사용하므로 그 부분은 검증된
+  셈이지만, 칩별 고유 레지스터 파싱/좌표 로직(`YM2151Visualizer.cs`/
+  `DrawBuffYm2151.cs` 등, 그리고 앞으로 추가될 나머지 칩들)은 각각 실기
+  확인 전입니다.
 
 ## 다음 단계 후보
 
-1. **YM2612 표시계 실기 검증**: 실제 Mac에서 빌드하고, YM2612를 쓰는 VGM
-   파일을 `MDPlayerUI`로 열어 6개 FM 채널의 LED 볼륨미터/건반/팬/음색표
-   (InstOPN2)/LFO·타이머 표시가 실제로 올바르게 그려지는지, Ch3 특수모드
-   전환 시 확장 슬롯 3개가 정상 표시되는지 확인이 필요합니다. 문제가 있다면
-   `Ym2612Visualizer.cs`(레지스터 파싱)나 `DrawBuffYm2612.cs`(좌표/스프라이트
-   인덱싱)를 의심해보세요.
-2. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
+1. **남은 ~35개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151에 이어
+   같은 패턴으로 나머지 칩들(PSG 계열 AY8910/SAA1099/S5B, OPL 계열
+   YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B, OPN 계열
+   YM2203/YM2608/YM2609/YM2610/YMF271, NES 계열
+   NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG, WF 계열 HuC6280/K051649, PCM 계열
+   14종 등)을 순서대로 이식 중입니다. 각 칩마다 `DrawBuffXxx.cs`+
+   `XxxVisualizer.cs` 작성 → 필요한 스프라이트 `export_sprites.py`로 추출 →
+   `MainWindow.axaml.cs` 배선 → 커밋 → 기기 동기화 순서를 반복합니다.
+2. **YM2612/YM2151 표시계 실기 검증**: 실제 Mac에서 빌드하고, 각 칩을 쓰는
+   VGM 파일을 `MDPlayerUI`로 열어 LED 볼륨미터/건반/팬/음색표/LFO·타이머
+   표시가 실제로 올바르게 그려지는지 확인이 필요합니다(YM2612는 Ch3 특수모드
+   확장 슬롯 3개 포함). 문제가 있다면 해당 `XxxVisualizer.cs`(레지스터
+   파싱)나 `DrawBuffXxx.cs`(좌표/스프라이트 인덱싱)를 의심해보세요.
+3. **실제 파일로 검증**: 이제 13개 포맷 + VGM 스펙 칩 38개가 전부 배선되어
    있고, 실제 Mac에서 전체 빌드 성공 + S98/NSF 픽스처 실기 오디오 확인까지
    끝났으니, 각 포맷의 실제 파일(vgmrips.net의 VGM, HVSC의 SID/AY, 각종 NSF/GBS/
    HES 아카이브 등)을 받아(라이선스/저작권 확인 후) 원본 Windows 빌드와
@@ -633,11 +664,11 @@ SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함) 두 칩의 �
    픽스처뿐이고 나머지(XGM/XGM2/SID/MND/ZMS/ZMD/MDX/MDR/GBS/HES/AY/ZGM)는
    코드 리뷰 수준입니다. 위에 적은 VGM EOF 오프셋 이슈도 실제 파일에서
    재현되는지 확인이 필요합니다.
-3. **AY 실제 오디오 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
+4. **AY 실제 오디오 검증**: `Driver/AY/AY.cs`가 실제 Z80dotNet 패키지로
    컴파일되는 것은 실제 Mac 빌드로 이미 확인됐습니다 (에러 0). 남은 건
    실제 ZX Spectrum AY 파일을 `LivePlayer`나 `MDPlayerUI`로 재생해서
    AY8910+ZXBeep 배선이 실제로 올바른 소리를 내는지 청취 확인하는 것뿐입니다.
-4. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
+5. **MDPlayerUI 기능 확장**: 지금은 파일 하나 열기/재생/정지뿐입니다.
    재생 목록, 재생 시간 표시/탐색바, 볼륨 조절, 최근 파일 목록 같은 실사용에
    필요한 기본 기능을 추가할 수 있습니다.
 
