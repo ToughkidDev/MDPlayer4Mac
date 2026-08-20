@@ -64,6 +64,7 @@ namespace MDPlayer.UI
         private Vrc6Visualizer? vrc6Visualizer;
         private Vrc7Visualizer? vrc7Visualizer;
         private N106Visualizer? n106Visualizer;
+        private DmgVisualizer? dmgVisualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -222,6 +223,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(n106Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.DMG, out uint dmgClock))
+            {
+                dmgVisualizer = new DmgVisualizer(session.ChipRegister, dmgClock);
+                VisualizerHost.Children.Add(dmgVisualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -229,7 +236,7 @@ namespace MDPlayer.UI
                 && ym2608Visualizer == null && ym2609Visualizer == null && ym2610Visualizer == null
                 && ymf271Visualizer == null && nesdmcVisualizer == null && fdsVisualizer == null
                 && mmc5Visualizer == null && vrc6Visualizer == null && vrc7Visualizer == null
-                && n106Visualizer == null) return;
+                && n106Visualizer == null && dmgVisualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -278,6 +285,8 @@ namespace MDPlayer.UI
                 vrc7Visualizer?.ScreenDrawParams();
                 n106Visualizer?.ScreenChangeParams();
                 n106Visualizer?.ScreenDrawParams();
+                dmgVisualizer?.ScreenChangeParams();
+                dmgVisualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -308,6 +317,7 @@ namespace MDPlayer.UI
             vrc6Visualizer = null;
             vrc7Visualizer = null;
             n106Visualizer = null;
+            dmgVisualizer = null;
             VisualizerHost.Children.Clear();
         }
 

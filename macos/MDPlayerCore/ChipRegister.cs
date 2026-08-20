@@ -2011,6 +2011,15 @@ namespace MDPlayer
             return mmc5regs;
         }
 
+        // Audio.cs:12256 GetDMGRegister - one-line forward to mds.ReadDMG, same shape as
+        // GetYMF271Register, added for DMG's Visualizer.
+        public MDSound.gb.gb_sound_t GetDMGRegister(int chipID)
+        {
+            if (chipID == 1) return null;
+
+            return mds.ReadDMG((byte)chipID);
+        }
+
         public MDSound.iremga20.ga20_state GetGA20State(int chipID)
         {
             return mds.ReadGA20Status((byte)chipID);
