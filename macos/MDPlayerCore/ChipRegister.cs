@@ -1965,6 +1965,22 @@ namespace MDPlayer
             }
         }
 
+        // Audio.cs:12220 GetFDSRegister - same NSF-direct/VGM-fallback shape as
+        // GetAPURegister/GetDMCRegister above, for FDS's Visualizer.
+        public MDSound.np.np_nes_fds.NES_FDS GetFDSRegister(int chipID)
+        {
+            MDSound.np.np_nes_fds.NES_FDS reg;
+
+            if (nes_apu == null) reg = null;
+            else if (nes_apu.chip == null) reg = null;
+            else if (chipID == 1) reg = null;
+            else reg = nes_fds.chip;
+
+            reg ??= getFDSRegister(chipID, EnmModel.VirtualModel);
+
+            return reg;
+        }
+
         public MDSound.iremga20.ga20_state GetGA20State(int chipID)
         {
             return mds.ReadGA20Status((byte)chipID);
