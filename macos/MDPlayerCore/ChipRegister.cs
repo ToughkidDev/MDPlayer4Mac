@@ -2020,6 +2020,13 @@ namespace MDPlayer
             return mds.ReadDMG((byte)chipID);
         }
 
+        // Audio.cs:12070 GetHuC6280Register - one-line forward to mds.ReadHuC6280Status,
+        // same shape as GetDMGRegister, added for HuC6280's Visualizer.
+        public MDSound.Ootake_PSG.huc6280_state GetHuC6280Register(int chipID)
+        {
+            return mds.ReadHuC6280Status(chipID);
+        }
+
         public MDSound.iremga20.ga20_state GetGA20State(int chipID)
         {
             return mds.ReadGA20Status((byte)chipID);
