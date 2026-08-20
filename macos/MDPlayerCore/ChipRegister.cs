@@ -5429,8 +5429,11 @@ namespace MDPlayer
             else mds.resetMPCMX68kMask(0, chipID, ch);
         }
 
-        
-        internal okim6295.okim6295Info GetOKIM6295Info(int chipID)
+
+        // Widened from internal to public - MDPlayerUI is a separate assembly from
+        // MDPlayerCore, so OKIM6295Visualizer (like every other XxxVisualizer.cs in this
+        // port) needs public access to read chip state through ChipRegister.
+        public okim6295.okim6295Info GetOKIM6295Info(int chipID)
         {
             return mds.GetOKIM6295Info(0, chipID);
         }
