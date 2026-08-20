@@ -67,6 +67,7 @@ namespace MDPlayer.UI
         private DmgVisualizer? dmgVisualizer;
         private Huc6280Visualizer? huc6280Visualizer;
         private K051649Visualizer? k051649Visualizer;
+        private C140Visualizer? c140Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -243,6 +244,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(k051649Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.C140, out uint c140Clock))
+            {
+                c140Visualizer = new C140Visualizer(session.ChipRegister, c140Clock);
+                VisualizerHost.Children.Add(c140Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -251,7 +258,7 @@ namespace MDPlayer.UI
                 && ymf271Visualizer == null && nesdmcVisualizer == null && fdsVisualizer == null
                 && mmc5Visualizer == null && vrc6Visualizer == null && vrc7Visualizer == null
                 && n106Visualizer == null && dmgVisualizer == null && huc6280Visualizer == null
-                && k051649Visualizer == null) return;
+                && k051649Visualizer == null && c140Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -306,6 +313,8 @@ namespace MDPlayer.UI
                 huc6280Visualizer?.ScreenDrawParams();
                 k051649Visualizer?.ScreenChangeParams();
                 k051649Visualizer?.ScreenDrawParams();
+                c140Visualizer?.ScreenChangeParams();
+                c140Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -339,6 +348,7 @@ namespace MDPlayer.UI
             dmgVisualizer = null;
             huc6280Visualizer = null;
             k051649Visualizer = null;
+            c140Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
