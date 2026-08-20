@@ -7087,6 +7087,14 @@ namespace MDPlayer
             return nes_vrc7.GetVRC7regs();
         }
 
+        // Audio.cs:11996 GetVRC7Register - public forward of the internal getVRC7Register
+        // above (that method predates this port's Visualizer work and was marked internal,
+        // unlike this port's other getters), added for VRC7's Visualizer.
+        public byte[] GetVRC7Register(int chipID)
+        {
+            return getVRC7Register(chipID);
+        }
+
         public ITrackInfo[] getN106Register(int chipID)
         {
             if (nes_n106 == null) return null;
