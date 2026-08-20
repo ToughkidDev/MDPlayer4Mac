@@ -2075,6 +2075,14 @@ namespace MDPlayer
             return mds.ReadOKIM6258Status(chipID);
         }
 
+        // Audio.cs:12095 GetRf5c68Register - one-line forward to mds.ReadRf5c68Register (mds
+        // is private on this class, same reason as GetK053260Register above), added for
+        // Rf5c68's Visualizer.
+        public MDSound.rf5c68.rf5c68_state GetRf5c68Register(int chipID)
+        {
+            return mds.ReadRf5c68Register(chipID);
+        }
+
 
         public MDSound.np.np_nes_fds.NES_FDS getFDSRegister(int chipID, EnmModel model)
         {

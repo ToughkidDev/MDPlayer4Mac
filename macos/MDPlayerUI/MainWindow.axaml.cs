@@ -79,6 +79,7 @@ namespace MDPlayer.UI
         private OKIM6295Visualizer? okim6295Visualizer;
         private PCM8Visualizer? pcm8Visualizer;
         private QSoundVisualizer? qSoundVisualizer;
+        private Rf5c68Visualizer? rf5c68Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -336,6 +337,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(qSoundVisualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.RF5C68, out uint rf5c68Clock))
+            {
+                rf5c68Visualizer = new Rf5c68Visualizer(session.ChipRegister, rf5c68Clock);
+                VisualizerHost.Children.Add(rf5c68Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -349,7 +356,8 @@ namespace MDPlayer.UI
                 && k054539Visualizer == null && megaCdVisualizer == null
                 && mpcmX68kVisualizer == null && multiPcmVisualizer == null
                 && okim6258Visualizer == null && okim6295Visualizer == null
-                && pcm8Visualizer == null && qSoundVisualizer == null) return;
+                && pcm8Visualizer == null && qSoundVisualizer == null
+                && rf5c68Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -428,6 +436,8 @@ namespace MDPlayer.UI
                 pcm8Visualizer?.ScreenDrawParams();
                 qSoundVisualizer?.ScreenChangeParams();
                 qSoundVisualizer?.ScreenDrawParams();
+                rf5c68Visualizer?.ScreenChangeParams();
+                rf5c68Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -473,6 +483,7 @@ namespace MDPlayer.UI
             okim6295Visualizer = null;
             pcm8Visualizer = null;
             qSoundVisualizer = null;
+            rf5c68Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
