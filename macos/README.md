@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5 완료, 실기 검증 대기)
+## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6 완료, 실기 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,21 +536,39 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
-### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~26개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5 완료, 실기 검증 대기)
+### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~25개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6 완료, 실기 검증 대기)
 
 MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
 팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업입니다.
 SN76489(PSG)와 YM2612(FM, 오퍼레이터 파라미터 표 포함)가 실기에서 정상 동작
-확인됐고("정상적으로 작동하고 있어"), 이제 남은 모든 칩(~26개)에 대해서도
+확인됐고("정상적으로 작동하고 있어"), 이제 남은 모든 칩(~25개)에 대해서도
 같은 패턴(칩별 `DrawBuffXxx.cs` + `XxxVisualizer.cs`, `ChipRegister` 필드
 직접 참조, 자체 스프라이트 로딩)으로 표시계를 계속 이식하는 중입니다.
 YM2151(OPM, 8채널 FM)/AY8910(PSG/SSG)/S5B(Sunsoft FME-7)/YM2413(OPLL)/
 YM3526(OPL/OPL1)/YM3812(OPL2)/Y8950(MSX-AUDIO FM+ADPCM)/YMF262(OPL3)/
 YMF278B(OPL4)/YM2203(OPN)/YM2608(OPNA)/YM2609(가상 "듀얼 OPNA")/
 YM2610(OPNB, Neo Geo)/YMF271(OPX)/NESDMC(NES/패미컴 내장 APU)/
-FDS(패미컴 디스크 시스템 확장 음원)/MMC5(NES 카트리지 매퍼 확장 음원)가
-이번 라운드에서 완료됐습니다.
+FDS(패미컴 디스크 시스템 확장 음원)/MMC5(NES 카트리지 매퍼 확장 음원)/
+VRC6(코나미 NES 카트리지 매퍼 확장 음원)가 이번 라운드에서 완료됐습니다.
 
+- **VRC6(코나미 NES 카트리지 매퍼 확장 음원): 이번 라운드에서 신규 구현,
+  아직 실기 미검증.** 원본 `frmVRC6.cs`를 그대로 포팅 — 펄스(스퀘어) 2채널 +
+  톱니파 1채널, 총 3채널이며 NESDMC/FDS/MMC5와 달리 균일한 16px 높이 행
+  3개로 배치됩니다. **데이터 소스가 지금까지의 NES 계열 칩들과 또
+  다릅니다**: NESDMC/FDS/MMC5는 전부 원시 레지스터 바이트를 읽어 Visualizer
+  레이어에서 비트필드를 해석했지만, VRC6은 YMF271처럼 에뮬레이션 코어가 이미
+  디코딩해 둔 `MDSound.np.chip.TrackInfoBasic[]` 트랙 정보 객체
+  (`GetTone`/`GetVolume`/`GetKeyStatus`/`GetFreqp`/`GetHalt`/`GetNote`/
+  `GetFreqHz`/`GetFreqShift`)를 그대로 읽습니다. 이 포트에 `ChipRegister.
+  GetVRC6Register`를 한 줄짜리 포워딩 게터로 추가했습니다(이 포트에서
+  다섯 번째로 새로 추가한 게터. 이미 있던 `getVRC6Register`를 감싸기만
+  하면 됐습니다). **주의 깊게 옮긴 타입 캐스팅**: `TrackInfoBasic`의
+  접근자 메서드들은 `override`가 아니라 C#의 멤버 숨김(`new`)으로
+  구현되어 있어서, `ITrackInfo[]`로 타입 지정된 참조로 호출하면 조용히
+  베이스 클래스의 항상-0 스텁이 호출됩니다 — 원본 `frmVRC6.cs`가
+  `(TrackInfoBasic[])Audio.GetVRC6Register(0)`로 명시적으로 캐스팅하는
+  이유이며, 이 포트도 동일하게 캐스팅합니다. **의도적 단순화**: `tp`는
+  0 고정, `screenInit`의 미리 그리기 루프는 다른 모든 칩과 동일하게 생략.
 - **MMC5(NES 카트리지 매퍼 확장 음원): 이번 라운드에서 신규 구현, 아직 실기
   미검증.** 원본 `frmMMC5.cs`를 그대로 포팅 — NES APU에 펄스(스퀘어) 2채널 +
   PCM 샘플 재생 1채널을 추가하는 카트리지 매퍼 칩으로, NESDMC/FDS처럼
@@ -895,10 +913,10 @@ FDS(패미컴 디스크 시스템 확장 음원)/MMC5(NES 카트리지 매퍼 �
 
 ## 다음 단계 후보
 
-1. **남은 ~26개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
+1. **남은 ~25개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
    YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/
-   YMF271/NESDMC/FDS/MMC5는 완료했고, 이어서 나머지 칩들(NES 계열
-   VRC6/VRC7/N106/DMG, WF 계열 HuC6280/K051649, PCM 계열
+   YMF271/NESDMC/FDS/MMC5/VRC6은 완료했고, 이어서 나머지 칩들(NES 계열
+   VRC7/N106/DMG, WF 계열 HuC6280/K051649, PCM 계열
    14종 등, SAA1099는 범위 제외)을 순서대로 이식 중입니다. 각 칩마다
    `DrawBuffXxx.cs`+
    `XxxVisualizer.cs` 작성 → 필요한 스프라이트 `export_sprites.py`로 추출 →

@@ -7072,6 +7072,13 @@ namespace MDPlayer
             return nes_vrc6.GetTracksInfo();
         }
 
+        // Audio.cs:11991 GetVRC6Register - one-line forward, same shape as
+        // GetYMF271Register, added for VRC6's Visualizer.
+        public ITrackInfo[] GetVRC6Register(int chipID)
+        {
+            return getVRC6Register(chipID);
+        }
+
         internal byte[] getVRC7Register(int chipID)
         {
             if (nes_vrc7 == null) return null;
