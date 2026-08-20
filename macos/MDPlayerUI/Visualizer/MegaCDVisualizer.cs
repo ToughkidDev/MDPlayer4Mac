@@ -26,19 +26,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class MegaCDVisualizer
+    public sealed class MegaCDVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.RF5C164 newParam = new();
         private readonly MDChipParams.RF5C164 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public MegaCDVisualizer(ChipRegister chipRegister, uint clockHz)
+        public MegaCDVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmMegaCD.cs's screenChangeParams never reads a clock value.
 

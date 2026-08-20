@@ -29,11 +29,11 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ym2151Visualizer
+    public sealed class Ym2151Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YM2151 newParam = new();
         private readonly MDChipParams.YM2151 oldParam = new();
@@ -55,8 +55,9 @@ namespace MDPlayer.UI.Visualizer
         // block - unlike those chips, YM2151's note readout comes straight from its Key
         // Code register (see ScreenChangeParams below), not a clock-derived frequency
         // calculation, so the original frmYM2151.cs never needs the chip clock either.
-        public Ym2151Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ym2151Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
 
             DrawBuffYm2151.LoadSprites();

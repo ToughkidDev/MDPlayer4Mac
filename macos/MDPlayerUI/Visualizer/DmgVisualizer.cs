@@ -16,19 +16,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class DmgVisualizer
+    public sealed class DmgVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.DMG newParam = new();
         private readonly MDChipParams.DMG oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public DmgVisualizer(ChipRegister chipRegister, uint clockHz)
+        public DmgVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmDMG.cs's screenChangeParams never reads a clock value.
 

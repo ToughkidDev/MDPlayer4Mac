@@ -18,19 +18,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ym2413Visualizer
+    public sealed class Ym2413Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YM2413 newParam = new();
         private readonly MDChipParams.YM2413 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public Ym2413Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ym2413Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
 
             DrawBuffYm2413.LoadSprites();

@@ -1458,6 +1458,64 @@ macOS가 `EXC_CRASH (SIGABRT)`로 전체 프로세스를 강제 종료시키는 
   실기에서 재생/정지를 반복해도 더 이상 크래시가 나지 않는지는 아직 실제
   확인 전입니다.
 
+### ✅ 버그 수정 — 동일 칩 2개 사용 곡에서 2번째 칩 오디오/채널UI 누락 (근본 원인 파악 및 수정, 컴파일 검증은 일부만 가능)
+
+- **증상**: 같은 칩을 2개 사용하는 VGM(예: SN76489x2, YM2612x2 등 - VGM
+  헤더의 클럭 값 최상위 비트로 표시되는 "dual chip" 곡)을 재생하면 1번
+  칩만 소리/채널UI가 나오고 2번째 칩은 완전히 무음이며 채널UI도 표시되지
+  않았습니다.
+- **근본 원인**: `VgmEngine.cs`가 파일당 칩 타입별로 `MDSound.MDSound.Chip`
+  항목을 **항상 정확히 1개만**(`ID = 0`) `MDSound.Init()`에 등록하고
+  있었습니다 - VGM 헤더가 `XxxDualChipFlag`(예: `SN76489DualChipFlag`,
+  `YM2612DualChipFlag`)를 세워도 무시하고 있었던 것입니다. 이 값 자체는
+  `vgm.cs`가 이미 정확히 파싱하고 있었고, `ChipRegister.cs`의 레지스터
+  쓰기 라우팅(`setYM2612Register(chipID, ...)` 등)과 `MDSound.cs`의
+  `WriteYM2612(ChipIndex, ChipID, ...)`류 오버로드도 이미 2-인스턴스를
+  완전히 지원하고 있었습니다(Windows 원본 `ChipRegister.cs`와 거의
+  1:1로 포팅된 부분이라 그대로 살아있었습니다). 문제는 순전히
+  `VgmEngine.cs`의 초기 칩 인스턴스화 단계 하나였습니다: `MDSound.Init()`
+  이 실제로 생성한 인스턴스가 1개뿐이라 `Update()`가 1번 칩만 매 프레임
+  렌더링했고(2번 칩 레지스터에 값을 써도 믹싱되는 대상 자체가 없었음),
+  채널UI 쪽은 한술 더 떠서 애초에 모든 `XxxVisualizer` 클래스가
+  `private const int ChipID = 0;`으로 아예 2번 칩을 조회할 방법조차
+  없었습니다(이 채널UI 로드맵을 처음 포팅할 당시 "이 포트의 엔진은 칩
+  인스턴스 0만 wiring한다"는 게 사실이었고 그렇게 문서화되어 있었습니다 -
+  이번 수정으로 그 전제 자체가 바뀌었습니다).
+- **수정**:
+  - `VgmEngine.cs`: dual-chip 플래그가 있는 33개 칩 타입 전부에 대해
+    Windows 원본 `Audio.cs`(~8760-10100줄)의 `for (int i = 0; i <
+    (XxxDualChipFlag ? 2 : 1); i++)` 패턴을 그대로 이식했습니다. 대부분의
+    칩은 에뮬레이터 인스턴스 하나를 루프 밖에서 만들고 `ID = (byte)i`만
+    바꿔가며 2번 등록하는 방식(에뮬레이터 클래스 내부가 칩ID로 인덱싱되는
+    상태 배열을 자체적으로 갖고 있음 - 예: `ym2612.YM2612_Chip[2]`)이고,
+    NES/DMC/FDS만 예외적으로 매 반복마다 완전히 새 `nes_intf` 인스턴스를
+    만듭니다(원본과 동일 - 이 에뮬레이터 클래스는 칩ID 내부 배열이 없음).
+    SEGAPCM/PWM/OKIM6258/QSound는 VGM 스펙 자체에 dual-chip 비트가 없어
+    그대로 뒀습니다.
+  - 채널UI: `IChannelVisualizer` 인터페이스(`Screen`/
+    `ScreenChangeParams()`/`ScreenDrawParams()`)를 새로 추가하고, dual-chip
+    지원 가능한 29개 `XxxVisualizer` 클래스 전부(`private const int ChipID
+    = 0`이 있던 클래스 39개 중 SAA1099/ES5503/X1_010/WSwan/POKEY처럼 이
+    포트가 아직 채널UI로 안 만든 칩 및 MMC5/VRC6/VRC7/N106/S5B/QSound/
+    OKIM6258/SegaPCM/mpcmX68k/PCM8처럼 애초에 VGM dual-chip 개념이 없는
+    칩은 제외)에서 `ChipID`를 `const`에서 생성자 매개변수(`int chipID =
+    0`)로 바꿨습니다. `MainWindow.axaml.cs`는 세션의 `Driver`가 `Vgm`이고
+    해당 `XxxDualChipFlag`가 서 있으면 `chipID: 1`로 두 번째 인스턴스를
+    만들어 `VisualizerHost`에 추가로 도킹하고, 매 프레임 갱신 목록
+    (`secondaryVisualizers`)에 넣어 1번 칩과 동일하게 갱신되도록
+    했습니다.
+- **검증**: 이 세션은 여전히 nuget.org 접근이 막혀 있어(`MDPlayerCore.csproj`
+  가 참조하는 `Z80dotNet` 패키지가 캐시되어 있지 않음 - 사전부터 있던 제약,
+  README 상단에 이미 기록됨) `MDPlayerCore`/`MDPlayerUI` 자체는 이번에도
+  컴파일 검증할 수 없었습니다. 대신 (1) 수정한 두 파일 + 신규
+  `IChannelVisualizer.cs` + 변경한 29개 Visualizer 파일 전부에 대해
+  중괄호/괄호 균형을 스크립트로 전수 검사했고, (2) Windows 원본
+  `Audio.cs`의 해당 칩별 dual-chip 등록 블록을 한 줄씩 대조하며 정확히
+  동일한 패턴(공유 인스턴스 재사용 여부, NES만 예외인 것, ID 캐스팅,
+  OKIM6295의 `okim6295_set_srchg_cb(i, ...)` 등)으로 이식했는지
+  확인했습니다. 실기에서 실제 dual-chip VGM으로 오디오/채널UI가 모두
+  정상 출력되는지는 아직 실제 확인 전입니다.
+
 ## 다음 단계 후보
 
 1. **칩 채널 표시계 로드맵 완료**: SN76489/YM2612/YM2151/AY8910/S5B/

@@ -18,11 +18,11 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class NesdmcVisualizer
+    public sealed class NesdmcVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.NESDMC newParam = new();
         private readonly MDChipParams.NESDMC oldParam = new();
@@ -34,8 +34,9 @@ namespace MDPlayer.UI.Visualizer
         private const double Log_2 = 0.69314718055994530941723212145818;
         private const int Note440Hz = 12 * 4 + 9;
 
-        public NesdmcVisualizer(ChipRegister chipRegister, uint clockHz)
+        public NesdmcVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmNESDMC.cs's screenChangeParams never reads a clock value.
 

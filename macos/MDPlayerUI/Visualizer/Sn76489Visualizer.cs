@@ -1,9 +1,10 @@
 // Port of MDPlayer/MDPlayerx64/form/KB/PSG/frmSN76489.cs - the SN76489 (PSG) channel
 // visualizer: a 4-row LED volume-meter + piano-key + pan display (3 tone channels + 1 noise
 // channel). Only the primary (non-NGP) ScreenChangeParams/ScreenDrawParams path is ported -
-// frmSN76489.cs's NGP (Neo Geo Pocket dual-chip) branch is out of scope, since this port's
-// engine only ever wires up chip instance 0 (see VgmEngine.cs's header comment) and NGP
-// support specifically needs the second chip instance.
+// frmSN76489.cs's NGP (Neo Geo Pocket dual-chip) branch specifically is out of scope. Regular
+// VGM dual-chip playback (SN76489DualChipFlag) IS supported though: MainWindow.axaml.cs
+// constructs a second instance of this class with chipID: 1 when that flag is set (see
+// VgmEngine.cs, which now wires up both chip instances into MDSound/ChipRegister).
 //
 // Data source: the original reads through Audio.GetPSGRegister/GetPSGVolume/
 // GetPSGRegisterGGPanning/ClockSN76489 (Audio.cs, itself deliberately not ported - see
@@ -16,20 +17,21 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Sn76489Visualizer
+    public sealed class Sn76489Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
         private readonly float clockHz;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.SN76489 newParam = new();
         private readonly MDChipParams.SN76489 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public Sn76489Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Sn76489Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             this.clockHz = clockHz;
 

@@ -13,11 +13,11 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ymf262Visualizer
+    public sealed class Ymf262Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YMF262 newParam = new();
         private readonly MDChipParams.YMF262 oldParam = new();
@@ -29,8 +29,9 @@ namespace MDPlayer.UI.Visualizer
         private static readonly int[] Slot2Tbl = { 3, 9, 4, 10, 5, 11, 15, 16, 17, 21, 27, 22, 28, 23, 29, 33, 34, 35 };
         private static readonly int[] ChTbl = { 0, 3, 1, 4, 2, 5, 6, 7, 8 };
 
-        public Ymf262Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ymf262Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
 
             DrawBuffYmf262.LoadSprites();

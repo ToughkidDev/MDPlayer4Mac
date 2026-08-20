@@ -11,12 +11,12 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ym3812Visualizer
+    public sealed class Ym3812Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
         private readonly float clockHz;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YM3812 newParam = new();
         private readonly MDChipParams.YM3812 oldParam = new();
@@ -29,8 +29,9 @@ namespace MDPlayer.UI.Visualizer
         private static readonly int[] Slot2Tbl = { 3, 4, 5, 9, 10, 11, 15, 16, 17 };
         private static readonly byte[] RhythmAdr = { 0x53, 0x54, 0x52, 0x55, 0x51 };
 
-        public Ym3812Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ym3812Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             this.clockHz = clockHz;
 

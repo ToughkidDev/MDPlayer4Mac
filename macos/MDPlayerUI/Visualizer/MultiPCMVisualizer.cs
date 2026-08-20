@@ -27,19 +27,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class MultiPCMVisualizer
+    public sealed class MultiPCMVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.MultiPCM newParam = new();
         private readonly MDChipParams.MultiPCM oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public MultiPCMVisualizer(ChipRegister chipRegister, uint clockHz)
+        public MultiPCMVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmMultiPCM.cs's screenChangeParams never reads a clock value.
 

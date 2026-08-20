@@ -19,11 +19,11 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class FdsVisualizer
+    public sealed class FdsVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.FDS newParam = new();
         private readonly MDChipParams.FDS oldParam = new();
@@ -35,8 +35,9 @@ namespace MDPlayer.UI.Visualizer
         private const double Log_2 = 0.69314718055994530941723212145818;
         private const int Note440Hz = 12 * 4 + 9;
 
-        public FdsVisualizer(ChipRegister chipRegister, uint clockHz)
+        public FdsVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmFDS.cs's screenChangeParams never reads a clock value.
 

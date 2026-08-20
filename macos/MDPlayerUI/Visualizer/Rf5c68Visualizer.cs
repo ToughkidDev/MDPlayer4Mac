@@ -22,19 +22,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Rf5c68Visualizer
+    public sealed class Rf5c68Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.RF5C68 newParam = new();
         private readonly MDChipParams.RF5C68 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public Rf5c68Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Rf5c68Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmRf5c68.cs's screenChangeParams never reads a clock value.
 

@@ -27,19 +27,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ymz280BVisualizer
+    public sealed class Ymz280BVisualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YMZ280B newParam = new();
         private readonly MDChipParams.YMZ280B oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public Ymz280BVisualizer(ChipRegister chipRegister, uint clockHz)
+        public Ymz280BVisualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmYMZ280B.cs's screenChangeParams never reads a clock value.
 

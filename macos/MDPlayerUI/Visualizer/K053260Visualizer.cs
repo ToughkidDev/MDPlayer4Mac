@@ -30,20 +30,21 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class K053260Visualizer
+    public sealed class K053260Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
         private readonly uint clockHz;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.K053260 newParam = new();
         private readonly MDChipParams.K053260 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public K053260Visualizer(ChipRegister chipRegister, uint clockHz)
+        public K053260Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             this.clockHz = clockHz;
 

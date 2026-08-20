@@ -28,11 +28,11 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ymf271Visualizer
+    public sealed class Ymf271Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YMF271 newParam = new();
         private readonly MDChipParams.YMF271 oldParam = new();
@@ -59,8 +59,9 @@ namespace MDPlayer.UI.Visualizer
             11, 35, 23, 47,
         };
 
-        public Ymf271Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ymf271Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmYMF271.cs's screenChangeParams never reads a clock value.
 

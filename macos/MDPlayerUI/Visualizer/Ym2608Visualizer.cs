@@ -18,12 +18,12 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class Ym2608Visualizer
+    public sealed class Ym2608Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
         private readonly float clockHz;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.YM2608 newParam = new();
         private readonly MDChipParams.YM2608 oldParam = new();
@@ -35,8 +35,9 @@ namespace MDPlayer.UI.Visualizer
         private static readonly float[] FmDivTbl = { 6, 3, 2 };
         private static readonly float[] SsgDivTbl = { 4, 2, 1 };
 
-        public Ym2608Visualizer(ChipRegister chipRegister, uint clockHz)
+        public Ym2608Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             this.clockHz = clockHz;
 

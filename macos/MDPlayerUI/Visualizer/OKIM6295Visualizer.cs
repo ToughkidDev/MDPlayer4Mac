@@ -12,19 +12,20 @@ using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
-    public sealed class OKIM6295Visualizer
+    public sealed class OKIM6295Visualizer : IChannelVisualizer
     {
         private readonly PixelScreen screen;
         private readonly ChipRegister chipRegister;
-        private const int ChipID = 0;
+        private readonly int ChipID;
 
         private readonly MDChipParams.OKIM6295 newParam = new();
         private readonly MDChipParams.OKIM6295 oldParam = new();
 
         public PixelScreen Screen => screen;
 
-        public OKIM6295Visualizer(ChipRegister chipRegister, uint clockHz)
+        public OKIM6295Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
+            ChipID = chipID;
             this.chipRegister = chipRegister;
             _ = clockHz; // frmOKIM6295.cs's screenChangeParams never reads a clock value.
 

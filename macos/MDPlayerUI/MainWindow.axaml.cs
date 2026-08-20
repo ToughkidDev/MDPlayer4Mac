@@ -82,6 +82,21 @@ namespace MDPlayer.UI
         private Rf5c68Visualizer? rf5c68Visualizer;
         private SegaPcmVisualizer? segaPcmVisualizer;
         private Ymz280BVisualizer? ymz280BVisualizer;
+
+        // Holds the *second* chip instance's visualizer for any dual-chip VGM (chipID: 1) -
+        // see ShowVisualizersFor's `vgm.XxxDualChipFlag` checks. Generic over
+        // IChannelVisualizer rather than one more named field per chip type, since there's
+        // nothing chip-specific left to do with these once constructed: dock the Screen,
+        // and pump ScreenChangeParams/ScreenDrawParams on every tick, same as any primary
+        // visualizer.
+        private readonly System.Collections.Generic.List<IChannelVisualizer> secondaryVisualizers = new();
+
+        private void AddSecondaryVisualizer(IChannelVisualizer visualizer)
+        {
+            secondaryVisualizers.Add(visualizer);
+            VisualizerHost.Children.Add(visualizer.Screen);
+        }
+
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -108,10 +123,26 @@ namespace MDPlayer.UI
         {
             HideVisualizers();
 
+            // VGM headers can flag a chip as present twice (e.g. two SN76489s) via a
+            // per-chip DualChipFlag on the Vgm driver - VgmEngine.Load now wires both
+            // physical instances into MDSound/ChipRegister when that's set, so the UI
+            // mirrors that here: every dual-chip-capable block below additionally opens a
+            // second visualizer (chipID: 1) alongside the usual chipID-0 one. Declared once
+            // up front (rather than as an `is Vgm vgm` pattern in each check below) because
+            // C# would otherwise reject redeclaring the same pattern-variable name multiple
+            // times in this method body. Non-VGM formats (nsf/gbs/hes/sid/...) simply never
+            // hit any of the dual-chip branches, since `vgm` stays null for them.
+            Vgm? vgm = session.Driver as Vgm;
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.SN76489, out uint sn76489Clock))
             {
                 sn76489Visualizer = new Sn76489Visualizer(session.ChipRegister, sn76489Clock);
                 VisualizerHost.Children.Add(sn76489Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.SN76489DualChipFlag && sn76489Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Sn76489Visualizer(session.ChipRegister, sn76489Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2612, out uint ym2612Clock))
@@ -120,16 +151,31 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2612Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM2612DualChipFlag && ym2612Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2612Visualizer(session.ChipRegister, ym2612Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2151, out uint ym2151Clock))
             {
                 ym2151Visualizer = new Ym2151Visualizer(session.ChipRegister, ym2151Clock);
                 VisualizerHost.Children.Add(ym2151Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM2151DualChipFlag && ym2151Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2151Visualizer(session.ChipRegister, ym2151Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.AY8910, out uint ay8910Clock))
             {
                 ay8910Visualizer = new Ay8910Visualizer(session.ChipRegister, ay8910Clock);
                 VisualizerHost.Children.Add(ay8910Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.AY8910DualChipFlag && ay8910Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ay8910Visualizer(session.ChipRegister, ay8910Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.FME7, out uint s5bClock))
@@ -144,10 +190,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2413Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM2413DualChipFlag && ym2413Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2413Visualizer(session.ChipRegister, ym2413Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM3526, out uint ym3526Clock))
             {
                 ym3526Visualizer = new Ym3526Visualizer(session.ChipRegister, ym3526Clock);
                 VisualizerHost.Children.Add(ym3526Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.YM3526DualChipFlag && ym3526Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym3526Visualizer(session.ChipRegister, ym3526Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM3812, out uint ym3812Clock))
@@ -156,10 +212,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym3812Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM3812DualChipFlag && ym3812Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym3812Visualizer(session.ChipRegister, ym3812Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.Y8950, out uint y8950Clock))
             {
                 y8950Visualizer = new Y8950Visualizer(session.ChipRegister, y8950Clock);
                 VisualizerHost.Children.Add(y8950Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.Y8950DualChipFlag && y8950Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Y8950Visualizer(session.ChipRegister, y8950Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YMF262, out uint ymf262Clock))
@@ -168,10 +234,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ymf262Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YMF262DualChipFlag && ymf262Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ymf262Visualizer(session.ChipRegister, ymf262Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YMF278B, out uint ymf278bClock))
             {
                 ymf278bVisualizer = new Ymf278bVisualizer(session.ChipRegister, ymf278bClock);
                 VisualizerHost.Children.Add(ymf278bVisualizer.Screen);
+            }
+
+            if (vgm != null && vgm.YMF278BDualChipFlag && ymf278bVisualizer != null)
+            {
+                AddSecondaryVisualizer(new Ymf278bVisualizer(session.ChipRegister, ymf278bClock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2203, out uint ym2203Clock))
@@ -180,10 +256,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2203Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM2203DualChipFlag && ym2203Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2203Visualizer(session.ChipRegister, ym2203Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2608, out uint ym2608Clock))
             {
                 ym2608Visualizer = new Ym2608Visualizer(session.ChipRegister, ym2608Clock);
                 VisualizerHost.Children.Add(ym2608Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.YM2608DualChipFlag && ym2608Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2608Visualizer(session.ChipRegister, ym2608Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2609, out uint ym2609Clock))
@@ -198,10 +284,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2610Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.YM2610DualChipFlag && ym2610Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ym2610Visualizer(session.ChipRegister, ym2610Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YMF271, out uint ymf271Clock))
             {
                 ymf271Visualizer = new Ymf271Visualizer(session.ChipRegister, ymf271Clock);
                 VisualizerHost.Children.Add(ymf271Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.YMF271DualChipFlag && ymf271Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Ymf271Visualizer(session.ChipRegister, ymf271Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.Nes, out uint nesdmcClock))
@@ -210,10 +306,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(nesdmcVisualizer.Screen);
             }
 
+            if (vgm != null && vgm.NESDualChipFlag && nesdmcVisualizer != null)
+            {
+                AddSecondaryVisualizer(new NesdmcVisualizer(session.ChipRegister, nesdmcClock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.FDS, out uint fdsClock))
             {
                 fdsVisualizer = new FdsVisualizer(session.ChipRegister, fdsClock);
                 VisualizerHost.Children.Add(fdsVisualizer.Screen);
+            }
+
+            if (vgm != null && vgm.NESDualChipFlag && fdsVisualizer != null)
+            {
+                AddSecondaryVisualizer(new FdsVisualizer(session.ChipRegister, fdsClock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.MMC5, out uint mmc5Clock))
@@ -246,10 +352,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(dmgVisualizer.Screen);
             }
 
+            if (vgm != null && vgm.DMGDualChipFlag && dmgVisualizer != null)
+            {
+                AddSecondaryVisualizer(new DmgVisualizer(session.ChipRegister, dmgClock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.HuC6280, out uint huc6280Clock))
             {
                 huc6280Visualizer = new Huc6280Visualizer(session.ChipRegister, huc6280Clock);
                 VisualizerHost.Children.Add(huc6280Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.HuC6280DualChipFlag && huc6280Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Huc6280Visualizer(session.ChipRegister, huc6280Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.K051649, out uint k051649Clock))
@@ -258,10 +374,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(k051649Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.K051649DualChipFlag && k051649Visualizer != null)
+            {
+                AddSecondaryVisualizer(new K051649Visualizer(session.ChipRegister, k051649Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.C140, out uint c140Clock))
             {
                 c140Visualizer = new C140Visualizer(session.ChipRegister, c140Clock);
                 VisualizerHost.Children.Add(c140Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.C140DualChipFlag && c140Visualizer != null)
+            {
+                AddSecondaryVisualizer(new C140Visualizer(session.ChipRegister, c140Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.C352, out uint c352Clock))
@@ -270,10 +396,20 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(c352Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.C352DualChipFlag && c352Visualizer != null)
+            {
+                AddSecondaryVisualizer(new C352Visualizer(session.ChipRegister, c352Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.GA20, out uint ga20Clock))
             {
                 ga20Visualizer = new GA20Visualizer(session.ChipRegister, ga20Clock);
                 VisualizerHost.Children.Add(ga20Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.GA20DualChipFlag && ga20Visualizer != null)
+            {
+                AddSecondaryVisualizer(new GA20Visualizer(session.ChipRegister, ga20Clock, chipID: 1));
             }
 
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.K053260, out uint k053260Clock))
@@ -282,16 +418,31 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(k053260Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.K053260DualChipFlag && k053260Visualizer != null)
+            {
+                AddSecondaryVisualizer(new K053260Visualizer(session.ChipRegister, k053260Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.K054539, out uint k054539Clock))
             {
                 k054539Visualizer = new K054539Visualizer(session.ChipRegister, k054539Clock);
                 VisualizerHost.Children.Add(k054539Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.K054539DualChipFlag && k054539Visualizer != null)
+            {
+                AddSecondaryVisualizer(new K054539Visualizer(session.ChipRegister, k054539Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.RF5C164, out uint megaCdClock))
             {
                 megaCdVisualizer = new MegaCDVisualizer(session.ChipRegister, megaCdClock);
                 VisualizerHost.Children.Add(megaCdVisualizer.Screen);
+            }
+
+            if (vgm != null && vgm.RF5C164DualChipFlag && megaCdVisualizer != null)
+            {
+                AddSecondaryVisualizer(new MegaCDVisualizer(session.ChipRegister, megaCdClock, chipID: 1));
             }
 
             // MpcmX68k is architecturally unlike every other chip: frmMpcmX68k.cs reads
@@ -310,6 +461,11 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(multiPcmVisualizer.Screen);
             }
 
+            if (vgm != null && vgm.MultiPCMDualChipFlag && multiPcmVisualizer != null)
+            {
+                AddSecondaryVisualizer(new MultiPCMVisualizer(session.ChipRegister, multiPcmClock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.OKIM6258, out uint okim6258Clock))
             {
                 okim6258Visualizer = new OKIM6258Visualizer(session.ChipRegister, okim6258Clock);
@@ -320,6 +476,11 @@ namespace MDPlayer.UI
             {
                 okim6295Visualizer = new OKIM6295Visualizer(session.ChipRegister, okim6295Clock);
                 VisualizerHost.Children.Add(okim6295Visualizer.Screen);
+            }
+
+            if (vgm != null && vgm.OKIM6295DualChipFlag && okim6295Visualizer != null)
+            {
+                AddSecondaryVisualizer(new OKIM6295Visualizer(session.ChipRegister, okim6295Clock, chipID: 1));
             }
 
             // PCM8 has no enmInstrumentType entry of its own (it's a driver-internal display,
@@ -345,6 +506,11 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(rf5c68Visualizer.Screen);
             }
 
+            if (vgm != null && vgm.RF5C68DualChipFlag && rf5c68Visualizer != null)
+            {
+                AddSecondaryVisualizer(new Rf5c68Visualizer(session.ChipRegister, rf5c68Clock, chipID: 1));
+            }
+
             if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.SEGAPCM, out uint segaPcmClock))
             {
                 segaPcmVisualizer = new SegaPcmVisualizer(session.ChipRegister, segaPcmClock);
@@ -355,6 +521,11 @@ namespace MDPlayer.UI
             {
                 ymz280BVisualizer = new Ymz280BVisualizer(session.ChipRegister, ymz280BClock);
                 VisualizerHost.Children.Add(ymz280BVisualizer.Screen);
+            }
+
+            if (vgm != null && vgm.YMZ280BDualChipFlag && ymz280BVisualizer != null)
+            {
+                AddSecondaryVisualizer(new Ymz280BVisualizer(session.ChipRegister, ymz280BClock, chipID: 1));
             }
 
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
@@ -457,6 +628,14 @@ namespace MDPlayer.UI
                 segaPcmVisualizer?.ScreenDrawParams();
                 ymz280BVisualizer?.ScreenChangeParams();
                 ymz280BVisualizer?.ScreenDrawParams();
+
+                // Second chip instance of any dual-chip VGM (see the vgm.XxxDualChipFlag
+                // checks above) - same per-frame pull/redraw as every primary visualizer.
+                foreach (IChannelVisualizer secondary in secondaryVisualizers)
+                {
+                    secondary.ScreenChangeParams();
+                    secondary.ScreenDrawParams();
+                }
             };
             visualizerTimer.Start();
         }
@@ -465,6 +644,7 @@ namespace MDPlayer.UI
         {
             visualizerTimer?.Stop();
             visualizerTimer = null;
+            secondaryVisualizers.Clear();
             sn76489Visualizer = null;
             ym2612Visualizer = null;
             ym2151Visualizer = null;
