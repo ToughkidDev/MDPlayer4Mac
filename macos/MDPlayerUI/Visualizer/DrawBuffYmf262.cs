@@ -260,9 +260,16 @@ namespace MDPlayer.UI.Visualizer
             ot = nt;
         }
 
+        // drawBuff.cs:2308 YMF262Ch - remaps a raw FM channel index (0-17) to the badge
+        // number the chip's own channel/slot ordering uses (slot1Tbl/slot2Tbl pair adjacent
+        // logical channels for 4-op mode, so the display badge isn't simply c+1). Identity
+        // for the 5 rhythm channels (18-22).
+        private static readonly byte[] Ymf262Ch = { 0, 3, 1, 4, 2, 5, 6, 7, 8, 9, 12, 10, 13, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
+
         // drawBuff.cs:4674 ChYMF262_P - channel badge. Melody (ch<18): number badge, 2-digit
         // ("d2" format, since channel numbers go up to 18 - unlike every other chip's
-        // 1-digit badge). Rhythm (18<=ch<23): plain abbreviation.
+        // 1-digit badge), using the Ymf262Ch-remapped channel number. Rhythm (18<=ch<23):
+        // plain abbreviation.
         private static void ChYmf262P(PixelScreen screen, int x, int y, int ch, bool mask)
         {
             if (ch < 18)
@@ -284,11 +291,13 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs's ChYMF262 - dirty-diff wrapper.
+        // drawBuff.cs's ChYMF262 - dirty-diff wrapper. Passes Ymf262Ch[ch] (not raw ch) into
+        // ChYmf262P, matching the original's ChYMF262_P(screen, 0, ..., YMF262Ch[ch], ...)
+        // call - both the badge number AND the rhythm-label switch use the remapped value.
         public static void ChYmf262(PixelScreen screen, int ch, ref bool? om, bool? nm)
         {
             if (om == nm) return;
-            ChYmf262P(screen, 0, ch < 18 ? 8 + ch * 8 : 8 + 18 * 8, ch, nm ?? false);
+            ChYmf262P(screen, 0, ch < 18 ? 8 + ch * 8 : 8 + 18 * 8, Ymf262Ch[ch], nm ?? false);
             om = nm;
         }
     }
