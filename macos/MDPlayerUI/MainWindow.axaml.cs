@@ -56,6 +56,7 @@ namespace MDPlayer.UI
         private Ym2203Visualizer? ym2203Visualizer;
         private Ym2608Visualizer? ym2608Visualizer;
         private Ym2609Visualizer? ym2609Visualizer;
+        private Ym2610Visualizer? ym2610Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -166,11 +167,17 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(ym2609Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2610, out uint ym2610Clock))
+            {
+                ym2610Visualizer = new Ym2610Visualizer(session.ChipRegister, ym2610Clock);
+                VisualizerHost.Children.Add(ym2610Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
                 && ymf262Visualizer == null && ymf278bVisualizer == null && ym2203Visualizer == null
-                && ym2608Visualizer == null && ym2609Visualizer == null) return;
+                && ym2608Visualizer == null && ym2609Visualizer == null && ym2610Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -203,6 +210,8 @@ namespace MDPlayer.UI
                 ym2608Visualizer?.ScreenDrawParams();
                 ym2609Visualizer?.ScreenChangeParams();
                 ym2609Visualizer?.ScreenDrawParams();
+                ym2610Visualizer?.ScreenChangeParams();
+                ym2610Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -225,6 +234,7 @@ namespace MDPlayer.UI
             ym2203Visualizer = null;
             ym2608Visualizer = null;
             ym2609Visualizer = null;
+            ym2610Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
