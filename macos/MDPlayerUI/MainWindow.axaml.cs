@@ -71,6 +71,7 @@ namespace MDPlayer.UI
         private C352Visualizer? c352Visualizer;
         private GA20Visualizer? ga20Visualizer;
         private K053260Visualizer? k053260Visualizer;
+        private K054539Visualizer? k054539Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -271,6 +272,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(k053260Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.K054539, out uint k054539Clock))
+            {
+                k054539Visualizer = new K054539Visualizer(session.ChipRegister, k054539Clock);
+                VisualizerHost.Children.Add(k054539Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -280,7 +287,8 @@ namespace MDPlayer.UI
                 && mmc5Visualizer == null && vrc6Visualizer == null && vrc7Visualizer == null
                 && n106Visualizer == null && dmgVisualizer == null && huc6280Visualizer == null
                 && k051649Visualizer == null && c140Visualizer == null && c352Visualizer == null
-                && ga20Visualizer == null && k053260Visualizer == null) return;
+                && ga20Visualizer == null && k053260Visualizer == null
+                && k054539Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -343,6 +351,8 @@ namespace MDPlayer.UI
                 ga20Visualizer?.ScreenDrawParams();
                 k053260Visualizer?.ScreenChangeParams();
                 k053260Visualizer?.ScreenDrawParams();
+                k054539Visualizer?.ScreenChangeParams();
+                k054539Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -380,6 +390,7 @@ namespace MDPlayer.UI
             c352Visualizer = null;
             ga20Visualizer = null;
             k053260Visualizer = null;
+            k054539Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
