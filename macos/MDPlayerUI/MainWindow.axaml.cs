@@ -80,6 +80,7 @@ namespace MDPlayer.UI
         private PCM8Visualizer? pcm8Visualizer;
         private QSoundVisualizer? qSoundVisualizer;
         private Rf5c68Visualizer? rf5c68Visualizer;
+        private SegaPcmVisualizer? segaPcmVisualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -343,6 +344,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(rf5c68Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.SEGAPCM, out uint segaPcmClock))
+            {
+                segaPcmVisualizer = new SegaPcmVisualizer(session.ChipRegister, segaPcmClock);
+                VisualizerHost.Children.Add(segaPcmVisualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -357,7 +364,7 @@ namespace MDPlayer.UI
                 && mpcmX68kVisualizer == null && multiPcmVisualizer == null
                 && okim6258Visualizer == null && okim6295Visualizer == null
                 && pcm8Visualizer == null && qSoundVisualizer == null
-                && rf5c68Visualizer == null) return;
+                && rf5c68Visualizer == null && segaPcmVisualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -438,6 +445,8 @@ namespace MDPlayer.UI
                 qSoundVisualizer?.ScreenDrawParams();
                 rf5c68Visualizer?.ScreenChangeParams();
                 rf5c68Visualizer?.ScreenDrawParams();
+                segaPcmVisualizer?.ScreenChangeParams();
+                segaPcmVisualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -484,6 +493,7 @@ namespace MDPlayer.UI
             pcm8Visualizer = null;
             qSoundVisualizer = null;
             rf5c68Visualizer = null;
+            segaPcmVisualizer = null;
             VisualizerHost.Children.Clear();
         }
 
