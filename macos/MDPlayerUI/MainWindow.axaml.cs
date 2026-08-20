@@ -77,6 +77,7 @@ namespace MDPlayer.UI
         private MultiPCMVisualizer? multiPcmVisualizer;
         private OKIM6258Visualizer? okim6258Visualizer;
         private OKIM6295Visualizer? okim6295Visualizer;
+        private PCM8Visualizer? pcm8Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -317,6 +318,17 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(okim6295Visualizer.Screen);
             }
 
+            // PCM8 has no enmInstrumentType entry of its own (it's a driver-internal display,
+            // not an MDSound chip instance mixed into the output) - gate on the live driver's
+            // actual type instead, matching frmPCM8.cs's own Audio.DriverVirtual is MXDRV/ZMS
+            // check (see PCM8Visualizer.cs's header for why the original's third RCS branch
+            // is omitted).
+            if (session.Driver is MDPlayer.Driver.MXDRV.MXDRV || session.Driver is MDPlayer.Driver.ZMS.ZMS)
+            {
+                pcm8Visualizer = new PCM8Visualizer(session.Driver);
+                VisualizerHost.Children.Add(pcm8Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -329,7 +341,8 @@ namespace MDPlayer.UI
                 && ga20Visualizer == null && k053260Visualizer == null
                 && k054539Visualizer == null && megaCdVisualizer == null
                 && mpcmX68kVisualizer == null && multiPcmVisualizer == null
-                && okim6258Visualizer == null && okim6295Visualizer == null) return;
+                && okim6258Visualizer == null && okim6295Visualizer == null
+                && pcm8Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -404,6 +417,8 @@ namespace MDPlayer.UI
                 okim6258Visualizer?.ScreenDrawParams();
                 okim6295Visualizer?.ScreenChangeParams();
                 okim6295Visualizer?.ScreenDrawParams();
+                pcm8Visualizer?.ScreenChangeParams();
+                pcm8Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -447,6 +462,7 @@ namespace MDPlayer.UI
             multiPcmVisualizer = null;
             okim6258Visualizer = null;
             okim6295Visualizer = null;
+            pcm8Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
