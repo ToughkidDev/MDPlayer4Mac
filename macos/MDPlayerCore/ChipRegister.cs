@@ -1981,6 +1981,36 @@ namespace MDPlayer
             return reg;
         }
 
+        // Audio.cs:12265 GetMMC5Register - unlike GetAPURegister/GetDMCRegister/
+        // GetFDSRegister above, this one has no NSF-direct fast path: it composes a 10-byte
+        // register snapshot by reading straight off the MMC5 chip's own register bus
+        // (nes_mmc5.Read at $5000-$5007, plus the PCM-mode flag and PCM sample byte read
+        // via its public pcm_mode/pcm fields) - the original's getMMC5Register(chipID,
+        // EnmModel) VGM-path equivalent is a stub that always returns null in this port
+        // (mds.ReadMMC5 doesn't exist), so this composer is the only working path, mirrored
+        // here as an instance method per this port's convention (see GetYMF271Register's
+        // comment for the precedent on why these wrappers get added on demand).
+        private readonly byte[] mmc5regs = new byte[10];
+        public byte[] GetMMC5Register(int chipID)
+        {
+            if (nes_mmc5 == null) return null;
+            else if (chipID == 1) return null;
+
+            uint dat = 0;
+            for (uint adr = 0x5000; adr < 0x5008; adr++)
+            {
+                dat = 0;
+                nes_mmc5.Read(adr, ref dat);
+                mmc5regs[adr & 0x7] = (byte)dat;
+            }
+
+            nes_mmc5.Read(0x5010, ref dat);
+            mmc5regs[8] = (byte)(nes_mmc5.pcm_mode ? 1 : 0);
+            mmc5regs[9] = nes_mmc5.pcm;
+
+            return mmc5regs;
+        }
+
         public MDSound.iremga20.ga20_state GetGA20State(int chipID)
         {
             return mds.ReadGA20Status((byte)chipID);

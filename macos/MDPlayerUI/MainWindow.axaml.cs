@@ -60,6 +60,7 @@ namespace MDPlayer.UI
         private Ymf271Visualizer? ymf271Visualizer;
         private NesdmcVisualizer? nesdmcVisualizer;
         private FdsVisualizer? fdsVisualizer;
+        private Mmc5Visualizer? mmc5Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -194,12 +195,19 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(fdsVisualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.MMC5, out uint mmc5Clock))
+            {
+                mmc5Visualizer = new Mmc5Visualizer(session.ChipRegister, mmc5Clock);
+                VisualizerHost.Children.Add(mmc5Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
                 && ymf262Visualizer == null && ymf278bVisualizer == null && ym2203Visualizer == null
                 && ym2608Visualizer == null && ym2609Visualizer == null && ym2610Visualizer == null
-                && ymf271Visualizer == null && nesdmcVisualizer == null && fdsVisualizer == null) return;
+                && ymf271Visualizer == null && nesdmcVisualizer == null && fdsVisualizer == null
+                && mmc5Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -240,6 +248,8 @@ namespace MDPlayer.UI
                 nesdmcVisualizer?.ScreenDrawParams();
                 fdsVisualizer?.ScreenChangeParams();
                 fdsVisualizer?.ScreenDrawParams();
+                mmc5Visualizer?.ScreenChangeParams();
+                mmc5Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -266,6 +276,7 @@ namespace MDPlayer.UI
             ymf271Visualizer = null;
             nesdmcVisualizer = null;
             fdsVisualizer = null;
+            mmc5Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
