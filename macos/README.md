@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8 완료, PWM은 원본에 구현이 없어 범위 제외 — NES 계열 + WF 계열 전체 완료, PCM 계열 진행 중(11/14), 실기 검증 대기)
+## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound 완료, PWM은 원본에 구현이 없어 범위 제외 — NES 계열 + WF 계열 전체 완료, PCM 계열 진행 중(12/14), 실기 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,7 +536,7 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
-### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~8개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8 완료, PWM은 원본 미구현으로 범위 제외 — NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열 11/14 진행 중, 실기 검증 대기)
+### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~7개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound 완료, PWM은 원본 미구현으로 범위 제외 — NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열 12/14 진행 중, 실기 검증 대기)
 
 MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
 팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업입니다.
@@ -569,12 +569,15 @@ Z80과 짝을 이룸)/K054539(코나미 8채널 PCM 샘플 재생 칩, 채널당
 `Channel[]` 배열 대신 직접 필드를 쓰는 칩)/OKIM6295(OKI MSM6295 ADPCM
 샘플 재생 칩, 아케이드 기판에서 널리 쓰임 — 팬 표시가 없는 첫 PCM
 계열 칩)/PCM8(X68000의 "PCM8" 8보이스 샘플 드라이버 규약, MXDRV/ZMS/RCS
-시퀀스 음악 포맷용 — MpcmX68k와 같은 종류의 생성자 시그니처 예외)가
+시퀀스 음악 포맷용 — MpcmX68k와 같은 종류의 생성자 시그니처 예외)/
+QSound(캡콤 CQ-SPX67610, 많은 CPS1/CPS2 아케이드 기판에서 쓰임 —
+16 PCM + 3 ADPCM = 19채널, 공유 에코/리버브 유닛 상태까지 표시)가
 이번 라운드에서 완료됐습니다 — 이로써 NES 계열 8종(NESDMC/FDS/MMC5/
 VRC6/VRC7/N106/DMG + 이미 완료된 S5B(FME-7))과 WF 계열 2종(HuC6280/
 K051649)이 모두 끝났고, PCM 계열(~15종 중 PWM은 원본 미구현이라
 ~14종 실질 대상)도 C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/
-MultiPCM/OKIM6258/OKIM6295/PCM8 11종째까지 진행했습니다. **PWM(32X
+MultiPCM/OKIM6258/OKIM6295/PCM8/QSound 12종째까지 진행했습니다.
+**PWM(32X
 내장 PWM 사운드 출력)은 이번 라운드에서 확인해보니 원본 Windows판
 `frmPWM.cs`가 `InitializeComponent()`만 호출하는 완전히 빈 스텁이고
 (`screenChangeParams`/`screenDrawParams`/배경 이미지/픽셀 박스 전혀
@@ -725,6 +728,31 @@ MultiPCM/OKIM6258/OKIM6295/PCM8 11종째까지 진행했습니다. **PWM(32X
   원본 자체의 구조입니다. 4개의 32비트 16진 표시(샘플 포인터/길이),
   2자리 10진 표시 3개(PCM 모드/재생 레이트/원시 볼륨 레지스터), 원시
   단일 타일 팬 아이콘, 볼륨 LED 바, 채널 배지가 나열됩니다.
+- **QSound(캡콤 CQ-SPX67610, 많은 CPS1/CPS2 아케이드 기판에서 쓰임):
+  이번 라운드에서 신규 구현, 아직 실기 미검증.** 채널 19개(PCM
+  16 + ADPCM 3), 채널당 8px 행 하나씩 에코/주파수/뱅크/샘플 시작·끝/
+  루프 시작 16비트 16진 표시(PCM 채널만), 바이트로 압축된 2타일 팬
+  아이콘(PCM 채널만 — ADPCM 채널의 `PanType2` 호출은 원본에서 주석
+  처리돼 있음), 독립된 L/R 볼륨 LED 바(원시 픽셀 좌표 `VolumeXY`
+  오버로드, 19채널 전부), 키보드/노트 표시(PCM 채널만), 채널 배지(19채널
+  전부)가 나열되고, 17~18행에는 ADPCM 채널 행의 남는 칼럼을 이용해
+  칩 공유 에코/리버브 유닛 상태(피드백/끝 위치/딜레이 업데이트/다음
+  상태, wet/dry 각각 L/R 딜레이+볼륨)가 추가로 표시됩니다. **데이터
+  소스**: `chipRegister.getQSoundRegister(chipId)`를 직접 호출합니다 —
+  이미 `ChipRegister`의 public 메서드라(Windows판 `Audio.
+  GetQSoundRegister`도 `chipRegister.getQSoundRegister`를 그대로
+  포워딩) 새 게터가 필요 없었습니다. **노트 계산은 공유 헬퍼 재사용**:
+  `Common.searchSegaPCMNote`를 직접 호출합니다 — 원본 자체가 이 공유
+  헬퍼를 쓰고 있어서(이미 YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/
+  VRC7 등 여러 칩이 같은 방식으로 재사용 중), K051649의 예외와 같은
+  이유로 복제하지 않고 그대로 재사용했습니다. **원본의 별난 동작
+  보존**: 채널 배지(`ChQSound_P`)는 C140/MpcmX68k/PCM8이 쓰는
+  `n*4+64` 특수 오프셋 `DrawFont4Int2` 대신 그냥 `drawFont4`에
+  `"D2"` 포맷 문자열을 넘겨서 그리는, 같은 문제에 대한 다른 접근
+  방식을 그대로 보존했습니다. 또한 원본 소스에는 `ChQSoundAdpcm_P`라는
+  함수가 있지만 실제로는 PCM/ADPCM 두 루프 모두 그냥 `ChQSound`를
+  호출해서 이 함수는 어디서도 호출되지 않는 진짜 죽은 코드라 이
+  포트에서는 이식하지 않았습니다.
 - **K054539(코나미 8채널 PCM 샘플 재생 칩): 이번 라운드에서 신규 구현,
   아직 실기 미검증.** 원본 `frmK054539.cs`를 그대로 포팅 — 같은 배경
   이미지 안에 특이한 2단 레이아웃을 씁니다: 1~8행(위쪽)에는 키보드/노트,
@@ -1293,17 +1321,17 @@ MultiPCM/OKIM6258/OKIM6295/PCM8 11종째까지 진행했습니다. **PWM(32X
 
 ## 다음 단계 후보
 
-1. **남은 ~8개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
+1. **남은 ~7개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
    YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/
    YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/
-   GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8는
-   완료했고(NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열 15종 중
-   C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/OKIM6258/
-   OKIM6295/PCM8 완료), PWM은 원본 `frmPWM.cs`가 `InitializeComponent()`
-   만 호출하는 빈 스텁이고 어디서도 생성되지 않는 죽은 코드라서 포팅할
-   내용이 없어 범위에서 제외했습니다. 이어서 나머지 칩들(PCM 계열
-   나머지 3종: QSound/Rf5c68/SegaPCM, 그리고 YMZ280B — SAA1099는 범위
-   제외)을 순서대로 이식 중입니다. 각 칩마다
+   GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/
+   QSound는 완료했고(NES 계열 8종 + WF 계열 2종 전체 완료, PCM 계열
+   15종 중 C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/
+   OKIM6258/OKIM6295/PCM8/QSound 완료), PWM은 원본 `frmPWM.cs`가
+   `InitializeComponent()`만 호출하는 빈 스텁이고 어디서도 생성되지
+   않는 죽은 코드라서 포팅할 내용이 없어 범위에서 제외했습니다.
+   이어서 나머지 칩들(PCM 계열 나머지 2종: Rf5c68/SegaPCM, 그리고
+   YMZ280B — SAA1099는 범위 제외)을 순서대로 이식 중입니다. 각 칩마다
    `DrawBuffXxx.cs`+
    `XxxVisualizer.cs` 작성 → 필요한 스프라이트 `export_sprites.py`로 추출 →
    `MainWindow.axaml.cs` 배선 → 커밋 → 기기 동기화 순서를 반복합니다.

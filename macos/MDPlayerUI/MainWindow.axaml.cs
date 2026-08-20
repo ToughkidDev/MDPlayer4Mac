@@ -78,6 +78,7 @@ namespace MDPlayer.UI
         private OKIM6258Visualizer? okim6258Visualizer;
         private OKIM6295Visualizer? okim6295Visualizer;
         private PCM8Visualizer? pcm8Visualizer;
+        private QSoundVisualizer? qSoundVisualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -329,6 +330,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(pcm8Visualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.QSound, out uint qSoundClock))
+            {
+                qSoundVisualizer = new QSoundVisualizer(session.ChipRegister, qSoundClock);
+                VisualizerHost.Children.Add(qSoundVisualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -342,7 +349,7 @@ namespace MDPlayer.UI
                 && k054539Visualizer == null && megaCdVisualizer == null
                 && mpcmX68kVisualizer == null && multiPcmVisualizer == null
                 && okim6258Visualizer == null && okim6295Visualizer == null
-                && pcm8Visualizer == null) return;
+                && pcm8Visualizer == null && qSoundVisualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -419,6 +426,8 @@ namespace MDPlayer.UI
                 okim6295Visualizer?.ScreenDrawParams();
                 pcm8Visualizer?.ScreenChangeParams();
                 pcm8Visualizer?.ScreenDrawParams();
+                qSoundVisualizer?.ScreenChangeParams();
+                qSoundVisualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -463,6 +472,7 @@ namespace MDPlayer.UI
             okim6258Visualizer = null;
             okim6295Visualizer = null;
             pcm8Visualizer = null;
+            qSoundVisualizer = null;
             VisualizerHost.Children.Clear();
         }
 
