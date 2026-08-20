@@ -2051,6 +2051,14 @@ namespace MDPlayer
             return mds.ReadK054539Status((byte)chipID);
         }
 
+        // Audio.cs:12080 GetK053260Register - one-line forward to mds.getK053260State (mds is
+        // private on this class, unlike Audio.cs's static field, so this wrapper is needed),
+        // added for K053260's Visualizer.
+        public MDSound.K053260.k053260_state GetK053260Register(int chipID)
+        {
+            return mds.getK053260State(chipID);
+        }
+
 
         public MDSound.np.np_nes_fds.NES_FDS getFDSRegister(int chipID, EnmModel model)
         {
