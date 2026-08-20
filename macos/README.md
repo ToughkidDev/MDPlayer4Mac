@@ -1414,6 +1414,50 @@ MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM까지 14종 전부
   `DrawBuffYm2151.cs` 등, 그리고 앞으로 추가될 나머지 칩들)은 각각 실기
   확인 전입니다.
 
+### ✅ 버그 수정 — 재생/정지 반복 시 SIGABRT 크래시 (실기에서 재현/수정, 컴파일 검증됨)
+
+실기에서 `MDPlayerUI`로 곡을 로드한 뒤 재생/정지를 여러 번 반복하면 몇 회 후
+macOS가 `EXC_CRASH (SIGABRT)`로 전체 프로세스를 강제 종료시키는 크래시가
+보고됐습니다. 크래시 리포트를 분석한 결과:
+
+- 메인 스레드(Thread 0)는 `OnStopClick` → `StopPlayback()` → `CoreAudioQueue.
+  Stop()` → 네이티브 `AudioQueueStop()` 안에서 `AwaitAllPendingCallbacks`로
+  멈춰 있었고, 이때 오디오 콜백 스레드(Thread 14, `Dispatch queue: AQClient@...`)
+  에서 `abort()`가 호출되며 전체 프로세스가 죽었습니다.
+- 원인은 `macos/CoreAudioOutput/CoreAudioQueue.cs`의 `OnBufferNeeded` —
+  CoreAudio의 Audio Queue Services가 자신의 내부 스레드에서 직접 호출하는
+  **네이티브 콜백(리버스 P/Invoke)** 입니다. `FillAndEnqueue` 내부에서 예외가
+  나면(`AudioQueueEnqueueBuffer`가 0이 아닌 `OSStatus`를 반환하면
+  `InvalidOperationException`을 던지도록 돼 있었음) 이 예외가 그대로 콜백
+  경계를 빠져나가게 되는데, .NET(CoreCLR) 입장에서 네이티브 콜백을 뚫고
+  나가는 관리되지 않은 예외는 안전하게 되감을 곳이 없어 **무조건 프로세스를
+  abort() 시킵니다.**
+- 정지(`Stop()`)와 콜백(`OnBufferNeeded`)이 서로 다른 스레드에서 아무 잠금
+  없이 동시에 도는 구조라서, `FillAndEnqueue`가 `stopped` 플래그를 확인한
+  직후(아직 `false`)에 다른 스레드가 `Stop()`을 호출해 큐를 정지시키면, 그
+  콜백이 계속 진행해 `AudioQueueEnqueueBuffer`를 호출할 때 큐가 이미
+  정지/리셋 중이라 실패(non-zero status)하면서 위 예외가 발생하는 타이밍
+  레이스였습니다 — "몇 회 반복 후"라는 재현 패턴과 정확히 일치합니다
+  (`MainWindow.axaml.cs`의 `StopPlayback()`은 `stopRequested = true` →
+  `queue.Stop()` → `queue.Dispose()`를 아무 잠금 없이 순서대로 호출).
+- **수정**: `OnBufferNeeded`(실제 네이티브 콜백 진입점)를 `try/catch`로
+  감싸서 어떤 예외도 콜백 경계를 절대 빠져나가지 못하게 했습니다 — 실패하면
+  그 버퍼 하나만 못 채우고 넘어가며(`Finished = true`로 표시해 재생을
+  정상적으로 마무리), 콘솔에 에러만 로그하고 프로세스는 절대 죽지 않습니다.
+  또한 `FillAndEnqueue`에서 `fillCallback` 호출 뒤 `stopped`를 한 번 더
+  확인해서(콜백이 오래 걸리는 동안 다른 스레드가 `Stop()`을 호출했을 수
+  있으므로) 정지 중인 큐에 불필요하게 `AudioQueueEnqueueBuffer`를 시도하는
+  경우 자체를 줄였습니다(레이스 자체를 완전히 없애지는 못하지만 — 근본
+  수정은 "콜백에서 나가는 예외는 절대 없다"는 불변조건 쪽입니다).
+- **검증**: 이 세션은 여전히 nuget.org 접근이 막혀 있어 `MDPlayerUI`/
+  `MDPlayerCore` 전체 빌드는 할 수 없었지만, 이번에 수정한
+  `CoreAudioOutput.csproj`는 이전에 실기에서 생성된 `obj/project.assets.json`
+  캐시가 남아 있어서 `dotnet build -c Release --no-restore`로 **`0 Warning(s),
+  0 Error(s)`** 컴파일 검증을 마쳤습니다(`LivePlayer`가 참조하는 `MDSound.csproj`도
+  동일하게 `--no-restore`로 0 에러 확인 — 기존과 무관한 사전 경고만 존재).
+  실기에서 재생/정지를 반복해도 더 이상 크래시가 나지 않는지는 아직 실제
+  확인 전입니다.
+
 ## 다음 단계 후보
 
 1. **칩 채널 표시계 로드맵 완료**: SN76489/YM2612/YM2151/AY8910/S5B/

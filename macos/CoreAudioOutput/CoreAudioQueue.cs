@@ -153,6 +153,12 @@ namespace MDPlayer.CoreAudioOutput
             if (stopped) return;
 
             int filled = fillCallback(scratch, framesPerBuffer * 2);
+
+            // Stop() may have been called (from another thread) while fillCallback was
+            // running above - re-check before touching the buffer/queue so a callback that
+            // was mid-flight when Stop() started doesn't race the native teardown.
+            if (stopped) return;
+
             if (filled <= 0)
             {
                 Finished = true;
@@ -168,9 +174,29 @@ namespace MDPlayer.CoreAudioOutput
                 throw new InvalidOperationException($"AudioQueueEnqueueBuffer failed: OSStatus {status}");
         }
 
+        // Invoked directly by CoreAudio's native Audio Queue runtime (a reverse P/Invoke
+        // callback on its own internal "AQClient" thread, not a normal .NET thread) every
+        // time a buffer drains and needs refilling. An exception escaping a native callback
+        // like this is fatal to the whole process - CoreCLR has nowhere safe to unwind it to,
+        // so it aborts (SIGABRT) rather than let undefined behavior happen on the native side.
+        // This was hit in practice: fillCallback/AudioQueueEnqueueBuffer can race Stop()
+        // (called from the UI thread while a refill is mid-flight - see StopPlayback() in
+        // MainWindow.axaml.cs, which sets stopRequested/calls Stop() without any lock against
+        // this callback), so AudioQueueEnqueueBuffer occasionally fails with a non-zero
+        // OSStatus once the queue is concurrently stopping, which used to throw here and take
+        // the whole app down. Swallow everything instead - the worst outcome of a failed
+        // refill is one dropped/skipped buffer, never a crash.
         private void OnBufferNeeded(IntPtr inUserData, IntPtr inAQ, IntPtr inBuffer)
         {
-            FillAndEnqueue(inBuffer);
+            try
+            {
+                FillAndEnqueue(inBuffer);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[CoreAudioQueue] buffer refill failed, dropping this buffer: {ex}");
+                Finished = true;
+            }
         }
 
         public void Start()
