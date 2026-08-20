@@ -1923,6 +1923,48 @@ namespace MDPlayer
             }
         }
 
+        // Audio.cs:12180/12197 GetAPURegister/GetDMCRegister - NESDMC's Visualizer (unlike
+        // every VGM-only chip so far) reads the raw register bytes through a two-path
+        // fallback: NSF playback populates nes_apu/nes_dmc.chip.reg directly, while VGM
+        // playback goes through the general getNESRegisterAPU/getNESRegisterDMC(chipID,
+        // EnmModel.VirtualModel) path above. Added here (mirroring Audio.cs's static
+        // originals as instance methods, per this port's convention) since no earlier chip
+        // needed it - see the GetYMF271Register comment for the precedent.
+        public byte[] GetAPURegister(int chipID)
+        {
+            byte[] reg;
+
+            if (nes_apu == null) reg = null;
+            else if (nes_apu.chip == null) reg = null;
+            else if (chipID == 1) reg = null;
+            else reg = nes_apu.chip.reg;
+
+            reg ??= getNESRegisterAPU(chipID, EnmModel.VirtualModel);
+
+            return reg;
+        }
+
+        public byte[] GetDMCRegister(int chipID)
+        {
+            try
+            {
+                byte[] reg;
+
+                if (nes_apu == null) reg = null;
+                else if (nes_apu.chip == null) reg = null;
+                else if (chipID == 1) reg = null;
+                else reg = nes_dmc.chip.reg;
+
+                reg ??= getNESRegisterDMC(chipID, EnmModel.VirtualModel);
+
+                return reg;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public MDSound.iremga20.ga20_state GetGA20State(int chipID)
         {
             return mds.ReadGA20Status((byte)chipID);
