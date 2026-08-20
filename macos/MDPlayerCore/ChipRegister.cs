@@ -6957,6 +6957,18 @@ namespace MDPlayer
             return fmVolYM2610Adpcm[chipID];
         }
 
+        // Audio.cs:12100 GetYMF271Register - unlike the OPN-family chips above (which
+        // expose only raw register bytes and leave decoding to the Visualizer layer),
+        // YMF271's own emulation core (MDSound.ymf271) already latches per-slot decoded
+        // state (volume/pan/envelope/instrument fields) into a YMF271Chip/YMF271Slot
+        // struct tree, and the original Windows Visualizer reads that struct directly
+        // rather than re-deriving it from raw registers - so this wrapper mirrors
+        // Audio.cs's one-line forward to mds.ReadYMF271Register exactly.
+        public ymf271.YMF271Chip GetYMF271Register(int chipID)
+        {
+            return mds.ReadYMF271Register(chipID);
+        }
+
         public int[][] GetPSGVolume(int chipID)
         {
 
