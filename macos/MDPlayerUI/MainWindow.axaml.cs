@@ -81,6 +81,7 @@ namespace MDPlayer.UI
         private QSoundVisualizer? qSoundVisualizer;
         private Rf5c68Visualizer? rf5c68Visualizer;
         private SegaPcmVisualizer? segaPcmVisualizer;
+        private Ymz280BVisualizer? ymz280BVisualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -350,6 +351,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(segaPcmVisualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YMZ280B, out uint ymz280BClock))
+            {
+                ymz280BVisualizer = new Ymz280BVisualizer(session.ChipRegister, ymz280BClock);
+                VisualizerHost.Children.Add(ymz280BVisualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -364,7 +371,8 @@ namespace MDPlayer.UI
                 && mpcmX68kVisualizer == null && multiPcmVisualizer == null
                 && okim6258Visualizer == null && okim6295Visualizer == null
                 && pcm8Visualizer == null && qSoundVisualizer == null
-                && rf5c68Visualizer == null && segaPcmVisualizer == null) return;
+                && rf5c68Visualizer == null && segaPcmVisualizer == null
+                && ymz280BVisualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -447,6 +455,8 @@ namespace MDPlayer.UI
                 rf5c68Visualizer?.ScreenDrawParams();
                 segaPcmVisualizer?.ScreenChangeParams();
                 segaPcmVisualizer?.ScreenDrawParams();
+                ymz280BVisualizer?.ScreenChangeParams();
+                ymz280BVisualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -494,6 +504,7 @@ namespace MDPlayer.UI
             qSoundVisualizer = null;
             rf5c68Visualizer = null;
             segaPcmVisualizer = null;
+            ymz280BVisualizer = null;
             VisualizerHost.Children.Clear();
         }
 

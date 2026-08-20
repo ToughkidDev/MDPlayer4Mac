@@ -5,7 +5,7 @@ MDPlayer(Windows, WinForms, .NET 8-windows)를 macOS로 옮기는 작업의 진�
 이 `macos/` 폴더 아래에 크로스플랫폼(net8.0, `-windows` 접미사 없음) 프로젝트를
 새로 만들어가는 방식으로 진행합니다.
 
-## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 남은 모든 칩 표시계 순차 구현 진행 중 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM 완료, PWM은 원본에 구현이 없어 범위 제외 — NES 계열 + WF 계열 + PCM 계열 전체 완료(14/14), 실기 검증 대기)
+## 현재 상태 (2026-08-20, 음악 파일 포맷 13개 지원 + SN76489/YM2612 칩 채널 표시계 실기 검증 완료 + 나머지 전 칩 표시계 로드맵 완료 — YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM/YMZ280B 완료, PWM/SAA1099는 원본 미구현, PPZ8은 이 포트에 PC-98 드라이버 배선이 없어 범위 제외 — NES/WF/PCM 계열 + YMZ280B 전체 완료(40개 칩), 실기 검증 대기)
 
 ### ✅ MDSound — 사운드 칩 에뮬레이션 코어 (완료, 빌드 검증됨)
 
@@ -536,7 +536,7 @@ PC-98 레지스터 덤프), AY(ZX 스펙트럼), ZGM(니치 포맷).
   `*.zmd`/`*.mdx`/`*.mdr`/`*.nsf`/`*.gbs`/`*.hes`/`*.s98`/`*.ay`/`*.zgm`)
   넓혔습니다.
 
-### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 남은 ~5개 칩 순차 구현 중 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM 완료, PWM은 원본 미구현으로 범위 제외 — NES 계열 8종 + WF 계열 2종 + PCM 계열 14종 전체 완료, 실기 검증 대기)
+### 🚧 칩 채널 표시계(visualizer) — SN76489/YM2612 실기 검증 완료, 나머지 전 칩 로드맵 완료 (YM2151/AY8910/S5B/YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/GA20/K053260/K054539/MegaCD(RF5C164)/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM/YMZ280B 완료, PWM/SAA1099는 원본 미구현, PPZ8은 이 포트에 PC-98 드라이버 배선이 없어 범위 제외 — NES 계열 8종 + WF 계열 2종 + PCM 계열 14종 + YMZ280B 전체 완료(40개 칩), 실기 검증 대기)
 
 MDPlayer의 정체성이라 할 수 있는 "칩 채널 표시계"(LED 볼륨미터 + 미니 건반 +
 팬 인디케이터, 원본 Windows판의 `form/KB/**` 약 40개 창) 재현 작업입니다.
@@ -798,6 +798,56 @@ MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM까지 14종 전부
   빈도를 조절합니다 — 다른 모든 PCM 계열 칩처럼 매 호출마다 1씩
   줄어드는 게 아니라 대략 6번에 한 번꼴로만 줄어듭니다. "고친" 게
   아니라 원본 그대로 이식했습니다.
+- **YMZ280B(야마하 "PCMD8", 8채널 ADPCM 샘플 재생 칩): 이번 라운드에서
+  신규 구현, 아직 실기 미검증.** PCM 계열 서브폴더가 아니라 최상위
+  `form/KB/frmYMZ280B.cs`를 포팅한 칩으로, 방금 완료된 PCM 계열
+  14종(C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/
+  OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM) 바로 다음 순서로
+  이식했습니다. 채널 8개, 채널당 8px 행 하나씩 키보드/노트 표시,
+  독립된 L/R 볼륨 LED 바, L과 R을 따로 그리는 두 개의 단일 타일 팬
+  아이콘(대부분의 PCM 계열 칩처럼 바이트로 압축된 2타일 아이콘 하나가
+  아님), 4개의 on/off 플래그 아이콘(키온/EX/노이즈/루프), 원시 팬
+  니블/샘플 시작·루프·루프끝·끝 주소(각 24비트)/피치(12비트)/TL(원시
+  바이트) 16진 표시, 채널 배지가 나열됩니다. **데이터 소스**:
+  `chipRegister.YMZ280BRegister[chipId]`를 직접 읽습니다 — 이미
+  `ChipRegister`의 public 필드라(Windows판 `Audio.GetYMZ280BRegister`도
+  같은 필드를 그대로 반환) 새 게터가 필요 없었습니다, C140/SegaPCM과
+  같은 직접-필드-접근 모양입니다. **노트 계산은 독자적**: 이 칩은
+  다른 PCM 계열 칩들과 달리 `Common.searchSegaPCMNote` 등 공유 헬퍼를
+  전혀 쓰지 않고, 원본 소스 주석에 "Furnace"(오픈소스 트래커)로
+  출처가 명시된 96개 항목짜리 전용 주파수 경계값 표(`NoteTableOct`)와
+  전용 탐색 함수(`SearchNote` — freq보다 작은 첫 경계값의 인덱스-1을
+  반환, 표를 넘어서면 마지막 인덱스 반환)를 씁니다. 표와 탐색 로직
+  모두 그대로 이식했습니다. **클록 처리 불필요**: `SearchNote`는 원시
+  9비트 주파수 레지스터 값을 표와 직접 비교하며 `Audio.ClockXxx` 나눗셈이
+  전혀 없습니다.
+- **PPZ8(NEC PC-98 계열의 8채널 ADPCM 샘플 재생 사운드보드/드라이버)은
+  이번 라운드 범위에서 제외했습니다** — PWM/SAA1099와는 성격이 다른
+  제외 사유입니다: 원본 `frmPPZ8.cs`와 그 그리기 로직은 실제로 존재하고
+  완전하며(빈 스텁이 아님), `MDSound/PPZ8.cs` 칩 에뮬레이션 코어와
+  `ChipRegister.GetPPZ8Register`/`PPZ8Write`/`PPZ8LoadPcm`도 이미 이
+  포트에 그대로 포팅돼 있습니다. 하지만 PPZ8은 VGM 표준 칩 클럭 헤더에
+  속하지 않는 PC-98 전용 드라이버 칩이라 `VgmEngine.cs` 어디에도
+  `enmInstrumentType.PPZ8`을 다루는 코드가 없고, PC-98용 S98/MDX/PMD류
+  드라이버 로딩 경로(`macos/MDPlayerCore/Driver/`에 MXDRV/ZMS 같은
+  대응 디렉터리가 없음) 자체가 이 포트에 아직 없어서, 어떤 파일을
+  로드해도 `MDSound.PPZ8` 칩 인스턴스가 만들어지지 않고
+  `chipRegister.GetPPZ8Register(chipId)`는 항상 null만 반환합니다.
+  MpcmX68k/PCM8이 그랬듯 드라이버 상태를 직접 읽는 생성자 예외를 만들
+  수도 있었지만, 애초에 그 드라이버 자체가 이 포트에 없어서 만들
+  방법이 없습니다. 표시계를 만들어 봐야 절대 트리거되지 않는 죽은
+  배선이 될 뿐이므로, 이번 라운드에서는 스킵합니다 — 이 포트가 나중에
+  PC-98 드라이버 포맷을 지원하게 되면 재검토할 후보입니다.
+- **`frmChipBase`/`frmMIDI`/`frmRegTest`/`frmYM2612MIDI`는 애초에 "칩
+  채널 표시계" 범주에 들지 않아 이번 로드맵 집계에서 제외했습니다** —
+  `frmChipBase`는 다른 폼들이 상속하는 추상 베이스 클래스일 뿐 특정
+  칩을 표시하지 않고, `frmMIDI`는 사운드 칩이 아니라 외부 MIDI 입력
+  활동을 보여주는 별개 종류의 창이고, `frmRegTest`는 실제 사용자용
+  표시계가 아니라 레지스터 디버그용 개발 도구이고, `frmYM2612MIDI`는
+  이미 완료된 YM2612의 MIDI 입력 전용 변형 뷰(별도 칩이 아님)입니다.
+  이로써 `form/KB/**/frmXxxx.cs` 중 실제 신규 "칩 채널 표시계" 로드맵
+  대상은 전부 완료됐거나(SN76489부터 YMZ280B까지) 명시적으로 범위
+  제외됐습니다(PWM/SAA1099/PPZ8).
 - **K054539(코나미 8채널 PCM 샘플 재생 칩): 이번 라운드에서 신규 구현,
   아직 실기 미검증.** 원본 `frmK054539.cs`를 그대로 포팅 — 같은 배경
   이미지 안에 특이한 2단 레이아웃을 씁니다: 1~8행(위쪽)에는 키보드/노트,
@@ -1366,20 +1416,27 @@ MultiPCM/OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM까지 14종 전부
 
 ## 다음 단계 후보
 
-1. **남은 ~5개 칩 채널 표시계 계속 구현**: SN76489/YM2612/YM2151/AY8910/S5B/
+1. **칩 채널 표시계 로드맵 완료**: SN76489/YM2612/YM2151/AY8910/S5B/
    YM2413/YM3526/YM3812/Y8950/YMF262/YMF278B/YM2203/YM2608/YM2609/YM2610/
    YMF271/NESDMC/FDS/MMC5/VRC6/VRC7/N106/DMG/HuC6280/K051649/C140/C352/
    GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/OKIM6258/OKIM6295/PCM8/
-   QSound/Rf5c68/SegaPCM는 완료했고(NES 계열 8종 + WF 계열 2종 + PCM 계열
-   15종 중 C140/C352/GA20/K053260/K054539/MegaCD/MpcmX68k/MultiPCM/
-   OKIM6258/OKIM6295/PCM8/QSound/Rf5c68/SegaPCM 14종 전체 완료), PWM은
-   원본 `frmPWM.cs`가 `InitializeComponent()`만 호출하는 빈 스텁이고
-   어디서도 생성되지 않는 죽은 코드라서 포팅할 내용이 없어 범위에서
-   제외했습니다. 이어서 나머지 칩(YMZ280B — SAA1099는 범위 제외)을
-   이식 중입니다. 각 칩마다
-   `DrawBuffXxx.cs`+
-   `XxxVisualizer.cs` 작성 → 필요한 스프라이트 `export_sprites.py`로 추출 →
-   `MainWindow.axaml.cs` 배선 → 커밋 → 기기 동기화 순서를 반복합니다.
+   QSound/Rf5c68/SegaPCM/YMZ280B까지 40개 칩을 전부 완료했습니다(NES 계열
+   8종 + WF 계열 2종 + PCM 계열 14종 + YMZ280B 전체 완료). PWM/SAA1099는
+   원본 `frmPWM.cs`/`frmSAA1099.cs` 자체가 `InitializeComponent()`만
+   호출하는 빈 스텁이고 어디서도 생성되지 않는 죽은 코드라서 포팅할
+   내용이 없어 범위에서 제외했고, PPZ8은 원본 구현은 실재하지만(빈
+   스텁이 아님) 이 포트에 PC-98용 S98/MDX/PMD 드라이버 배선 자체가
+   없어서 `chipRegister.GetPPZ8Register`가 항상 null만 반환하는 죽은
+   배선이 될 뿐이라 스킵했습니다(이 포트가 PC-98 드라이버 포맷을
+   지원하게 되면 재검토 후보). `frmChipBase`(추상 베이스)/`frmMIDI`
+   (MIDI 입력 표시, 칩 아님)/`frmRegTest`(디버그 도구)/`frmYM2612MIDI`
+   (YM2612의 MIDI 입력 전용 변형 뷰, 별도 칩 아님)는 애초에 "칩 채널
+   표시계" 범주에 들지 않아 로드맵 집계에서 제외했습니다. 각 칩마다
+   `DrawBuffXxx.cs`+`XxxVisualizer.cs` 작성 → 필요한 스프라이트
+   `export_sprites.py`로 추출 → `MainWindow.axaml.cs` 배선 → 커밋 →
+   기기 동기화 순서를 반복해서 여기까지 왔습니다. 남은 작업은 아래
+   2번의 실기 검증입니다 — SN76489/YM2612 외 38개 칩은 아직 실제
+   하드웨어에서 확인되지 않았습니다.
 2. **YM2612/YM2151 표시계 실기 검증**: 실제 Mac에서 빌드하고, 각 칩을 쓰는
    VGM 파일을 `MDPlayerUI`로 열어 LED 볼륨미터/건반/팬/음색표/LFO·타이머
    표시가 실제로 올바르게 그려지는지 확인이 필요합니다(YM2612는 Ch3 특수모드
