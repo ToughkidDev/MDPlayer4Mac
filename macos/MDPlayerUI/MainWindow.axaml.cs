@@ -75,6 +75,7 @@ namespace MDPlayer.UI
         private MegaCDVisualizer? megaCdVisualizer;
         private MpcmX68kVisualizer? mpcmX68kVisualizer;
         private MultiPCMVisualizer? multiPcmVisualizer;
+        private OKIM6258Visualizer? okim6258Visualizer;
         private DispatcherTimer? visualizerTimer;
 
         public MainWindow()
@@ -303,6 +304,12 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(multiPcmVisualizer.Screen);
             }
 
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.OKIM6258, out uint okim6258Clock))
+            {
+                okim6258Visualizer = new OKIM6258Visualizer(session.ChipRegister, okim6258Clock);
+                VisualizerHost.Children.Add(okim6258Visualizer.Screen);
+            }
+
             if (sn76489Visualizer == null && ym2612Visualizer == null && ym2151Visualizer == null
                 && ay8910Visualizer == null && s5bVisualizer == null && ym2413Visualizer == null
                 && ym3526Visualizer == null && ym3812Visualizer == null && y8950Visualizer == null
@@ -314,7 +321,8 @@ namespace MDPlayer.UI
                 && k051649Visualizer == null && c140Visualizer == null && c352Visualizer == null
                 && ga20Visualizer == null && k053260Visualizer == null
                 && k054539Visualizer == null && megaCdVisualizer == null
-                && mpcmX68kVisualizer == null && multiPcmVisualizer == null) return;
+                && mpcmX68kVisualizer == null && multiPcmVisualizer == null
+                && okim6258Visualizer == null) return;
 
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -385,6 +393,8 @@ namespace MDPlayer.UI
                 mpcmX68kVisualizer?.ScreenDrawParams();
                 multiPcmVisualizer?.ScreenChangeParams();
                 multiPcmVisualizer?.ScreenDrawParams();
+                okim6258Visualizer?.ScreenChangeParams();
+                okim6258Visualizer?.ScreenDrawParams();
             };
             visualizerTimer.Start();
         }
@@ -426,6 +436,7 @@ namespace MDPlayer.UI
             megaCdVisualizer = null;
             mpcmX68kVisualizer = null;
             multiPcmVisualizer = null;
+            okim6258Visualizer = null;
             VisualizerHost.Children.Clear();
         }
 
