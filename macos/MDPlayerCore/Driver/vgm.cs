@@ -68,6 +68,12 @@
         public uint uPD7759ClockValue;
         public uint POKEYClockValue;
 
+        // The VGM header may carry a global volume modifier (0x7C) and, in v1.70+,
+        // user-defined per-chip volume entries in its extra header.  These are file data,
+        // deliberately kept apart from the user's Setting.Balance values.
+        public int FileMasterVolume { get; private set; }
+        public Dictionary<ChipVolumeKey, int> FileChipVolumes { get; } = new();
+
         public bool YM2612DualChipFlag;
         public bool YM2151DualChipFlag;
         public bool YM2203DualChipFlag;
@@ -1987,6 +1993,8 @@
         {
             chips = new List<string>();
             UsedChips = "";
+            FileMasterVolume = 0;
+            FileChipVolumes.Clear();
 
             SN76489ClockValue = 0;// defaultSN76489ClockValue;
             YM2612ClockValue = 0;// defaultYM2612ClockValue;
@@ -2024,7 +2032,13 @@
             uint vgm = GetLE32(0x00);
             if (vgm != FCC_VGM) return false;
 
-            vgmEof = GetLE32(0x04);
+            // VGM's EOF field is relative to its own address (0x04), not to the
+            // beginning of the file. Clamp malformed values to the actual buffer
+            // length so the command reader never relies on a wrapped offset.
+            uint eofOffset = GetLE32(0x04);
+            vgmEof = eofOffset == 0
+                ? 0
+                : (uint)Math.Min((ulong)eofOffset + 0x04, (ulong)vgmBuf.Length);
 
             uint version = GetLE32(0x08);
             Version = string.Format("{0}.{1}{2}", (version & 0xf00) / 0x100, (version & 0xf0) / 0x10, (version & 0xf));
@@ -2604,6 +2618,8 @@
                 vgmDataOffset = 0x40;
             }
 
+            ParseFileVolumeSettings(version);
+
             foreach (string chip in chips)
             {
                 UsedChips += chip + " , ";
@@ -2629,6 +2645,119 @@
             }
 
             return true;
+        }
+
+        private void ParseFileVolumeSettings(uint version)
+        {
+            // VGM's 0x7C Volume Modifier is a signed 3.5-bit exponent: gain =
+            // 2^(modifier / 0x20).  MDSound's dB controls use gain = 10^(dB / 40),
+            // hence the 40*log10 conversion.  An absent/overlapped header byte is 0 dB.
+            if (version >= 0x0150 && vgmDataOffset > 0x7c && HasBytes(0x7c, 1))
+            {
+                int modifier = vgmBuf[0x7c] switch
+                {
+                    <= 0xc0 => vgmBuf[0x7c],
+                    0xc1 => -64,
+                    _ => vgmBuf[0x7c] - 0x100,
+                };
+                FileMasterVolume = LinearGainToMixerDb(Math.Pow(2.0, modifier / 32.0));
+            }
+
+            // v1.70's extra header holds optional chip-balance entries.  Both the extra
+            // header and its chip-volume block use VGM-relative offsets: a nonzero field is
+            // relative to the address of that field itself.
+            if (version < 0x0170 || vgmDataOffset <= 0xc0 || !HasBytes(0xbc, 4)) return;
+
+            uint extraHeaderRelativeOffset = GetLE32(0xbc);
+            if (extraHeaderRelativeOffset == 0) return;
+            ulong extraHeaderOffset = 0xbcUL + extraHeaderRelativeOffset;
+            if (!HasBytes(extraHeaderOffset, 12)) return;
+
+            uint extraHeaderSize = GetLE32((uint)extraHeaderOffset);
+            if (extraHeaderSize < 0x0c) return;
+
+            ulong chipVolumeOffsetField = extraHeaderOffset + 0x08;
+            uint chipVolumeRelativeOffset = GetLE32((uint)chipVolumeOffsetField);
+            if (chipVolumeRelativeOffset == 0) return;
+
+            ulong chipVolumeOffset = chipVolumeOffsetField + chipVolumeRelativeOffset;
+            if (!HasBytes(chipVolumeOffset, 1)) return;
+
+            int count = vgmBuf[(int)chipVolumeOffset];
+            for (int entry = 0; entry < count; entry++)
+            {
+                ulong offset = chipVolumeOffset + 1UL + (ulong)entry * 4;
+                if (!HasBytes(offset, 4)) break;
+
+                byte chipId = vgmBuf[(int)offset];
+                byte flags = vgmBuf[(int)offset + 1];
+                ushort rawVolume = (ushort)(vgmBuf[(int)offset + 2] | vgmBuf[(int)offset + 3] << 8);
+
+                // Paired parts such as YM2203's internal AY block do not have a separate
+                // MDSound mixer record. The flag's bit 0, however, identifies the real
+                // second chip instance and maps directly to its Chip.ID.
+                if ((chipId & 0x80) != 0) continue;
+                if (!TryGetInstrumentType(chipId, out MDSound.MDSound.enmInstrumentType type)) continue;
+
+                double linearGain = (rawVolume & 0x7fff) / 256.0;
+                FileChipVolumes[new ChipVolumeKey(type, (byte)(flags & 0x01))]
+                    = LinearGainToMixerDb(linearGain);
+            }
+        }
+
+        private bool HasBytes(ulong offset, ulong length)
+            => offset <= (ulong)vgmBuf.Length && length <= (ulong)vgmBuf.Length - offset;
+
+        private static int LinearGainToMixerDb(double linearGain)
+        {
+            if (linearGain <= 0) return -192;
+            return Math.Clamp((int)Math.Round(40.0 * Math.Log10(linearGain)), -192, 20);
+        }
+
+        private static bool TryGetInstrumentType(byte chipId, out MDSound.MDSound.enmInstrumentType type)
+        {
+            type = chipId switch
+            {
+                0x00 => MDSound.MDSound.enmInstrumentType.SN76489,
+                0x01 => MDSound.MDSound.enmInstrumentType.YM2413,
+                0x02 => MDSound.MDSound.enmInstrumentType.YM2612,
+                0x03 => MDSound.MDSound.enmInstrumentType.YM2151,
+                0x04 => MDSound.MDSound.enmInstrumentType.SEGAPCM,
+                0x05 => MDSound.MDSound.enmInstrumentType.RF5C68,
+                0x06 => MDSound.MDSound.enmInstrumentType.YM2203,
+                0x07 => MDSound.MDSound.enmInstrumentType.YM2608,
+                0x08 => MDSound.MDSound.enmInstrumentType.YM2610,
+                0x09 => MDSound.MDSound.enmInstrumentType.YM3812,
+                0x0a => MDSound.MDSound.enmInstrumentType.YM3526,
+                0x0b => MDSound.MDSound.enmInstrumentType.Y8950,
+                0x0c => MDSound.MDSound.enmInstrumentType.YMF262,
+                0x0d => MDSound.MDSound.enmInstrumentType.YMF278B,
+                0x0e => MDSound.MDSound.enmInstrumentType.YMF271,
+                0x0f => MDSound.MDSound.enmInstrumentType.YMZ280B,
+                0x10 => MDSound.MDSound.enmInstrumentType.RF5C164,
+                0x11 => MDSound.MDSound.enmInstrumentType.PWM,
+                0x12 => MDSound.MDSound.enmInstrumentType.AY8910,
+                0x13 => MDSound.MDSound.enmInstrumentType.DMG,
+                0x14 => MDSound.MDSound.enmInstrumentType.Nes,
+                0x15 => MDSound.MDSound.enmInstrumentType.MultiPCM,
+                0x16 => MDSound.MDSound.enmInstrumentType.uPD7759,
+                0x17 => MDSound.MDSound.enmInstrumentType.OKIM6258,
+                0x18 => MDSound.MDSound.enmInstrumentType.OKIM6295,
+                0x19 => MDSound.MDSound.enmInstrumentType.K051649,
+                0x1a => MDSound.MDSound.enmInstrumentType.K054539,
+                0x1b => MDSound.MDSound.enmInstrumentType.HuC6280,
+                0x1c => MDSound.MDSound.enmInstrumentType.C140,
+                0x1d => MDSound.MDSound.enmInstrumentType.K053260,
+                0x1e => MDSound.MDSound.enmInstrumentType.POKEY,
+                0x1f => MDSound.MDSound.enmInstrumentType.QSound,
+                0x23 => MDSound.MDSound.enmInstrumentType.SAA1099,
+                0x24 => MDSound.MDSound.enmInstrumentType.ES5503,
+                0x26 => MDSound.MDSound.enmInstrumentType.X1_010,
+                0x27 => MDSound.MDSound.enmInstrumentType.C352,
+                0x28 => MDSound.MDSound.enmInstrumentType.GA20,
+                _ => MDSound.MDSound.enmInstrumentType.None,
+            };
+            return type != MDSound.MDSound.enmInstrumentType.None;
         }
 
 

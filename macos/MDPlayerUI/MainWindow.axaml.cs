@@ -11,10 +11,16 @@
 // back onto the UI thread safely.
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using MDPlayer;
 using MDPlayer.CoreAudioOutput;
@@ -26,6 +32,11 @@ namespace MDPlayer.UI
     {
         private const int FramesPerBuffer = 2048;
         private const int BufferCount = 4;
+        private const double CompactPlaylistRowHeight = 18;
+        private const double EmbeddedPlaylistRows = 3.5;
+        private const double PlaylistViewRows = 20;
+
+        private enum ActiveViewMode { Channel, Volume, Playlist }
 
         // ~30fps - lighter than the original Windows app's default 60fps
         // (Setting.other.ScreenFrameRate, frmMain.cs's screenMainLoop), plenty smooth for
@@ -37,6 +48,41 @@ namespace MDPlayer.UI
         private string? loadedFileName;
         private CoreAudioQueue? queue;
         private volatile bool stopRequested;
+        private bool isPaused;
+        private bool isStarting;
+        private bool playbackEnded;
+        private bool loopEnabled;
+        private long fileLoopCounter;
+        private string? channelLayoutSignature;
+        private ActiveViewMode activeViewMode = ActiveViewMode.Channel;
+
+        private sealed record PlaylistEntry(byte[] Bytes, string Name);
+        private readonly System.Collections.Generic.List<PlaylistEntry> playlist = new();
+        private int playlistIndex = -1;
+        private bool synchronizingPlaylistSelection;
+
+        // Built from the Windows frmMain cc/ch/ci sprite triplets after XAML has created
+        // the two host rows. The transport row is Stop, Pause, Previous, Slow, Play, Fast,
+        // Next; the utility row contains Open, the mixer and the channel keyboard view.
+        private TransportSpriteButton openButton = null!;
+        private TransportSpriteButton stopButton = null!;
+        private TransportSpriteButton pauseButton = null!;
+        private TransportSpriteButton previousButton = null!;
+        private TransportSpriteButton slowButton = null!;
+        private TransportSpriteButton playButton = null!;
+        private TransportSpriteButton fastButton = null!;
+        private TransportSpriteButton nextButton = null!;
+        private TransportSpriteButton playlistViewButton = null!;
+        private TransportSpriteButton volumeViewButton = null!;
+        private TransportSpriteButton channelViewButton = null!;
+        private TransportSpriteButton loopButton = null!;
+
+        // Kept independently of a playback session so a volume change made for one song is
+        // immediately honoured when the user opens another song.  The current Setting is
+        // persisted on application close; the mixer itself deliberately has no extra text
+        // controls or save/reset buttons.
+        private readonly System.Collections.Generic.Dictionary<ChipVolumeKey, int> chipVolumeOverrides = new();
+        private int? masterVolumeOverride;
 
         // Retained across the play flow (previously only a local in OnPlayClick) so the
         // visualizer redraw timer can keep polling ChipRegister/ChipClocks for as long as
@@ -90,6 +136,7 @@ namespace MDPlayer.UI
         // and pump ScreenChangeParams/ScreenDrawParams on every tick, same as any primary
         // visualizer.
         private readonly System.Collections.Generic.List<IChannelVisualizer> secondaryVisualizers = new();
+        private readonly StackPanel VisualizerHost = new() { Spacing = 4 };
 
         private void AddSecondaryVisualizer(IChannelVisualizer visualizer)
         {
@@ -98,15 +145,256 @@ namespace MDPlayer.UI
         }
 
         private DispatcherTimer? visualizerTimer;
+        private MixerVisualizer? mixerVisualizer;
+        private readonly StackPanel volumeViewHost = new() { Spacing = 8 };
+        private readonly Button resetVolumeButton = new() { Content = "볼륨 리셋" };
+        private readonly DockPanel playlistViewHost = new() { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch };
+        private readonly ListBox playlistViewList = new()
+        {
+            MinHeight = CompactPlaylistRowHeight * PlaylistViewRows,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
+        };
+
+        private void ApplyChipVolumeOverrides(MusicEngineSession session)
+        {
+            foreach (var overrideEntry in chipVolumeOverrides)
+            {
+                if (session.ChipVolumeSlots.Exists(slot => slot.Key == overrideEntry.Key))
+                {
+                    session.SetChipVolume(overrideEntry.Key, overrideEntry.Value);
+                }
+            }
+            if (masterVolumeOverride is int masterVolume)
+            {
+                session.SetMasterVolume(masterVolume);
+            }
+        }
+
+        private void ShowMixerFor(MusicEngineSession session)
+        {
+            mixerVisualizer = new MixerVisualizer(session);
+            mixerVisualizer.ChipVolumeChanged += (chipKey, volume) => chipVolumeOverrides[chipKey] = volume;
+            mixerVisualizer.MasterVolumeChanged += volume => masterVolumeOverride = volume;
+            volumeViewButton.IsEnabled = true;
+            channelViewButton.IsEnabled = true;
+        }
+
+        private void HideMixer()
+        {
+            mixerVisualizer = null;
+            volumeViewButton.IsEnabled = false;
+            channelViewButton.IsEnabled = false;
+            volumeViewButton.IsSelected = false;
+            channelViewButton.IsSelected = false;
+            playlistViewButton.IsSelected = false;
+            SetPlaylistPanelVisibility(playlistOnly: false);
+            ViewHost.Content = null;
+            volumeViewHost.Children.Clear();
+        }
+
+        private void ShowVolumeView(bool refitWindow = true)
+        {
+            if (mixerVisualizer == null) return;
+            activeViewMode = ActiveViewMode.Volume;
+            SetEmbeddedPlaylistSize();
+            SetPlaylistPanelVisibility(playlistOnly: false);
+            mixerVisualizer.FitToChannelViewWidth(VisualizerHost.Bounds.Width);
+            volumeViewHost.Children.Clear();
+            volumeViewHost.Children.Add(mixerVisualizer.Screen);
+            volumeViewHost.Children.Add(resetVolumeButton);
+            ViewHost.Content = volumeViewHost;
+            volumeViewButton.IsSelected = true;
+            channelViewButton.IsSelected = false;
+            playlistViewButton.IsSelected = false;
+            volumeViewButton.IsEnabled = true;
+            channelViewButton.IsEnabled = true;
+            if (refitWindow) RefitWindowToActiveView();
+        }
+
+        private void ShowChannelView(bool refitWindow = true)
+        {
+            activeViewMode = ActiveViewMode.Channel;
+            SetEmbeddedPlaylistSize();
+            SetPlaylistPanelVisibility(playlistOnly: false);
+            ViewHost.Content = VisualizerHost;
+            volumeViewButton.IsSelected = false;
+            channelViewButton.IsSelected = true;
+            playlistViewButton.IsSelected = false;
+            volumeViewButton.IsEnabled = mixerVisualizer != null;
+            channelViewButton.IsEnabled = mixerVisualizer != null;
+            if (refitWindow) RefitWindowToActiveView();
+        }
+
+        private void ShowPlaylistView(bool refitWindow = true)
+        {
+            if (playlist.Count == 0) return;
+            activeViewMode = ActiveViewMode.Playlist;
+            SetPlaylistPanelVisibility(playlistOnly: true);
+            ViewHost.Content = playlistViewHost;
+            volumeViewButton.IsSelected = false;
+            channelViewButton.IsSelected = false;
+            playlistViewButton.IsSelected = true;
+            if (refitWindow) RefitWindowToActiveView();
+        }
+
+        private void RestoreActiveView(bool refitChannelWindow = true)
+        {
+            switch (activeViewMode)
+            {
+                case ActiveViewMode.Volume when mixerVisualizer != null:
+                    ShowVolumeView(refitWindow: false);
+                    break;
+                case ActiveViewMode.Playlist when playlist.Count > 0:
+                    ShowPlaylistView(refitWindow: false);
+                    break;
+                default:
+                    ShowChannelView(refitChannelWindow);
+                    break;
+            }
+        }
+
+        private void SetEmbeddedPlaylistSize()
+            => PlaylistList.Height = CompactPlaylistRowHeight * EmbeddedPlaylistRows;
+
+        private void SetPlaylistPanelVisibility(bool playlistOnly)
+        {
+            // Normal channel/mixer modes content-size the final row to the compact 3.5-row
+            // playlist. In playlist-only mode that same row becomes a star row: ActiveViewPanel
+            // and its DockPanel/ListBox then stretch all the way to the main-window bottom.
+            PlaylistPanel.IsVisible = playlist.Count > 0 && !playlistOnly;
+            Grid.SetRow(ActiveViewPanel, playlistOnly ? 4 : 3);
+            MainLayout.RowDefinitions[4].Height = playlistOnly
+                ? new GridLength(1, GridUnitType.Star)
+                : GridLength.Auto;
+        }
+
+        // Refit after replacing ViewHost's child. The chip screens report their own desired
+        // pixel sizes only after a layout pass, so let Avalonia perform that unconstrained
+        // content measurement instead of assigning ClientSize from a stale, clipped measure.
+        private void RefitWindowToActiveView()
+        {
+            MinWidth = 0;
+            MinHeight = 0;
+            SizeToContent = Avalonia.Controls.SizeToContent.Manual;
+            Dispatcher.UIThread.Post(() =>
+            {
+                InvalidateMeasure();
+                InvalidateArrange();
+                SizeToContent = Avalonia.Controls.SizeToContent.WidthAndHeight;
+                // Capture the post-measure channel minimum only after SizeToContent has
+                // allowed the complete channel view and its playlist panel to arrange.
+                Dispatcher.UIThread.Post(UpdateChannelViewMinimumSize, DispatcherPriority.Render);
+            }, DispatcherPriority.Render);
+        }
+
+        private void UpdateChannelViewMinimumSize()
+        {
+            if (!ReferenceEquals(ViewHost.Content, VisualizerHost) || ViewHost.Bounds.Width <= 0) return;
+
+            // ViewHost includes the channel border/padding. The difference to the outer
+            // window covers the dashboard, root margin and native window chrome.
+            double windowChromeWidth = Math.Max(0, Bounds.Width - ViewHost.Bounds.Width);
+            MinWidth = Math.Ceiling(ViewHost.DesiredSize.Width + windowChromeWidth);
+
+            if (!PlaylistPanel.IsVisible || PlaylistPanel.Bounds.Height <= 0) return;
+
+            // Playlist items use Padding="6,1" (about 18 px high at the default font).
+            // Preserve the panel heading/chrome plus one-and-a-half visible entries when
+            // the user makes the window shorter.
+            const double visiblePlaylistRows = EmbeddedPlaylistRows;
+            double playlistFixedHeight = Math.Max(0, PlaylistPanel.DesiredSize.Height - PlaylistList.DesiredSize.Height);
+            double minimumPlaylistHeight = playlistFixedHeight + CompactPlaylistRowHeight * visiblePlaylistRows;
+            double nonPlaylistHeight = Math.Max(0, Bounds.Height - PlaylistPanel.Bounds.Height);
+            MinHeight = Math.Ceiling(nonPlaylistHeight + minimumPlaylistHeight);
+        }
 
         public MainWindow()
         {
             InitializeComponent();
+            var playlistViewTitle = new TextBlock { Text = "재생 목록" };
+            DockPanel.SetDock(playlistViewTitle, Dock.Top);
+            playlistViewHost.Children.Add(playlistViewTitle);
+            playlistViewHost.Children.Add(playlistViewList);
+            // Styles have a single owner collection in Avalonia, so build a separate compact
+            // style rather than reusing PlaylistList.Styles (which would abort at startup).
+            var compactPlaylistStyle = new Style(selector => selector.OfType<ListBoxItem>());
+            compactPlaylistStyle.Setters.Add(new Setter(TemplatedControl.PaddingProperty, new Thickness(6, 1)));
+            compactPlaylistStyle.Setters.Add(new Setter(Layoutable.MinHeightProperty, 0d));
+            playlistViewList.Styles.Add(compactPlaylistStyle);
+            playlistViewList.SelectionChanged += OnPlaylistViewSelectionChanged;
+            playlistViewList.DoubleTapped += OnPlaylistViewDoubleTapped;
+            BuildTransportButtons();
+            DragDrop.AddDragOverHandler(this, OnFileDragOver);
+            DragDrop.AddDragEnterHandler(this, OnFileDragEnter);
+            DragDrop.AddDragLeaveHandler(this, OnFileDragLeave);
+            DragDrop.AddDropHandler(this, OnFileDrop);
+            resetVolumeButton.Click += OnResetVolumeClick;
             Closing += (_, _) =>
             {
                 StopPlayback();
                 HideVisualizers();
+                try { loadedSession?.Setting.Save(); } catch { }
+                HideMixer();
             };
+        }
+
+        private void BuildTransportButtons()
+        {
+            openButton = MakeTransportButton("OpenFolder", "파일 열기", () => OnOpenClick(null, null));
+            stopButton = MakeTransportButton("Stop", "정지", () => OnStopClick(null, null));
+            pauseButton = MakeTransportButton("Pause", "일시 정지 / 계속", OnPauseClick);
+            previousButton = MakeTransportButton("Previous", "이전 곡", OnPreviousClick);
+            slowButton = MakeTransportButton("Slow", "느리게 (재생 속도)", () => ChangePlaybackSpeed(0.5));
+            playButton = MakeTransportButton("Play", "재생 / 계속", () => OnPlayClick(null, null));
+            fastButton = MakeTransportButton("Fast", "빠르게 (재생 속도)", () => ChangePlaybackSpeed(2.0));
+            nextButton = MakeTransportButton("Next", "다음 곡", OnNextClick);
+            playlistViewButton = MakeTransportButton("PlayList", "재생목록 뷰", () => ShowPlaylistView());
+            volumeViewButton = MakeTransportButton("Mixer", "볼륨 뷰", () => ShowVolumeView());
+            channelViewButton = MakeTransportButton("KBD", "채널 뷰", () => ShowChannelView());
+            loopButton = MakeTransportButton("Loop", "현재 곡 반복", OnLoopClick);
+
+            TransportButtonsHost.Children.Add(stopButton.Screen);
+            TransportButtonsHost.Children.Add(pauseButton.Screen);
+            TransportButtonsHost.Children.Add(previousButton.Screen);
+            TransportButtonsHost.Children.Add(slowButton.Screen);
+            TransportButtonsHost.Children.Add(playButton.Screen);
+            TransportButtonsHost.Children.Add(fastButton.Screen);
+            TransportButtonsHost.Children.Add(nextButton.Screen);
+            UtilityButtonsHost.Children.Add(openButton.Screen);
+            UtilityButtonsHost.Children.Add(playlistViewButton.Screen);
+            UtilityButtonsHost.Children.Add(volumeViewButton.Screen);
+            UtilityButtonsHost.Children.Add(channelViewButton.Screen);
+            UtilityButtonsHost.Children.Add(loopButton.Screen);
+            UpdateTransportButtons();
+        }
+
+        private static TransportSpriteButton MakeTransportButton(string icon, string tooltip, Action click)
+        {
+            TransportSpriteButton button = new(icon, tooltip);
+            button.Click += click;
+            return button;
+        }
+
+        private void UpdateTransportButtons()
+        {
+            bool hasTrack = playlistIndex >= 0;
+            bool playbackActive = queue != null && !playbackEnded;
+            bool playing = playbackActive && !isPaused;
+            bool canChangeTrack = playlist.Count > 1 && !isStarting;
+
+            openButton.IsEnabled = !isStarting;
+            playButton.IsEnabled = hasTrack && !isStarting;
+            playlistViewButton.IsEnabled = playlist.Count > 0;
+            stopButton.IsEnabled = playbackActive;
+            pauseButton.IsEnabled = playbackActive;
+            previousButton.IsEnabled = canChangeTrack;
+            nextButton.IsEnabled = canChangeTrack;
+            slowButton.IsEnabled = playbackActive && !isStarting;
+            fastButton.IsEnabled = playbackActive && !isStarting;
+            playButton.IsSelected = playing;
+            pauseButton.IsSelected = isPaused;
+            loopButton.IsEnabled = true;
+            loopButton.IsSelected = loopEnabled;
         }
 
         // Builds whichever chip visualizers this session's ChipClocks says are present and
@@ -688,6 +976,137 @@ namespace MDPlayer.UI
             VisualizerHost.Children.Clear();
         }
 
+        private static readonly string[] SupportedMusicExtensions =
+        {
+            ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".zms", ".zmd", ".mdx",
+            ".mdr", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
+        };
+
+        private static bool IsSupportedMusicFile(IStorageFile file)
+            => SupportedMusicExtensions.Contains(Path.GetExtension(file.Name), StringComparer.OrdinalIgnoreCase);
+
+        private void OnFileDragEnter(object? sender, DragEventArgs e)
+        {
+            if (e.DataTransfer.Formats.Contains(DataFormat.File))
+            {
+                PlaylistHint.Text = "여기에 놓으면 재생 목록에 추가합니다";
+            }
+        }
+
+        private void OnFileDragLeave(object? sender, DragEventArgs e)
+        {
+            RefreshPlaylistPanel();
+        }
+
+        private void OnFileDragOver(object? sender, DragEventArgs e)
+        {
+            e.DragEffects = e.DataTransfer.Formats.Contains(DataFormat.File)
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
+        }
+
+        private async void OnFileDrop(object? sender, DragEventArgs e)
+        {
+            var files = e.DataTransfer.TryGetFiles()?
+                .OfType<IStorageFile>()
+                .Where(IsSupportedMusicFile)
+                .ToArray();
+            if (files == null || files.Length == 0)
+            {
+                PlaylistHint.Text = "지원하는 음악 파일을 드롭하세요";
+                return;
+            }
+
+            bool wasEmpty = playlist.Count == 0;
+            int added = await AppendFilesAsync(files);
+            if (added == 0) return;
+
+            if (wasEmpty)
+            {
+                StopPlayback();
+                HideMixer();
+                HideVisualizers();
+                await SelectPlaylistEntryAsync(0);
+                if (AutoPlayCheckBox.IsChecked == true) await StartPlaybackAsync();
+            }
+            else
+            {
+                StatusLabel.Text = $"재생 목록에 {added}곡을 추가했습니다";
+                RefreshPlaylistPanel();
+                UpdateTransportButtons();
+            }
+        }
+
+        private async Task<int> AppendFilesAsync(System.Collections.Generic.IEnumerable<IStorageFile> files)
+        {
+            int added = 0;
+            foreach (IStorageFile file in files)
+            {
+                await using var stream = await file.OpenReadAsync();
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                playlist.Add(new PlaylistEntry(ms.ToArray(), file.Name));
+                added++;
+            }
+            return added;
+        }
+
+        private void RefreshPlaylistPanel()
+        {
+            bool playlistOnly = playlistViewButton != null && playlistViewButton.IsSelected;
+            SetPlaylistPanelVisibility(playlistOnly);
+            PlaylistHint.Text = playlist.Count == 0
+                ? "재생 목록 — 음악 파일을 여기 또는 창에 드롭하여 추가"
+                : $"재생 목록 {playlist.Count}곡 — 음악 파일을 드롭하여 추가";
+
+            synchronizingPlaylistSelection = true;
+            string[] items = playlist
+                .Select((entry, index) => $"{index + 1,2}. {entry.Name}")
+                .ToArray();
+            PlaylistList.ItemsSource = items;
+            playlistViewList.ItemsSource = items;
+            PlaylistList.SelectedIndex = playlistIndex;
+            playlistViewList.SelectedIndex = playlistIndex;
+            synchronizingPlaylistSelection = false;
+            playlistViewButton.IsEnabled = playlist.Count > 0;
+        }
+
+        private async void OnPlaylistSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (synchronizingPlaylistSelection) return;
+            await SelectPlaylistIndexAsync(PlaylistList.SelectedIndex);
+        }
+
+        private async void OnPlaylistViewSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (synchronizingPlaylistSelection) return;
+            await SelectPlaylistIndexAsync(playlistViewList.SelectedIndex);
+        }
+
+        private async Task SelectPlaylistIndexAsync(int selectedIndex)
+        {
+            if (selectedIndex < 0 || selectedIndex >= playlist.Count || selectedIndex == playlistIndex) return;
+
+            bool shouldResume = (queue != null && !playbackEnded) || isPaused;
+            StopPlayback();
+            await SelectPlaylistEntryAsync(selectedIndex);
+            if (shouldResume) await StartPlaybackAsync();
+        }
+
+        private async void OnPlaylistDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            if (playlistIndex < 0 || playlistIndex >= playlist.Count) return;
+            if (queue != null && !playbackEnded) StopPlayback();
+            await StartPlaybackAsync();
+        }
+
+        private async void OnPlaylistViewDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            if (playlistIndex < 0 || playlistIndex >= playlist.Count) return;
+            if (queue != null && !playbackEnded) StopPlayback();
+            await StartPlaybackAsync();
+        }
+
         private async void OnOpenClick(object? sender, RoutedEventArgs e)
         {
             TopLevel? topLevel = TopLevel.GetTopLevel(this);
@@ -696,7 +1115,7 @@ namespace MDPlayer.UI
             var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = "음악 파일 열기",
-                AllowMultiple = false,
+                AllowMultiple = true,
                 FileTypeFilter = new[]
                 {
                     // .vgz is just a gzip-compressed .vgm (the format most real-world VGM
@@ -720,46 +1139,87 @@ namespace MDPlayer.UI
 
             StopPlayback();
             HideVisualizers();
+            HideMixer();
 
-            var file = files[0];
-            await using var stream = await file.OpenReadAsync();
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            loadedVgmBytes = ms.ToArray();
-            loadedFileName = file.Name;
+            playlist.Clear();
+            await AppendFilesAsync(files.Where(IsSupportedMusicFile));
+            if (playlist.Count == 0)
+            {
+                StatusLabel.Text = "지원하는 음악 파일을 선택하세요";
+                RefreshPlaylistPanel();
+                UpdateTransportButtons();
+                return;
+            }
 
-            FileLabel.Text = file.Name;
-            StatusLabel.Text = $"로드됨 ({loadedVgmBytes.Length} bytes) - 재생 준비";
-            PlayButton.IsEnabled = true;
-            StopButton.IsEnabled = false;
+            await SelectPlaylistEntryAsync(0);
+            if (AutoPlayCheckBox.IsChecked == true) await StartPlaybackAsync();
         }
 
         private async void OnPlayClick(object? sender, RoutedEventArgs e)
         {
+            if (isPaused && queue != null && !playbackEnded)
+            {
+                queue.Start();
+                isPaused = false;
+                StatusLabel.Text = "재생 계속";
+                UpdateTransportButtons();
+                return;
+            }
+            if (queue != null && !playbackEnded) return;
+            await StartPlaybackAsync();
+        }
+
+        private async Task StartPlaybackAsync()
+        {
             byte[]? vgmBuf = loadedVgmBytes;
             string? fileName = loadedFileName;
-            if (vgmBuf == null) return;
+            if (vgmBuf == null || isStarting) return;
 
-            OpenButton.IsEnabled = false;
-            PlayButton.IsEnabled = false;
-            StopButton.IsEnabled = true;
+            // A naturally completed AudioQueue remains allocated briefly to drain its
+            // already-enqueued buffers. Dispose that stale queue before starting this track
+            // again, rather than losing the reference when the new queue is assigned.
+            if (queue != null)
+            {
+                queue.Stop();
+                queue.Dispose();
+                queue = null;
+            }
+
+            isStarting = true;
+            playbackEnded = false;
+            isPaused = false;
+            UpdateTransportButtons();
             StatusLabel.Text = "로딩 중...";
 
             stopRequested = false;
 
             try
             {
-                loadedSession = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
+                // A selected file has normally already been initialized so its channel view
+                // can be displayed while waiting for Play. Keep that initialized session;
+                // only fall back to loading here for callers that reach playback directly.
                 MusicEngineSession? session = loadedSession;
+                // A driver that naturally reached its end cannot be wound back. Reload it
+                // when Play is pressed again, while leaving the last channel view on screen.
+                if (session == null || session.Driver.Stopped)
+                {
+                    session = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
+                    loadedSession = session;
+                    if (session != null)
+                    {
+                        ApplyChipVolumeOverrides(session);
+                        fileLoopCounter = session.Driver.LoopCounter;
+                    }
+                }
                 if (session == null || stopRequested)
                 {
                     if (!stopRequested)
                         StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
-                    OpenButton.IsEnabled = true;
-                    PlayButton.IsEnabled = true;
-                    StopButton.IsEnabled = false;
+                    playbackEnded = true;
                     return;
                 }
+
+                session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
 
                 await Task.Run(() =>
                 {
@@ -768,19 +1228,21 @@ namespace MDPlayer.UI
                         (buf, count) =>
                         {
                             if (stopRequested || session.Driver.Stopped) return 0;
-                            // loadedSession.RenderSamples, not Mds.Update() directly - see
+                            // RenderSamplesWithMasterVolume, not Mds.Update() directly - see
                             // EngineSmokeTest/Program.cs's identical comment (SID/NSF/MDX
                             // bypass MDSound.MDSound.Chip.Update() entirely and pull PCM
                             // straight from their own driver's Render()).
-                            return session.RenderSamples(buf, 0, count);
+                            return session.RenderSamplesWithMasterVolume(buf, 0, count);
                         });
 
                     queue = localQueue;
                     localQueue.Start();
                 });
 
-                StatusLabel.Text = $"재생 중 - {session.DescribeActiveChips()}";
                 ShowVisualizersFor(session);
+                ShowMixerFor(session);
+                RestoreActiveView();
+                StatusLabel.Text = $"재생 중 - {session.DescribeActiveChips()}";
 
                 // Poll for completion off the UI thread; only hop back to update labels/buttons.
                 CoreAudioQueue? watchedQueue = queue;
@@ -794,11 +1256,9 @@ namespace MDPlayer.UI
                     {
                         await Dispatcher.UIThread.InvokeAsync(() =>
                         {
-                            StatusLabel.Text = "재생 완료";
-                            OpenButton.IsEnabled = true;
-                            PlayButton.IsEnabled = true;
-                            StopButton.IsEnabled = false;
-                            HideVisualizers();
+                            if (!ReferenceEquals(queue, watchedQueue)) return;
+                            playbackEnded = true;
+                            _ = ContinueAfterCompletionAsync();
                         });
                     }
                 });
@@ -806,10 +1266,14 @@ namespace MDPlayer.UI
             catch (Exception ex)
             {
                 StatusLabel.Text = $"오류: {ex.Message}";
-                OpenButton.IsEnabled = true;
-                PlayButton.IsEnabled = true;
-                StopButton.IsEnabled = false;
+                playbackEnded = true;
+                HideMixer();
                 HideVisualizers();
+            }
+            finally
+            {
+                isStarting = false;
+                UpdateTransportButtons();
             }
         }
 
@@ -817,10 +1281,155 @@ namespace MDPlayer.UI
         {
             StopPlayback();
             StatusLabel.Text = "정지됨";
-            OpenButton.IsEnabled = true;
-            PlayButton.IsEnabled = true;
-            StopButton.IsEnabled = false;
-            HideVisualizers();
+            // Stop is a transport action, not a view reset. Leave the selected mode intact.
+            UpdateTransportButtons();
+        }
+
+        private void OnPauseClick()
+        {
+            if (queue == null || playbackEnded) return;
+
+            if (isPaused)
+            {
+                queue.Start();
+                isPaused = false;
+                StatusLabel.Text = "재생 계속";
+            }
+            else
+            {
+                queue.Pause();
+                isPaused = true;
+                StatusLabel.Text = "일시 정지";
+            }
+            UpdateTransportButtons();
+        }
+
+        private async void OnPreviousClick() => await MovePlaylistAsync(-1);
+
+        private async void OnNextClick() => await MovePlaylistAsync(1);
+
+        private async Task MovePlaylistAsync(int delta)
+        {
+            if (playlist.Count == 0) return;
+
+            bool shouldResume = (queue != null && !playbackEnded) || isPaused;
+            int target = (playlistIndex + delta + playlist.Count) % playlist.Count;
+            StopPlayback();
+            await SelectPlaylistEntryAsync(target);
+            if (shouldResume) await StartPlaybackAsync();
+        }
+
+        // Completion is treated as a transport transition, never as a view reset. For a
+        // playlist, advance to the following entry; for the final entry, leave its channel
+        // view visible and let Play reload the stopped driver from the beginning.
+        private async Task ContinueAfterCompletionAsync()
+        {
+            if (playlistIndex >= 0 && playlistIndex < playlist.Count && loopEnabled)
+            {
+                StatusLabel.Text = "반복 재생";
+                await SelectPlaylistEntryAsync(playlistIndex);
+                await StartPlaybackAsync();
+                return;
+            }
+
+            if (playlistIndex >= 0 && playlistIndex + 1 < playlist.Count)
+            {
+                StatusLabel.Text = "다음 곡 재생";
+                await SelectPlaylistEntryAsync(playlistIndex + 1);
+                await StartPlaybackAsync();
+                return;
+            }
+
+            StatusLabel.Text = "재생 완료";
+            UpdateTransportButtons();
+        }
+
+        // This deliberately describes the visualizer topology, rather than the song title
+        // or chip clocks. Two tracks with the same chip instances can replace their register
+        // source in-place without shrinking the already visible channel-view window.
+        private static string GetChannelLayoutSignature(MusicEngineSession session)
+            => string.Join(";", session.ChipVolumeSlots
+                .OrderBy(slot => (int)slot.Key.Type)
+                .ThenBy(slot => slot.Key.ChipId)
+                .Select(slot => $"{(int)slot.Key.Type}:{slot.Key.ChipId}"));
+
+        // Loading a file is also enough to construct its chip-register view: the player
+        // starts in the channel view and remains there until Play is pressed (or auto-play
+        // starts the queue). This matches the Windows player's "loaded / ready" behavior.
+        private async Task SelectPlaylistEntryAsync(int index)
+        {
+            playlistIndex = index;
+            PlaylistEntry entry = playlist[index];
+            loadedVgmBytes = entry.Bytes;
+            loadedFileName = entry.Name;
+            loadedSession = null;
+            playbackEnded = true;
+            isPaused = false;
+            FileLabel.Text = playlist.Count > 1 ? $"{entry.Name}  ({index + 1}/{playlist.Count})" : entry.Name;
+            StatusLabel.Text = "채널 뷰 준비 중...";
+            RefreshPlaylistPanel();
+            UpdateTransportButtons();
+
+            MusicEngineSession? session = await Task.Run(() => MusicEngine.Load(entry.Bytes, entry.Name));
+            if (playlistIndex != index || !ReferenceEquals(loadedVgmBytes, entry.Bytes)) return;
+
+            if (session == null)
+            {
+                StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
+                return;
+            }
+
+            string newLayoutSignature = GetChannelLayoutSignature(session);
+            bool keepChannelWindow = channelLayoutSignature == newLayoutSignature
+                && ReferenceEquals(ViewHost.Content, VisualizerHost);
+            loadedSession = session;
+            ApplyChipVolumeOverrides(session);
+            fileLoopCounter = session.Driver.LoopCounter;
+            session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
+            ShowVisualizersFor(session);
+            ShowMixerFor(session);
+            channelLayoutSignature = newLayoutSignature;
+            // Same layout: rebuild the controls against the new chip-register instance but
+            // retain the current window geometry. A changed topology gets a normal fit.
+            RestoreActiveView(refitChannelWindow: !keepChannelWindow);
+            StatusLabel.Text = $"로드됨 - 채널 뷰 대기 ({session.DescribeActiveChips()})";
+            UpdateTransportButtons();
+        }
+
+        private void ChangePlaybackSpeed(double factor)
+        {
+            MusicEngineSession? session = loadedSession;
+            if (session == null || playbackEnded) return;
+
+            session.Driver.vgmSpeed = Math.Clamp(session.Driver.vgmSpeed * factor, 0.25, 4.0);
+            StatusLabel.Text = $"재생 속도 {session.Driver.vgmSpeed:0.##}x";
+        }
+
+        private void OnLoopClick()
+        {
+            loopEnabled = !loopEnabled;
+            if (loadedSession is MusicEngineSession session)
+            {
+                session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
+            }
+            StatusLabel.Text = loopEnabled ? "반복 재생 켜짐" : "반복 재생 꺼짐";
+            UpdateTransportButtons();
+        }
+
+        private void OnVolumeViewClick(object? sender, RoutedEventArgs e) => ShowVolumeView();
+
+        private void OnChannelViewClick(object? sender, RoutedEventArgs e) => ShowChannelView();
+
+        private void OnResetVolumeClick(object? sender, RoutedEventArgs e)
+        {
+            MusicEngineSession? session = loadedSession;
+            if (session == null || mixerVisualizer == null) return;
+
+            session.ResetVolumesToDefaults();
+            chipVolumeOverrides.Clear();
+            masterVolumeOverride = null;
+            mixerVisualizer.Refresh();
+            StatusLabel.Text = "곡의 기본 볼륨으로 복원했습니다";
         }
 
         private void StopPlayback()
@@ -829,6 +1438,8 @@ namespace MDPlayer.UI
             queue?.Stop();
             queue?.Dispose();
             queue = null;
+            isPaused = false;
+            playbackEnded = true;
         }
     }
 }

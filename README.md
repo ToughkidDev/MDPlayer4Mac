@@ -1,4 +1,6 @@
-﻿# MDPlayer
+ToughkidDev에 의해 fork되어 MDPlayer의 Mac OS 앱 버전 개발.
+
+# MDPlayer
 VGMファイルなどのPlayer(メガドライブ音源チップなどのエミュレーションによる演奏ツール)  
   
 [概要]  

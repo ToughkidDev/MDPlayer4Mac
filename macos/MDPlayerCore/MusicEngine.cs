@@ -152,6 +152,18 @@ namespace MDPlayer
 
             System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> chipClocks = new();
             foreach (MDSound.MDSound.Chip c in lstChips) chipClocks[c.type] = c.Clock;
+            System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> chipVolumes = new();
+            foreach (MDSound.MDSound.Chip c in lstChips) chipVolumes[c.type] = c.Volume;
+            System.Collections.Generic.List<ChipVolumeSlot> chipVolumeSlots = new();
+            foreach (MDSound.MDSound.Chip c in lstChips)
+            {
+                chipVolumeSlots.Add(new ChipVolumeSlot
+                {
+                    Key = new ChipVolumeKey(c.type, c.ID),
+                    Volume = c.Volume,
+                    DefaultVolume = c.Volume,
+                });
+            }
 
             return new MusicEngineSession
             {
@@ -164,6 +176,11 @@ namespace MDPlayer
                 ActiveChips = activeChips,
                 RenderSamples = (b, off, count) => mds.Update(b, off, count, driver.oneFrameProc),
                 ChipClocks = chipClocks,
+                ChipVolumes = chipVolumes,
+                DefaultChipVolumes = new(chipVolumes),
+                ChipVolumeSlots = chipVolumeSlots,
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
             };
         }
 
@@ -294,6 +311,8 @@ namespace MDPlayer
                     System.Array.Copy(tmp, 0, b, off, written);
                     return (int)written;
                 },
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
             };
         }
 
@@ -469,6 +488,8 @@ namespace MDPlayer
                     }
                     return total;
                 },
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
             };
         }
 
@@ -520,6 +541,12 @@ namespace MDPlayer
                 Format = EnmFileFormat.NSF,
                 ActiveChips = "NES APU+DMC+FDS+MMC5+N106+VRC6+VRC7+FME7 (NTSC, real 6502 CPU exec via MDSound.np)",
                 RenderSamples = (b, off, count) => (int)driver.Render(b, (uint)(count / 2), off) * 2,
+                // NSF writes its own PCM and owns per-voice volume carriers outside
+                // MDSound's resampler list, so exposing generic per-chip faders here would
+                // misleadingly draw controls that cannot affect its renderer.  Master gain
+                // still applies to the completed PCM in MusicEngineSession.
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
             };
         }
 

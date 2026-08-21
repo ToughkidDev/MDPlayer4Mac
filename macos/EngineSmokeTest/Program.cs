@@ -75,7 +75,7 @@ namespace MDPlayer.EngineSmokeTest
                 // MDX bypass MDSound.MDSound.Chip.Update() entirely and pull PCM straight from
                 // their own driver's Render() (see MusicEngine.cs's LoadSid/LoadNsf/LoadMdx) -
                 // calling mds.Update() directly here would silently produce silence for them.
-                int written = session.RenderSamples(buffer, 0, chunkSamples);
+                int written = session.RenderSamplesWithMasterVolume(buffer, 0, chunkSamples);
                 if (written <= 0) break;
                 waveWriter.Write(buffer, 0, written);
                 totalSamplesWritten += written / 2;

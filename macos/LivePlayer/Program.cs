@@ -63,7 +63,7 @@ namespace MDPlayer.LivePlayer
                 // session.RenderSamples, not mds.Update() directly - see EngineSmokeTest/
                 // Program.cs's identical comment (SID/NSF/MDX bypass MDSound.MDSound.Chip.
                 // Update() entirely).
-                return session.RenderSamples(buf, 0, sampleCount);
+                return session.RenderSamplesWithMasterVolume(buf, 0, sampleCount);
             }
 
             using CoreAudioQueue queue = new(sampleRate, framesPerBuffer, bufferCount, FillCallback);

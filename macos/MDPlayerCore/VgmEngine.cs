@@ -7,15 +7,28 @@
 // (MDPlayer/MDPlayerx64/Audio.cs, ~line 8760 onward) but deliberately simplified: the
 // original picks between multiple emulator backends per chip (software emu vs. real
 // hardware vs. alternate emu cores) via Setting.<Chip>Type[n].UseEmu[]/UseReal[], and
-// supports dual-chip VGMs. This port always uses the single default software emulator and
-// only wires up chip instance 0 - real-hardware output and dual-chip VGMs are out of scope
-// (see AudioShim.cs's header comment for the same reasoning applied to file-format
-// detection). Add more chips here (and to EnmChip.* below) following the same pattern as
-// Audio.cs's dispatch block for any chip not yet covered.
+// supports dual-chip VGMs. This port always uses the single default software emulator;
+// when the VGM declares a second chip, its MDSound Chip.ID is preserved so the player and
+// mixer can route and adjust the two software instances independently. Real-hardware output
+// remains out of scope (see AudioShim.cs's header comment for the same reasoning applied to
+// file-format detection). Add more chips here (and to EnmChip.* below) following the same
+// pattern as Audio.cs's dispatch block for any chip not yet covered.
 using System.IO.Compression;
 
 namespace MDPlayer
 {
+    // A chip type can occur more than once in a song (for example a dual-YM2612
+    // VGM).  The mixer must retain the MDSound Chip.ID as part of its identity;
+    // keying solely by instrument type silently merges those two faders.
+    public readonly record struct ChipVolumeKey(MDSound.MDSound.enmInstrumentType Type, byte ChipId);
+
+    public sealed class ChipVolumeSlot
+    {
+        public ChipVolumeKey Key { get; init; }
+        public int Volume { get; set; }
+        public int DefaultVolume { get; init; }
+    }
+
     // Renamed from VgmEngineSession: this is now the shared result type for ANY supported
     // music format (see MusicEngine.cs), not just VGM. `Driver` is deliberately typed as the
     // common `baseDriver` base class (Vgm/xgm/xgm2/sid/mndrv/ZMS/MXDRV/nsf/gbs/hes/S98/zgm/AY
@@ -57,6 +70,180 @@ namespace MDPlayer
         // in this file) simply aren't in the dictionary.
         public System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> ChipClocks
             = new();
+
+        // Current dB gain for each instrument that this session actually mixed.  The
+        // Windows mixer uses the same -192..+20 dB range (Setting.Balance); retaining this
+        // state here lets any front-end provide an active-chip-only mixer without knowing
+        // how MDSound stores its private resampler gain.
+        public System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> ChipVolumes
+            = new();
+
+        // Captured when the song is loaded, before a front-end applies any temporary mixer
+        // overrides.  This gives the volume view an unambiguous "this song's default" reset
+        // target without requiring a file reload.
+        public System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> DefaultChipVolumes
+            = new();
+
+        // Instance-aware mixer state. ChipVolumes above remains for older callers that need
+        // a type-level summary, while the UI exclusively uses these slots so dual chips are
+        // independently displayed, changed and reset.
+        public System.Collections.Generic.List<ChipVolumeSlot> ChipVolumeSlots = new();
+
+        // Unlike chip gain, master gain belongs after the MDSound mix has been assembled.
+        // It is applied by RenderSamplesWithMasterVolume so it works uniformly for every
+        // supported file format, including drivers that render their own PCM.
+        public int MasterVolume;
+        public int DefaultMasterVolume;
+
+        public void SetMasterVolume(int volume)
+        {
+            MasterVolume = Math.Clamp(volume, -192, 20);
+            Setting.balance.MasterVolume = MasterVolume;
+        }
+
+        public void ResetVolumesToDefaults()
+        {
+            if (ChipVolumeSlots.Count > 0)
+            {
+                foreach (ChipVolumeSlot slot in ChipVolumeSlots)
+                {
+                    SetChipVolume(slot.Key, slot.DefaultVolume);
+                }
+                SetMasterVolume(DefaultMasterVolume);
+                return;
+            }
+
+            foreach (var defaultVolume in DefaultChipVolumes)
+            {
+                SetChipVolume(defaultVolume.Key, defaultVolume.Value);
+            }
+            SetMasterVolume(DefaultMasterVolume);
+        }
+
+        public int RenderSamplesWithMasterVolume(short[] buffer, int offset, int count)
+        {
+            int written = RenderSamples(buffer, offset, count);
+            if (written <= 0 || MasterVolume == 0) return written;
+
+            double gain = Math.Pow(10.0, MasterVolume / 40.0);
+            int end = offset + written;
+            for (int i = offset; i < end; i++)
+            {
+                buffer[i] = (short)Math.Clamp((int)Math.Round(buffer[i] * gain), short.MinValue, short.MaxValue);
+            }
+            return written;
+        }
+
+        public void SetChipVolume(MDSound.MDSound.enmInstrumentType type, int volume)
+        {
+            int clamped = Math.Clamp(volume, -192, 20);
+
+            // NES expansion voices share a single nes_intf renderer.  Their individual
+            // MDSound chip records are present for register routing, but are not each an
+            // independently rendered stream, so use the original specialised setters.
+            switch (type)
+            {
+                case MDSound.MDSound.enmInstrumentType.Nes: Mds.SetVolumeNES(clamped); break;
+                case MDSound.MDSound.enmInstrumentType.DMC: Mds.SetVolumeDMC(clamped); break;
+                case MDSound.MDSound.enmInstrumentType.FDS: Mds.SetVolumeFDS(clamped); break;
+                default: Mds.SetVolume(type, clamped); break;
+            }
+
+            ChipVolumes[type] = clamped;
+            foreach (ChipVolumeSlot slot in ChipVolumeSlots)
+            {
+                if (slot.Key.Type == type) slot.Volume = clamped;
+            }
+            SetPersistedChipVolume(type, clamped);
+        }
+
+        public int GetChipVolume(ChipVolumeKey key)
+        {
+            ChipVolumeSlot? slot = ChipVolumeSlots.Find(slot => slot.Key == key);
+            return slot?.Volume ?? (ChipVolumes.TryGetValue(key.Type, out int volume) ? volume : 0);
+        }
+
+        public void SetChipVolume(ChipVolumeKey key, int volume)
+        {
+            int clamped = Math.Clamp(volume, -192, 20);
+
+            // NES-family submixes are represented by one shared renderer, so their existing
+            // specialised controls remain type-level. Other MDSound chips have independent
+            // resampler records and can be addressed by their Chip.ID.
+            switch (key.Type)
+            {
+                case MDSound.MDSound.enmInstrumentType.Nes: Mds.SetVolumeNES(clamped); break;
+                case MDSound.MDSound.enmInstrumentType.DMC: Mds.SetVolumeDMC(clamped); break;
+                case MDSound.MDSound.enmInstrumentType.FDS: Mds.SetVolumeFDS(clamped); break;
+                default: Mds.SetVolume(key.Type, key.ChipId, clamped); break;
+            }
+
+            ChipVolumes[key.Type] = clamped;
+            ChipVolumeSlot? slot = ChipVolumeSlots.Find(slot => slot.Key == key);
+            if (slot != null) slot.Volume = clamped;
+            SetPersistedChipVolume(key.Type, clamped);
+        }
+
+        private void SetPersistedChipVolume(MDSound.MDSound.enmInstrumentType type, int volume)
+        {
+            // Setting.Balance is deliberately the single source of persisted mixer values,
+            // matching frmMixer2's Audio.Set*Volume handlers in the Windows app.  Variants
+            // that share one balance entry (e.g. YM2413emu) intentionally share its slider.
+            string? property = type switch
+            {
+                MDSound.MDSound.enmInstrumentType.YM2612 => nameof(Setting.Balance.YM2612Volume),
+                MDSound.MDSound.enmInstrumentType.SN76489 => nameof(Setting.Balance.SN76489Volume),
+                MDSound.MDSound.enmInstrumentType.RF5C164 => nameof(Setting.Balance.RF5C164Volume),
+                MDSound.MDSound.enmInstrumentType.RF5C68 => nameof(Setting.Balance.RF5C68Volume),
+                MDSound.MDSound.enmInstrumentType.PWM => nameof(Setting.Balance.PWMVolume),
+                MDSound.MDSound.enmInstrumentType.C140 => nameof(Setting.Balance.C140Volume),
+                MDSound.MDSound.enmInstrumentType.C352 => nameof(Setting.Balance.C352Volume),
+                MDSound.MDSound.enmInstrumentType.OKIM6258 => nameof(Setting.Balance.OKIM6258Volume),
+                MDSound.MDSound.enmInstrumentType.OKIM6295 => nameof(Setting.Balance.OKIM6295Volume),
+                MDSound.MDSound.enmInstrumentType.SEGAPCM => nameof(Setting.Balance.SEGAPCMVolume),
+                MDSound.MDSound.enmInstrumentType.YM2151 or MDSound.MDSound.enmInstrumentType.YM2151mame or MDSound.MDSound.enmInstrumentType.YM2151x68sound => nameof(Setting.Balance.YM2151Volume),
+                MDSound.MDSound.enmInstrumentType.YM2203 => nameof(Setting.Balance.YM2203Volume),
+                MDSound.MDSound.enmInstrumentType.YM2608 => nameof(Setting.Balance.YM2608Volume),
+                MDSound.MDSound.enmInstrumentType.YM2610 => nameof(Setting.Balance.YM2610Volume),
+                MDSound.MDSound.enmInstrumentType.YM3812 => nameof(Setting.Balance.YM3812Volume),
+                MDSound.MDSound.enmInstrumentType.YM3526 => nameof(Setting.Balance.YM3526Volume),
+                MDSound.MDSound.enmInstrumentType.Y8950 => nameof(Setting.Balance.Y8950Volume),
+                MDSound.MDSound.enmInstrumentType.YMF262 => nameof(Setting.Balance.YMF262Volume),
+                MDSound.MDSound.enmInstrumentType.YMF271 => nameof(Setting.Balance.YMF271Volume),
+                MDSound.MDSound.enmInstrumentType.YMF278B => nameof(Setting.Balance.YMF278BVolume),
+                MDSound.MDSound.enmInstrumentType.YMZ280B => nameof(Setting.Balance.YMZ280BVolume),
+                MDSound.MDSound.enmInstrumentType.AY8910 or MDSound.MDSound.enmInstrumentType.AY8910mame => nameof(Setting.Balance.AY8910Volume),
+                MDSound.MDSound.enmInstrumentType.YM2413 or MDSound.MDSound.enmInstrumentType.YM2413emu => nameof(Setting.Balance.YM2413Volume),
+                MDSound.MDSound.enmInstrumentType.HuC6280 => nameof(Setting.Balance.HuC6280Volume),
+                MDSound.MDSound.enmInstrumentType.K051649 => nameof(Setting.Balance.K051649Volume),
+                MDSound.MDSound.enmInstrumentType.Nes => nameof(Setting.Balance.APUVolume),
+                MDSound.MDSound.enmInstrumentType.DMC => nameof(Setting.Balance.DMCVolume),
+                MDSound.MDSound.enmInstrumentType.FDS => nameof(Setting.Balance.FDSVolume),
+                MDSound.MDSound.enmInstrumentType.MMC5 => nameof(Setting.Balance.MMC5Volume),
+                MDSound.MDSound.enmInstrumentType.N160 => nameof(Setting.Balance.N160Volume),
+                MDSound.MDSound.enmInstrumentType.VRC6 => nameof(Setting.Balance.VRC6Volume),
+                MDSound.MDSound.enmInstrumentType.VRC7 => nameof(Setting.Balance.VRC7Volume),
+                MDSound.MDSound.enmInstrumentType.FME7 => nameof(Setting.Balance.FME7Volume),
+                MDSound.MDSound.enmInstrumentType.DMG => nameof(Setting.Balance.DMGVolume),
+                MDSound.MDSound.enmInstrumentType.MultiPCM => nameof(Setting.Balance.MultiPCMVolume),
+                MDSound.MDSound.enmInstrumentType.uPD7759 => nameof(Setting.Balance.uPD7759Volume),
+                MDSound.MDSound.enmInstrumentType.K054539 => nameof(Setting.Balance.K054539Volume),
+                MDSound.MDSound.enmInstrumentType.K053260 => nameof(Setting.Balance.K053260Volume),
+                MDSound.MDSound.enmInstrumentType.QSound => nameof(Setting.Balance.QSoundVolume),
+                MDSound.MDSound.enmInstrumentType.GA20 => nameof(Setting.Balance.GA20Volume),
+                MDSound.MDSound.enmInstrumentType.POKEY => nameof(Setting.Balance.POKEYVolume),
+                MDSound.MDSound.enmInstrumentType.WSwan => nameof(Setting.Balance.WSwanVolume),
+                MDSound.MDSound.enmInstrumentType.SAA1099 => nameof(Setting.Balance.SAA1099Volume),
+                MDSound.MDSound.enmInstrumentType.ES5503 => nameof(Setting.Balance.ES5503Volume),
+                MDSound.MDSound.enmInstrumentType.X1_010 => nameof(Setting.Balance.X1_010Volume),
+                _ => null,
+            };
+
+            if (property != null)
+            {
+                typeof(global::MDPlayer.Setting.Balance).GetProperty(property)?.SetValue(Setting.balance, volume);
+            }
+        }
 
         internal static string DescribeVgmActiveChips(Vgm Vgm)
         {
@@ -1088,6 +1275,22 @@ namespace MDPlayer
 
             System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> chipClocks = new();
             foreach (MDSound.MDSound.Chip c in lstChips) chipClocks[c.type] = c.Clock;
+            System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> chipVolumes = new();
+            foreach (MDSound.MDSound.Chip c in lstChips) chipVolumes[c.type] = c.Volume;
+            System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> fileChipVolumes = new();
+            System.Collections.Generic.List<ChipVolumeSlot> chipVolumeSlots = new();
+            foreach (MDSound.MDSound.Chip c in lstChips)
+            {
+                ChipVolumeKey key = new(c.type, c.ID);
+                int fileVolume = vgm.FileChipVolumes.TryGetValue(key, out int volume) ? volume : 0;
+                fileChipVolumes[c.type] = fileVolume;
+                chipVolumeSlots.Add(new ChipVolumeSlot
+                {
+                    Key = key,
+                    Volume = c.Volume,
+                    DefaultVolume = fileVolume,
+                });
+            }
 
             return new MusicEngineSession
             {
@@ -1100,6 +1303,11 @@ namespace MDPlayer
                 ActiveChips = MusicEngineSession.DescribeVgmActiveChips(vgm),
                 RenderSamples = (b, off, count) => mds.Update(b, off, count, vgm.oneFrameProc),
                 ChipClocks = chipClocks,
+                ChipVolumes = chipVolumes,
+                DefaultChipVolumes = fileChipVolumes,
+                ChipVolumeSlots = chipVolumeSlots,
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = vgm.FileMasterVolume,
             };
         }
 

@@ -43,11 +43,12 @@ namespace MDPlayer.UI.Visualizer
             Pixels = pixels;
         }
 
-        // assetName is the file name without extension, e.g. "planeSN76489" or "rVol_01" -
-        // resolved under avares://MDPlayerUI/Assets/Visualizer/{assetName}.rgba32.
+        // assetName is relative to Assets and omits the extension, e.g.
+        // "Visualizer/planeSN76489" or "Transport/ccPlay".
         public static SpriteAtlas Load(string assetName)
         {
-            Uri uri = new($"avares://MDPlayerUI/Assets/Visualizer/{assetName}.rgba32");
+            string relativeName = assetName.Contains('/') ? assetName : $"Visualizer/{assetName}";
+            Uri uri = new($"avares://MDPlayerUI/Assets/{relativeName}.rgba32");
             using Stream stream = AssetLoader.Open(uri);
             using BinaryReader reader = new(stream);
 

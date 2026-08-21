@@ -73,6 +73,9 @@ namespace MDPlayer.CoreAudioOutput
         internal static extern int AudioQueueStart(IntPtr inAQ, IntPtr inStartTime);
 
         [DllImport(Lib)]
+        internal static extern int AudioQueuePause(IntPtr inAQ);
+
+        [DllImport(Lib)]
         internal static extern int AudioQueueStop(IntPtr inAQ, byte inImmediate);
 
         [DllImport(Lib)]
@@ -204,6 +207,14 @@ namespace MDPlayer.CoreAudioOutput
             int status = AudioToolbox.AudioQueueStart(queue, IntPtr.Zero);
             if (status != 0)
                 throw new InvalidOperationException($"AudioQueueStart failed: OSStatus {status}");
+        }
+
+        public void Pause()
+        {
+            if (queue == IntPtr.Zero || stopped) return;
+            int status = AudioToolbox.AudioQueuePause(queue);
+            if (status != 0)
+                throw new InvalidOperationException($"AudioQueuePause failed: OSStatus {status}");
         }
 
         public void Stop(bool immediate = true)

@@ -4454,6 +4454,42 @@ namespace MDSound
             }
         }
 
+        // Generic per-instrument mixer entry point used by the macOS UI.  Most chips are
+        // mixed by MDSound after their instrument has rendered, so changing the chip's
+        // resampler gain is sufficient and applies equally to a dual-chip VGM's instances.
+        // The NES-family submixes still need their dedicated methods (see
+        // MusicEngineSession.SetChipVolume) because their audio is rendered through a
+        // shared nes_intf instance.
+        public void SetVolume(enmInstrumentType type, int vol)
+        {
+            if (insts == null) return;
+
+            foreach (Chip c in insts)
+            {
+                if (c.type != type) continue;
+
+                c.Volume = Math.Max(Math.Min(vol, 20), -192);
+                int n = ((int)(16384.0 * Math.Pow(10.0, c.Volume / 40.0)) * c.tVolumeBalance) >> 8;
+                c.tVolume = Math.Max(Math.Min((int)(n * volumeMul), short.MaxValue), short.MinValue);
+            }
+        }
+
+        // Instance-aware counterpart for dual-chip files. The type-only overload remains
+        // useful for legacy callers that intentionally control every instance together.
+        public void SetVolume(enmInstrumentType type, byte chipId, int vol)
+        {
+            if (insts == null) return;
+
+            foreach (Chip c in insts)
+            {
+                if (c.type != type || c.ID != chipId) continue;
+
+                c.Volume = Math.Max(Math.Min(vol, 20), -192);
+                int n = ((int)(16384.0 * Math.Pow(10.0, c.Volume / 40.0)) * c.tVolumeBalance) >> 8;
+                c.tVolume = Math.Max(Math.Min((int)(n * volumeMul), short.MaxValue), short.MinValue);
+            }
+        }
+
         public void SetVolumeYM2151mame(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2151mame)) return;

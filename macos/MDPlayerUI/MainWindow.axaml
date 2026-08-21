@@ -3,30 +3,53 @@
         x:Class="MDPlayer.UI.MainWindow"
         Title="MDPlayer4Mac"
         SizeToContent="WidthAndHeight"
-        CanResize="True">
-    <StackPanel Margin="16" Spacing="12">
-        <TextBlock x:Name="FileLabel" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
-        <TextBlock x:Name="StatusLabel" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
-        <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button x:Name="OpenButton" Content="VGM 열기..." Click="OnOpenClick" />
-            <Button x:Name="PlayButton" Content="재생" Click="OnPlayClick" IsEnabled="False" />
-            <Button x:Name="StopButton" Content="정지" Click="OnStopClick" IsEnabled="False" />
-        </StackPanel>
+        CanResize="True"
+        DragDrop.AllowDrop="True">
+    <!-- The final row is content-sized: a view switch therefore resizes the window down
+         to the bottom of its playlist panel instead of leaving a star-row gap below it. -->
+    <Grid x:Name="MainLayout" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock x:Name="FileLabel" Grid.Row="0" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
+        <TextBlock x:Name="StatusLabel" Grid.Row="1" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
+        <!-- The two rows mirror frmMain's original transport / utility button placement. -->
+        <Border Grid.Row="2" Background="Black" BorderBrush="#444" BorderThickness="1" Padding="4">
+            <StackPanel Spacing="2">
+                <StackPanel x:Name="TransportButtonsHost" Orientation="Horizontal" Spacing="0" />
+                <StackPanel x:Name="UtilityButtonsHost" Orientation="Horizontal" Spacing="0" />
+                <CheckBox x:Name="AutoPlayCheckBox" Content="자동 재생" Foreground="#D0D0D0" Margin="4,2,0,0" />
+            </StackPanel>
+        </Border>
         <!--
-          Chip channel visualizer(s) get docked here at runtime (see MainWindow.axaml.cs's
-          ShowVisualizerFor/HideVisualizers) - one PixelScreen control per active chip this
-          port has a visualizer for (SN76489 and YM2612 so far; see macos/README.md). Black
-          background matches the sprite art's own black background so any native-size
-          rounding/gaps at the control's edges aren't visually jarring.
+          ViewHost switches between the active chip's channel visualizer(s) and the native
+          pixel-art mixer.  The latter uses the same rFader/rFont_03 assets and Windows
+          frmMixer2 gain curve in long horizontal rows, while the channel view keeps its
+          existing controls.
+          Black matches both screens' original background.
 
           The window uses SizeToContent instead of a fixed Width/Height because which
-          visualizer(s) show - and therefore how tall this Border ends up - depends on
-          which chips the loaded file actually uses (SN76489 alone is ~80px tall at zoom 2;
-          YM2612 alone is ~368px; both stacked is taller still) - a fixed size would either
-          clip the tall case or leave dead space in the short one.
+          view shown and its height depend on the active chips, so a fixed window size would
+          either clip a channel display or leave excess empty space around the mixer.
         -->
-        <Border Background="Black" BorderBrush="Gray" BorderThickness="1" Padding="4">
-            <StackPanel x:Name="VisualizerHost" Spacing="4" />
+        <Border x:Name="ActiveViewPanel" Grid.Row="3" Background="Black" BorderBrush="Gray" BorderThickness="1" Padding="4">
+            <ContentControl x:Name="ViewHost" />
         </Border>
-    </StackPanel>
+        <Border x:Name="PlaylistPanel" IsVisible="False" Background="#111" BorderBrush="#555" BorderThickness="1"
+                Grid.Row="4" Padding="6" DragDrop.AllowDrop="True" VerticalAlignment="Stretch">
+            <Grid RowDefinitions="Auto,*" RowSpacing="4">
+                <TextBlock x:Name="PlaylistHint" Grid.Row="0" Text="재생 목록 — 음악 파일을 여기 또는 창에 드롭하여 추가" Foreground="#D0D0D0" />
+                <!-- Channel/mixer modes use a compact 3.5-row embedded playlist. -->
+                <ListBox x:Name="PlaylistList" Grid.Row="1" Height="63" SelectionChanged="OnPlaylistSelectionChanged"
+                         DoubleTapped="OnPlaylistDoubleTapped" VerticalAlignment="Top">
+                    <!-- The default Fluent list item carries generous touch padding. The
+                         player uses a compact desktop playlist, so keep each row at about
+                         half that vertical spacing. -->
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="6,1" />
+                            <Setter Property="MinHeight" Value="0" />
+                        </Style>
+                    </ListBox.Styles>
+                </ListBox>
+            </Grid>
+        </Border>
+    </Grid>
 </Window>

@@ -10,8 +10,7 @@ to build-check).
 Format: 4-byte width (int32 LE), 4-byte height (int32 LE), then `width*height` int32 LE
 pixels in row-major order, each a standard `0xAARRGGBB` value.
 
-## Currently exported (SN76489 + YM2612 visualizers - see macos/README.md's
-chip-visualizer section for the full plan)
+## Currently exported (channel visualizers + pixel mixer)
 
 | File | Source PNG | Used by |
 |---|---|---|
@@ -26,6 +25,8 @@ chip-visualizer section for the full plan)
 | `rType_02.rgba32` | `Resources/rType_02.png` | Channel-number/type badge, masked |
 | `rPan_01.rgba32` | `Resources/rPan_01.png` | Pan indicator (`DrawPanP`, both chips) |
 | `rNESDMC.rgba32` | `Resources/rNESDMC.png` | Operator on/off "slot" icons (`DrawBuffYm2612.Slot`) - despite the name, this sprite sheet is shared with the (unported) NES DMC visualizer in the original app, not YM2612-specific art |
+| `rFader.rgba32` | `Resources/rFader.png` | Windows `frmMixer2` fader rail, master/chip knobs, and 2px level bar tiles (`MixerVisualizer`) |
+| `planeMixer.rgba32` | `Resources/planeMixer.png` | Windows mixer layout and palette reference. The Mac mixer draws active slots dynamically instead of using this fixed all-chip background. |
 
 `rVol_01`/`rKBD_01`/`rFont_01`/`rFont_02`/`rFont_03`/`rType_01`/`rType_02`/`rPan_01` are
 genuinely the same shared sprite sheets in the original app, referenced by both
