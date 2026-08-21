@@ -1,0 +1,47 @@
+name: Release macOS app
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish self-contained Apple Silicon build
+        run: >-
+          dotnet publish macos/MDPlayerUI/MDPlayerUI.csproj
+          --configuration Release
+          --runtime osx-arm64
+          --self-contained true
+          --property:PublishSingleFile=true
+          --property:DebugType=None
+          --output release/publish
+
+      - name: Package application
+        run: |
+          mkdir -p release/package
+          cp -R release/publish release/package/MDPlayer4Mac
+          ditto -c -k --sequesterRsrc --keepParent release/package/MDPlayer4Mac release/MDPlayer4Mac-osx-arm64.zip
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: >-
+          gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip
+          --title "MDPlayer4Mac $TAG_NAME"
+          --generate-notes
