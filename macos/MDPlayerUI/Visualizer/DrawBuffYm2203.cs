@@ -446,17 +446,21 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs:2226 ChYM2203 - dirty-diff wrapper. Row-y placement uses the raw
-        // channel index directly (8+ch*8) for EVERY channel including the FM-EX slots
-        // (3,4,5) - this does NOT line up with those channels' own keyboard/volume row
-        // (8+(ch)*8 where the caller passes ch+3 for that row, i.e. rows 6/7/8) - kept
-        // exactly as frmYM2203.cs does it, not "fixed"; see Ym2203Visualizer.cs's
-        // ScreenDrawParams comment for the full explanation.
+        // Places a channel badge at a visual row independently of the source channel
+        // number.  OPN chips have FM-EX and SSG groups, so source-channel order alone
+        // cannot express the channel-view order (FM -> SSG -> PCM).
+        public static void ChYm2203At(PixelScreen screen, int row, int ch, ref bool? om, bool? nm)
+        {
+            bool mask = nm ?? false;
+            if (om.HasValue && om.Value == mask) return;
+            ChYm2203P(screen, 0, 8 + row * 8, ch, mask);
+            om = mask;
+        }
+
+        // drawBuff.cs:2226 ChYM2203 - original source-channel placement.
         public static void ChYm2203(PixelScreen screen, int ch, ref bool? om, bool? nm)
         {
-            if (om == nm) return;
-            ChYm2203P(screen, 0, 8 + ch * 8, ch, nm ?? false);
-            om = nm;
+            ChYm2203At(screen, ch, ch, ref om, nm);
         }
 
         // drawBuff.cs:4879 Ch3YM2612_P (reused by frmYM2203.cs's Ch3YM2203 for channel 2's

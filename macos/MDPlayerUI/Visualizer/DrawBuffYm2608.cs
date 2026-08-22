@@ -524,15 +524,20 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs:2351 ChYM2608 - dirty-diff wrapper. Row-y placement uses the raw
-        // channel index directly (8+ch*8) for every channel, same badge/row mismatch caveat
-        // for the FM-EX channels (6,7,8) as YM2203's ChYm2203 - see this file's Ch3 comment
-        // and Ym2608Visualizer.cs's ScreenDrawParams.
+        // Places a channel badge at a visual row independently of the source channel
+        // number.  This keeps the OPN channel view grouped as FM -> SSG -> PCM.
+        public static void ChYm2608At(PixelScreen screen, int row, int ch, ref bool? om, bool? nm)
+        {
+            bool mask = nm ?? false;
+            if (om.HasValue && om.Value == mask) return;
+            ChYm2608P(screen, 1, 8 + row * 8, ch, mask);
+            om = mask;
+        }
+
+        // drawBuff.cs:2351 ChYM2608 - original source-channel placement.
         public static void ChYm2608(PixelScreen screen, int ch, ref bool? om, bool? nm)
         {
-            if (om == nm) return;
-            ChYm2608P(screen, 1, 8 + ch * 8, ch, nm ?? false);
-            om = nm;
+            ChYm2608At(screen, ch, ch, ref om, nm);
         }
 
         // drawBuff.cs:4879 Ch3YM2612_P (reused by frmYM2608.cs's Ch3YM2608 for channel 2's

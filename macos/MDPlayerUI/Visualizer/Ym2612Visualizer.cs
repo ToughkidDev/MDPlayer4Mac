@@ -50,6 +50,8 @@ namespace MDPlayer.UI.Visualizer
             screen = new PixelScreen();
             screen.Init(bg.Width, bg.Height, zoom: 2);
             screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
+            // FM 1-5, Ch3 FM-EX 1-3, then the shared FM6/DAC(PCM) row.
+            screen.ReorderRowsFrom(bg, 8, 8, 0, 1, 2, 3, 4, 6, 7, 8, 5);
             screen.Present();
         }
 
@@ -199,7 +201,8 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // frmYM2612.cs:337 screenDrawParams (plain/non-XGM path only - see file header).
+        // FM channels (including Ch3's FM-EX slots) are listed first.  The final row is
+        // YM2612's shared channel-6 DAC/PCM output, which is PCM when DAC mode is enabled.
         public void ScreenDrawParams()
         {
             for (int c = 0; c < 9; c++)
@@ -231,22 +234,24 @@ namespace MDPlayer.UI.Visualizer
                 }
                 else if (c == 5)
                 {
-                    DrawBuffYm2612.Pan(screen, 25, 8 + c * 8, ref oyc.pan, nyc.pan, ref oyc.pantp, 0);
+                    const int dacRow = 8;
+                    DrawBuffYm2612.Pan(screen, 25, 8 + dacRow * 8, ref oyc.pan, nyc.pan, ref oyc.pantp, 0);
                     DrawBuffYm2612.InstOPN2(screen, 13, 96, c, oyc.inst, nyc.inst);
-                    DrawBuffYm2612.Ch6YM2612(screen, nyc.pcmBuff, ref oyc.pcmMode, nyc.pcmMode, ref oyc.mask, nyc.mask);
-                    DrawBuffYm2612.Volume(screen, 289, 8 + c * 8, 1, ref oyc.volumeL, nyc.volumeL);
-                    DrawBuffYm2612.Volume(screen, 289, 8 + c * 8, 2, ref oyc.volumeR, nyc.volumeR);
-                    DrawBuffYm2612.KeyBoardOPNM(screen, c, ref oyc.note, nyc.note);
-                    DrawBuffYm2612.Slot(screen, 1 + 4 * 64, 8 + c * 8, ref oyc.slot, nyc.slot);
-                    DrawBuffYm2612.Font4Hex16Bit(screen, 1 + 4 * 68, 8 + c * 8, ref oyc.freq, nyc.freq);
+                    DrawBuffYm2612.Ch6YM2612At(screen, dacRow, nyc.pcmBuff, ref oyc.pcmMode, nyc.pcmMode, ref oyc.mask, nyc.mask);
+                    DrawBuffYm2612.Volume(screen, 289, 8 + dacRow * 8, 1, ref oyc.volumeL, nyc.volumeL);
+                    DrawBuffYm2612.Volume(screen, 289, 8 + dacRow * 8, 2, ref oyc.volumeR, nyc.volumeR);
+                    DrawBuffYm2612.KeyBoardOPNM(screen, dacRow, ref oyc.note, nyc.note);
+                    DrawBuffYm2612.Slot(screen, 1 + 4 * 64, 8 + dacRow * 8, ref oyc.slot, nyc.slot);
+                    DrawBuffYm2612.Font4Hex16Bit(screen, 1 + 4 * 68, 8 + dacRow * 8, ref oyc.freq, nyc.freq);
                 }
                 else
                 {
-                    DrawBuffYm2612.Volume(screen, 289, 8 + c * 8, 0, ref oyc.volumeL, nyc.volumeL);
-                    DrawBuffYm2612.KeyBoardOPNM(screen, c, ref oyc.note, nyc.note);
-                    DrawBuffYm2612.ChYM2612(screen, c, ref oyc.mask, nyc.mask);
+                    int fmExRow = c - 1;
+                    DrawBuffYm2612.Volume(screen, 289, 8 + fmExRow * 8, 0, ref oyc.volumeL, nyc.volumeL);
+                    DrawBuffYm2612.KeyBoardOPNM(screen, fmExRow, ref oyc.note, nyc.note);
+                    DrawBuffYm2612.ChYM2612At(screen, fmExRow, c, ref oyc.mask, nyc.mask);
                     oyc.freq = 0;
-                    DrawBuffYm2612.Font4Hex16Bit(screen, 1 + 4 * 68, 8 + c * 8, ref oyc.freq, nyc.freq);
+                    DrawBuffYm2612.Font4Hex16Bit(screen, 1 + 4 * 68, 8 + fmExRow * 8, ref oyc.freq, nyc.freq);
                 }
             }
 

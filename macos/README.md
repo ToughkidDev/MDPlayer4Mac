@@ -4,7 +4,28 @@ Windows용 MDPlayer의 재생 엔진과 화면 구성을 macOS로 옮기는 작�
 Windows/WinForms 코드는 `MDPlayer/`에 보존하고, macOS 구현은 이 `macos/` 아래의
 `net8.0` 프로젝트로 분리한다.
 
-마지막 갱신: 2026-08-22
+마지막 갱신: 2026-08-23
+
+## 최근 포팅 작업 (v0.1.3)
+
+- Windows 원본의 픽셀 스프라이트를 사용해 재생·정지·일시정지·이전/다음·되감기/빨리감기,
+  반복/랜덤, 채널·볼륨·재생목록·곡 정보·50% 축소 버튼을 플레이어 대시보드에 구성했다.
+- 대시보드에 Windows 원본 글꼴 기반의 현재 시간/전체 길이/루프 위치 표시와 진행 막대를
+  추가했다. 파일명 영역 오른쪽에는 `-60 dB`~`+20 dB` 범위의 마스터 볼륨 페이더를 둔다.
+- 곡 정보 뷰는 GD3 메타데이터와 가사 이벤트를 표시한다. 채널 뷰는 VGM의 칩 패널을
+  FM → SSG/PSG → PCM 순서로 정렬하고, Yamaha 복합 칩의 서브 출력도 이 순서에 맞춘다.
+- 볼륨 뷰는 실제로 사용된 칩 인스턴스를 각각 표시하고, FM/SSG/ADPCM/PCM처럼 분리 가능한
+  출력은 독립 슬라이더로 제어한다. YM2612의 FM/ADPCM, Y8950의 FM/ADPCM도 포함한다.
+- MDX는 OPM(YM2151)과 PCM8/PDX 구성을 별도로 표시하며, PDX를 찾지 못해도 OPM 재생을
+  계속 시도한다. MDX 드라이버 루프는 VGM과 같은 최대 2회 기준으로 종료 처리한다.
+- VGM 1.01 이하의 단일 FM 클록 헤더는 실제 명령 스트림을 분석해 YM2413/YM2612/YM2151 중
+  올바른 칩 하나만 초기화한다. 이로써 YM2413 곡에 YM2612·YM2151 패널이 함께 나타나던
+  문제를 막고, 이후 버전 전용 헤더 필드도 버전 조건으로 안전하게 읽는다.
+- Finder에서 디렉터리를 드롭하면 지원 확장자의 음악 파일을 하위 폴더까지 안정된 이름순으로
+  찾아 재생목록에 넣는다. 재생목록 영역 드롭은 추가, 대시보드 드롭은 현재 목록 교체다.
+- macOS 상단 앱 메뉴와 Dock 이름은 `MDPlayer4Mac`으로 통일했다. `dotnet run`처럼 `.app`
+  번들 밖에서 실행하는 경우에도 AppKit 브리지가 같은 이름과 Windows 원본 메인 아이콘을
+  설정하며, GitHub Release의 `.app` 번들은 `MDPlayer4Mac.icns`를 포함한다.
 
 ## 현재 제공 기능
 
@@ -14,7 +35,8 @@ Windows/WinForms 코드는 `MDPlayer/`에 보존하고, macOS 구현은 이 `mac
 - VGM에 기록된 칩 구성과 복수 칩 인스턴스를 바탕으로 한 채널 뷰
 - 칩·서브컴포넌트별 볼륨 믹서 및 마스터 볼륨, 원곡 기본값으로 볼륨 초기화
 - 채널 뷰 / 볼륨 뷰 / 재생목록 전용 뷰 전환
-- 다중 파일 재생목록, 드래그 앤 드롭 추가·교체, 다중 선택, Cmd+A, Delete/Backspace 제거
+- 다중 파일 재생목록, 파일·디렉터리 드래그 앤 드롭 추가·교체, 다중 선택, Cmd+A,
+  Delete/Backspace 제거
 - 다음/이전 곡, 곡 종료 후 다음 곡 자동 재생, 반복 재생, 재생 속도 조절
 - Play 버튼 2초 롱프레스 또는 macOS Force Click으로 자동 재생 토글
 - Play 클릭 시 Fast/Slow로 바꾼 재생 속도를 1x로 복귀
@@ -43,6 +65,8 @@ UI에서 선택하거나 드롭할 수 있는 확장자는 다음과 같다.
 
 - 형식을 판별할 수 있는 포맷은 헤더를 먼저 확인하고, 그 외에는 파일 확장자를 사용한다.
 - `.vgz`와 `.xgz`는 각각 gzip 압축 VGM/XGM 입력으로 처리한다.
+- VGM 1.01 이하의 공유 FM 클록은 명령 스트림으로 YM2413/YM2612/YM2151을 판별한다.
+  따라서 오래된 YM2413 VGM도 실제 사용 칩만 채널 뷰에 표시한다.
 - MDX/MDR은 X68000 MXDRV 계열이다. 같은 디렉터리의 PDX를 참조하는 곡은 PDX를 찾아
   PCM8/ADPCM 재생에 사용한다. PDX를 찾지 못해도 OPM(YM2151) 측 재생은 계속 시도한다.
 - 모든 파일이 해당 포맷의 모든 칩·서브드라이버 조합을 보장하지는 않는다. 로드에 실패하면
@@ -87,7 +111,8 @@ UI에서 선택하거나 드롭할 수 있는 확장자는 다음과 같다.
 
 `MDPlayerUI`는 Avalonia 12.1.1을 사용한다. macOS Force Click은 Avalonia 일반 포인터
 이벤트에 전달되지 않으므로, 빌드할 때 `MDPlayerUI/Native/ForceTouchMonitor.m`을 작은
-Apple Silicon용 dylib로 컴파일해 함께 배포한다.
+Apple Silicon용 dylib로 컴파일해 함께 배포한다. 이 dylib는 Force Click 처리 외에도
+`.app` 밖의 개발 실행에서 AppKit의 앱 이름과 Dock 아이콘을 설정한다.
 
 ## 빌드와 실행
 
@@ -137,13 +162,13 @@ UI 변경은 빌드 뒤 실제 macOS에서 다음을 확인한다.
 자체 포함 배포본을 만들고 GitHub Release에 ZIP을 첨부한다.
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`이며, 압축을 풀면 하나의
-`MDPlayer4Mac.app` 번들이 나온다. 필요한 .NET·Avalonia·Force Touch dylib는 모두 앱
-번들 안에 포함되며, CI에서 ad-hoc 서명을 적용한다. 다만 Apple Developer ID 서명과
+`MDPlayer4Mac.app` 번들이 나온다. 필요한 .NET·Avalonia·Force Touch dylib와
+`MDPlayer4Mac.icns` 아이콘은 모두 앱 번들 안에 포함되며, CI에서 ad-hoc 서명을 적용한다. 다만 Apple Developer ID 서명과
 notarization은 적용하지 않으므로, 다른 Mac에서 처음 실행할 때 Gatekeeper의 확인 절차는
 여전히 필요할 수 있다.
 

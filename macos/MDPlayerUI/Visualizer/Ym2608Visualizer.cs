@@ -47,6 +47,8 @@ namespace MDPlayer.UI.Visualizer
             screen = new PixelScreen();
             screen.Init(bg.Width, bg.Height, zoom: 2);
             screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
+            // FM 1-6 + FM-EX 1-3, then SSG 1-3, then ADPCM.
+            screen.ReorderRowsFrom(bg, 8, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11, 6, 7, 8, 12);
             screen.Present();
         }
 
@@ -258,11 +260,7 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // frmYM2608.cs:343 screenDrawParams. Same FM-EX badge/row-placement caveat as
-        // YM2203 (see DrawBuffYm2608.cs's ChYm2608 comment) - the badge for channels 6/7/8
-        // draws at rows 6/7/8 (ChYm2608's own 8+ch*8 math) while their volume/keyboard/
-        // freq readouts draw at rows 9/10/11 ((c+3)*8 with c=6,7,8), exactly as
-        // frmYM2608.cs itself does it.
+        // FM (including FM-EX) is shown first, then SSG, then the PCM sections.
         public void ScreenDrawParams()
         {
             for (int c = 0; c < 9; c++)
@@ -294,10 +292,10 @@ namespace MDPlayer.UI.Visualizer
                 }
                 else
                 {
-                    DrawBuffYm2608.Volume(screen, 272 + 1, 8 + (c + 3) * 8, 0, ref oyc.volumeL, nyc.volumeL);
-                    DrawBuffYm2608.KeyBoard(screen, 33, 8 + (c + 3) * 8, ref oyc.note, nyc.note);
-                    DrawBuffYm2608.ChYm2608(screen, c, ref oyc.mask, nyc.mask);
-                    DrawBuffYm2608.Font4Hex16Bit(screen, 1 + 4 * 78, 8 + (c + 3) * 8, ref oyc.freq, nyc.freq);
+                    DrawBuffYm2608.Volume(screen, 272 + 1, 8 + c * 8, 0, ref oyc.volumeL, nyc.volumeL);
+                    DrawBuffYm2608.KeyBoard(screen, 33, 8 + c * 8, ref oyc.note, nyc.note);
+                    DrawBuffYm2608.ChYm2608At(screen, c, c, ref oyc.mask, nyc.mask);
+                    DrawBuffYm2608.Font4Hex16Bit(screen, 1 + 4 * 78, 8 + c * 8, ref oyc.freq, nyc.freq);
                 }
             }
 
@@ -307,14 +305,14 @@ namespace MDPlayer.UI.Visualizer
                 MDChipParams.Channel oyc = oldParam.channels[c + 9];
                 MDChipParams.Channel nyc = newParam.channels[c + 9];
 
-                DrawBuffYm2608.VolumeShort(screen, 280 + 1, 8 + (c + 6) * 8, 0, ref oyc.volume, nyc.volume);
-                DrawBuffYm2608.KeyBoard(screen, 33, (c + 6) * 8 + 8, ref oyc.note, nyc.note);
-                DrawBuffYm2608.TnOpna(screen, 6, 2, c + 6, ref oyc.tn, nyc.tn, ref oyc.tntp, 0);
+                DrawBuffYm2608.VolumeShort(screen, 280 + 1, 8 + (c + 9) * 8, 0, ref oyc.volume, nyc.volume);
+                DrawBuffYm2608.KeyBoard(screen, 33, (c + 9) * 8 + 8, ref oyc.note, nyc.note);
+                DrawBuffYm2608.TnOpna(screen, 6, 2, c + 9, ref oyc.tn, nyc.tn, ref oyc.tntp, 0);
 
-                DrawBuffYm2608.ChYm2608(screen, c + 9, ref oyc.mask, nyc.mask);
-                DrawBuffYm2608.Font4Hex16Bit(screen, 1 + 4 * 78, 8 + (c + 6) * 8, ref oyc.freq, nyc.freq);
-                DrawBuffYm2608.Font4HexByte(screen, 272 + 1, 8 + (c + 6) * 8, ref oyc.volumeL, nyc.volumeL);
-                DrawBuffYm2608.DrawNesSw(screen, 268 + 1, 8 + (c + 6) * 8, ref oyc.ex, nyc.ex);
+                DrawBuffYm2608.ChYm2608At(screen, c + 9, c + 9, ref oyc.mask, nyc.mask);
+                DrawBuffYm2608.Font4Hex16Bit(screen, 1 + 4 * 78, 8 + (c + 9) * 8, ref oyc.freq, nyc.freq);
+                DrawBuffYm2608.Font4HexByte(screen, 272 + 1, 8 + (c + 9) * 8, ref oyc.volumeL, nyc.volumeL);
+                DrawBuffYm2608.DrawNesSw(screen, 268 + 1, 8 + (c + 9) * 8, ref oyc.ex, nyc.ex);
             }
 
             // ADPCM

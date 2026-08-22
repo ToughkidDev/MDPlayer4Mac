@@ -513,13 +513,20 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs:2394 ChYM2610 - dirty-diff wrapper, row-y placement uses the raw
-        // channel index directly (8+ch*8).
+        // Places a channel badge at a visual row independently of the source channel
+        // number.  This keeps the OPN channel view grouped as FM -> SSG -> PCM.
+        public static void ChYm2610At(PixelScreen screen, int row, int ch, ref bool? om, bool? nm)
+        {
+            bool mask = nm ?? false;
+            if (om.HasValue && om.Value == mask) return;
+            ChYm2610P(screen, 1, 8 + row * 8, ch, mask);
+            om = mask;
+        }
+
+        // drawBuff.cs:2394 ChYM2610 - original source-channel placement.
         public static void ChYm2610(PixelScreen screen, int ch, ref bool? om, bool? nm)
         {
-            if (om == nm) return;
-            ChYm2610P(screen, 1, 8 + ch * 8, ch, nm ?? false);
-            om = nm;
+            ChYm2610At(screen, ch, ch, ref om, nm);
         }
 
         // drawBuff.cs:4879 Ch3YM2612_P (reused by frmYM2610.cs's Ch3YM2610 call, ch==2's

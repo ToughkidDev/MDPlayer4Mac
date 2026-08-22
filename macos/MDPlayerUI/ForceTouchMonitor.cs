@@ -19,6 +19,26 @@ namespace MDPlayer.UI
         [DllImport("libMDPlayerForceTouch.dylib", CallingConvention = CallingConvention.Cdecl)]
         private static extern void MDPlayerInstallForceTouchMonitor(NativeForceTouchCallback callback);
 
+        [DllImport("libMDPlayerForceTouch.dylib", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void MDPlayerConfigureApplication(
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string name,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string iconPath);
+
+        internal static void ConfigureApplicationIdentity()
+        {
+            if (!OperatingSystem.IsMacOS()) return;
+
+            string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "MDPlayer4Mac.icns");
+            try
+            {
+                MDPlayerConfigureApplication("MDPlayer4Mac", File.Exists(iconPath) ? iconPath : string.Empty);
+            }
+            catch (DllNotFoundException)
+            {
+                // Non-macOS development builds do not produce the AppKit bridge.
+            }
+        }
+
         internal static void Install()
         {
             if (installed || !OperatingSystem.IsMacOS()) return;

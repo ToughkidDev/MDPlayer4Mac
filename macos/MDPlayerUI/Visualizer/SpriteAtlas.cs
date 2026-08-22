@@ -48,7 +48,7 @@ namespace MDPlayer.UI.Visualizer
         public static SpriteAtlas Load(string assetName)
         {
             string relativeName = assetName.Contains('/') ? assetName : $"Visualizer/{assetName}";
-            Uri uri = new($"avares://MDPlayerUI/Assets/{relativeName}.rgba32");
+            Uri uri = new($"avares://MDPlayer4Mac/Assets/{relativeName}.rgba32");
             using Stream stream = AssetLoader.Open(uri);
             using BinaryReader reader = new(stream);
 

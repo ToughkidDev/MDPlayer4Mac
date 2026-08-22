@@ -94,6 +94,25 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
+        // Reorders complete fixed-height background rows before any live chip values are
+        // drawn.  OPN family planes encode group labels directly in their bitmap, so moving
+        // only the live values would leave labels such as "PSG" or "FM6" in the wrong row.
+        public void ReorderRowsFrom(SpriteAtlas source, int firstRowY, int rowHeight, params int[] sourceRows)
+        {
+            for (int destinationRow = 0; destinationRow < sourceRows.Length; destinationRow++)
+            {
+                DrawIntArray(
+                    0,
+                    firstRowY + destinationRow * rowHeight,
+                    source.Pixels,
+                    source.Width,
+                    0,
+                    firstRowY + sourceRows[destinationRow] * rowHeight,
+                    source.Width,
+                    rowHeight);
+            }
+        }
+
         // Pushes Buffer into the backing WriteableBitmap and asks Avalonia to repaint.
         // Call this once per redraw tick after a batch of DrawIntArray calls, not per call -
         // mirrors the original's screenMainLoop pattern (decode+draw off-thread, one

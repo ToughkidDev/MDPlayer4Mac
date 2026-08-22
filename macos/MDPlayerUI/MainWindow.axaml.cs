@@ -10,15 +10,19 @@
 // small amount of UI-updating code here needs Dispatcher.UIThread.InvokeAsync to hop
 // back onto the UI thread safely.
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -37,7 +41,7 @@ namespace MDPlayer.UI
         private const double EmbeddedPlaylistRows = 3.5;
         private const double PlaylistViewRows = 20;
 
-        private enum ActiveViewMode { Channel, Volume, Playlist }
+        private enum ActiveViewMode { Channel, Volume, Playlist, Information }
 
         // ~30fps - lighter than the original Windows app's default 60fps
         // (Setting.other.ScreenFrameRate, frmMain.cs's screenMainLoop), plenty smooth for
@@ -53,6 +57,8 @@ namespace MDPlayer.UI
         private bool isStarting;
         private bool playbackEnded;
         private bool loopEnabled;
+        private bool randomPlaybackEnabled;
+        private bool loopButtonShowsRandom;
         private bool autoPlayEnabled;
         private long fileLoopCounter;
         private string? channelLayoutSignature;
@@ -60,6 +66,13 @@ namespace MDPlayer.UI
         // Channel screens are created at the Windows-compatible 2x display scale. The
         // dashboard Zoom button toggles the complete channel stack to its native 1x size.
         private bool channelViewHalfSize;
+        // The Windows dashboard's three timers use the same rFont_01 bitmap font as the
+        // channel visualizers, rather than a system monospace font.
+        private readonly DashboardTimerDisplay dashboardTimerDisplay = new();
+        private readonly DashboardMasterVolumeSlider dashboardMasterVolumeSlider = new();
+        private double timelineTrackWidth;
+        private double timelineProgressRatio;
+        private bool timelineAvailable;
         // Captured from the channel screen after it has completed a layout pass. Every
         // dashboard mode keeps at least this width, so changing to the narrower playlist
         // or mixer content cannot make the player window collapse below the channel view.
@@ -87,6 +100,7 @@ namespace MDPlayer.UI
         private TransportSpriteButton fastButton = null!;
         private TransportSpriteButton nextButton = null!;
         private TransportSpriteButton playlistViewButton = null!;
+        private TransportSpriteButton informationViewButton = null!;
         private TransportSpriteButton volumeViewButton = null!;
         private TransportSpriteButton channelViewButton = null!;
         private TransportSpriteButton zoomButton = null!;
@@ -153,10 +167,88 @@ namespace MDPlayer.UI
         private readonly System.Collections.Generic.List<IChannelVisualizer> secondaryVisualizers = new();
         private readonly StackPanel VisualizerHost = new() { Spacing = 4 };
 
+        private enum ChannelViewAudioFamily
+        {
+            Fm = 0,
+            Ssg = 1,
+            Pcm = 2,
+        }
+
         private void AddSecondaryVisualizer(IChannelVisualizer visualizer)
         {
             secondaryVisualizers.Add(visualizer);
             VisualizerHost.Children.Add(visualizer.Screen);
+        }
+
+        private static bool IsVisualizerScreen(PixelScreen screen, PixelScreen? visualizerScreen)
+            => ReferenceEquals(screen, visualizerScreen);
+
+        private static ChannelViewAudioFamily GetAudioFamily(IChannelVisualizer visualizer)
+            => visualizer switch
+            {
+                Ym2612Visualizer or Ym2151Visualizer or Ym2413Visualizer or Ym3526Visualizer
+                    or Ym3812Visualizer or Y8950Visualizer or Ymf262Visualizer or Ymf278bVisualizer
+                    or Ym2203Visualizer or Ym2608Visualizer or Ym2610Visualizer or Ymf271Visualizer
+                    => ChannelViewAudioFamily.Fm,
+                Sn76489Visualizer or Ay8910Visualizer or NesdmcVisualizer or FdsVisualizer
+                    or DmgVisualizer or Huc6280Visualizer or K051649Visualizer => ChannelViewAudioFamily.Ssg,
+                _ => ChannelViewAudioFamily.Pcm,
+            };
+
+        private ChannelViewAudioFamily GetAudioFamily(PixelScreen screen)
+        {
+            if (IsVisualizerScreen(screen, ym2612Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym2151Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym2413Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym3526Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym3812Visualizer?.Screen)
+                || IsVisualizerScreen(screen, y8950Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ymf262Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ymf278bVisualizer?.Screen)
+                || IsVisualizerScreen(screen, ym2203Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym2608Visualizer?.Screen)
+                || ReferenceEquals(screen, ym2609Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ym2610Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ymf271Visualizer?.Screen)
+                || IsVisualizerScreen(screen, vrc7Visualizer?.Screen))
+            {
+                return ChannelViewAudioFamily.Fm;
+            }
+
+            if (IsVisualizerScreen(screen, sn76489Visualizer?.Screen)
+                || IsVisualizerScreen(screen, ay8910Visualizer?.Screen)
+                || IsVisualizerScreen(screen, s5bVisualizer?.Screen)
+                || IsVisualizerScreen(screen, nesdmcVisualizer?.Screen)
+                || IsVisualizerScreen(screen, fdsVisualizer?.Screen)
+                || IsVisualizerScreen(screen, mmc5Visualizer?.Screen)
+                || IsVisualizerScreen(screen, vrc6Visualizer?.Screen)
+                || IsVisualizerScreen(screen, n106Visualizer?.Screen)
+                || IsVisualizerScreen(screen, dmgVisualizer?.Screen)
+                || IsVisualizerScreen(screen, huc6280Visualizer?.Screen)
+                || IsVisualizerScreen(screen, k051649Visualizer?.Screen))
+            {
+                return ChannelViewAudioFamily.Ssg;
+            }
+
+            IChannelVisualizer? secondary = secondaryVisualizers.FirstOrDefault(visualizer => ReferenceEquals(screen, visualizer.Screen));
+            return secondary == null ? ChannelViewAudioFamily.Pcm : GetAudioFamily(secondary);
+        }
+
+        // A VGM may contain several unrelated sound chips. Keep an individual chip's own
+        // channel layout intact, but group chip panels as FM -> SSG/PSG -> PCM. OrderBy is
+        // stable, preserving the existing chip order inside each family.
+        private void ArrangeVgmVisualizersByAudioFamily()
+        {
+            PixelScreen[] ordered = VisualizerHost.Children
+                .OfType<PixelScreen>()
+                .OrderBy(GetAudioFamily)
+                .ToArray();
+
+            VisualizerHost.Children.Clear();
+            foreach (PixelScreen screen in ordered)
+            {
+                VisualizerHost.Children.Add(screen);
+            }
         }
 
         private DispatcherTimer? visualizerTimer;
@@ -174,6 +266,41 @@ namespace MDPlayer.UI
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
             SelectionMode = SelectionMode.Multiple,
         };
+
+        // Windows frmInfo is a black two-column grid followed by a time-synchronised lyric
+        // box. Keep the same field order and colours, but make it an in-player mode so its
+        // bottom aligns with the other macOS player views instead of opening another window.
+        private readonly StackPanel informationRows = new() { Spacing = 0 };
+        private readonly ScrollViewer informationRowsScroller = new()
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        private readonly TextBlock informationLyrics = new()
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(192, 192, 255)),
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 14,
+            FontWeight = FontWeight.Bold,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 42,
+            Margin = new Thickness(0, 5, 12, 4),
+        };
+        private readonly Grid informationViewHost = new()
+        {
+            Background = Brushes.Black,
+            MinWidth = 520,
+            MinHeight = 329,
+            // The first column is a proportional left gutter. It moves every information
+            // field and lyric line 8% in from the window edge even after a resize.
+            ColumnDefinitions = new ColumnDefinitions("8*,92*"),
+            // Preserve one information-row-height blank line above the Windows-style grid.
+            RowDefinitions = new RowDefinitions("22,*,Auto"),
+        };
+        private System.Collections.Generic.List<Tuple<int, int, string>>? informationLyricEvents;
+        private int informationLyricIndex;
+        private Color informationLyricColor = Color.FromRgb(192, 192, 255);
+        private readonly DispatcherTimer informationTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
 
         private void ApplyChipVolumeOverrides(MusicEngineSession session)
         {
@@ -194,7 +321,13 @@ namespace MDPlayer.UI
         {
             mixerVisualizer = new MixerVisualizer(session);
             mixerVisualizer.ChipVolumeChanged += (chipKey, volume) => chipVolumeOverrides[chipKey] = volume;
-            mixerVisualizer.MasterVolumeChanged += volume => masterVolumeOverride = volume;
+            mixerVisualizer.MasterVolumeChanged += volume =>
+            {
+                masterVolumeOverride = volume;
+                dashboardMasterVolumeSlider.SetValue(volume);
+            };
+            dashboardMasterVolumeSlider.SetValue(session.MasterVolume);
+            dashboardMasterVolumeSlider.IsEnabled = true;
             volumeViewButton.IsEnabled = true;
             channelViewButton.IsEnabled = true;
         }
@@ -207,6 +340,8 @@ namespace MDPlayer.UI
             volumeViewButton.IsSelected = false;
             channelViewButton.IsSelected = false;
             playlistViewButton.IsSelected = false;
+            informationViewButton.IsSelected = false;
+            dashboardMasterVolumeSlider.IsEnabled = false;
             SetPlaylistPanelVisibility(playlistOnly: false);
             ViewHost.Content = null;
             volumeViewHost.Children.Clear();
@@ -227,6 +362,7 @@ namespace MDPlayer.UI
             volumeViewButton.IsSelected = true;
             channelViewButton.IsSelected = false;
             playlistViewButton.IsSelected = false;
+            informationViewButton.IsSelected = false;
             volumeViewButton.IsEnabled = true;
             channelViewButton.IsEnabled = true;
             UpdateTransportButtons();
@@ -243,6 +379,7 @@ namespace MDPlayer.UI
             volumeViewButton.IsSelected = false;
             channelViewButton.IsSelected = true;
             playlistViewButton.IsSelected = false;
+            informationViewButton.IsSelected = false;
             volumeViewButton.IsEnabled = mixerVisualizer != null;
             channelViewButton.IsEnabled = mixerVisualizer != null;
             UpdateTransportButtons();
@@ -261,8 +398,202 @@ namespace MDPlayer.UI
             volumeViewButton.IsSelected = false;
             channelViewButton.IsSelected = false;
             playlistViewButton.IsSelected = true;
+            informationViewButton.IsSelected = false;
             UpdateTransportButtons();
             if (refitWindow) RefitWindowToActiveView();
+        }
+
+        private void ShowInformationView(bool refitWindow = true)
+        {
+            if (loadedSession == null) return;
+
+            MaxHeight = double.PositiveInfinity;
+            activeViewMode = ActiveViewMode.Information;
+            SetEmbeddedPlaylistSize();
+            SetPlaylistPanelVisibility(playlistOnly: false);
+            RefreshInformationView(loadedSession);
+            ViewHost.Content = informationViewHost;
+            volumeViewButton.IsSelected = false;
+            channelViewButton.IsSelected = false;
+            playlistViewButton.IsSelected = false;
+            informationViewButton.IsSelected = true;
+            UpdateTransportButtons();
+            if (refitWindow) RefitWindowToActiveView();
+        }
+
+        // Field names and order intentionally mirror Windows frmInfo.UpdateInfo().  The
+        // source driver owns this GD3 data for every supported format, not only VGM.
+        private void RefreshInformationView(MusicEngineSession session)
+        {
+            GD3 gd3 = session.Driver.GD3 ?? new GD3();
+            informationRows.Children.Clear();
+            AddInformationRow("Title", gd3.TrackName);
+            AddInformationRow("TitleJ", gd3.TrackNameJ);
+            AddInformationRow("Game", gd3.GameName);
+            AddInformationRow("GameJ", gd3.GameNameJ);
+            AddInformationRow("System", gd3.SystemName);
+            AddInformationRow("SystemJ", gd3.SystemNameJ);
+            AddInformationRow("Composer", gd3.Composer);
+            AddInformationRow("ComposerJ", gd3.ComposerJ);
+            AddInformationRow("Release", gd3.Converted);
+            AddInformationRow("VGMBy", gd3.VGMBy);
+            AddInformationRow("Notes", gd3.Notes);
+            AddInformationRow("Version", gd3.Version);
+            AddInformationRow("UsedChips", gd3.UsedChips);
+
+            informationLyricEvents = gd3.Lyrics;
+            informationLyricIndex = 0;
+            informationLyricColor = Color.FromRgb(192, 192, 255);
+            informationLyrics.Inlines.Clear();
+        }
+
+        private void AddInformationRow(string key, string? value)
+        {
+            Grid row = new()
+            {
+                ColumnDefinitions = new ColumnDefinitions("72,440"),
+                MinHeight = 22,
+            };
+            TextBlock keyBlock = new()
+            {
+                Text = key,
+                Foreground = Brushes.Lavender,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 12,
+                FontWeight = FontWeight.Bold,
+                TextAlignment = TextAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            TextBlock valueBlock = new()
+            {
+                Text = Common.EscSeqFilter(value ?? string.Empty),
+                Foreground = Brushes.SlateBlue,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 15,
+                FontWeight = FontWeight.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            Grid.SetColumn(valueBlock, 1);
+            row.Children.Add(keyBlock);
+            row.Children.Add(valueBlock);
+            informationRows.Children.Add(new Border
+            {
+                Child = row,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(10, 10, 10)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+            });
+        }
+
+        // frmInfo's timer writes the current lyric event into a RichTextBox and honours
+        // \cRRGGBB / \cs colour sequences. The Avalonia equivalent uses TextBlock runs.
+        private void UpdateInformationLyrics()
+        {
+            if (activeViewMode != ActiveViewMode.Information
+                || loadedSession == null
+                || informationLyricEvents == null
+                || informationLyricIndex >= informationLyricEvents.Count)
+            {
+                return;
+            }
+
+            Tuple<int, int, string> lyric = informationLyricEvents[informationLyricIndex];
+            if (loadedSession.Driver.Counter < lyric.Item1) return;
+
+            RenderInformationLyric(lyric.Item3 ?? string.Empty);
+            informationLyricIndex++;
+        }
+
+        private void RenderInformationLyric(string lyric)
+        {
+            informationLyrics.Inlines.Clear();
+            StringBuilder text = new();
+
+            void FlushText()
+            {
+                if (text.Length == 0) return;
+                informationLyrics.Inlines.Add(new Run(text.ToString())
+                {
+                    Foreground = new SolidColorBrush(informationLyricColor),
+                });
+                text.Clear();
+            }
+
+            for (int index = 0; index < lyric.Length; index++)
+            {
+                char character = lyric[index];
+                if (character != '\\' || index + 1 >= lyric.Length)
+                {
+                    text.Append(character);
+                    continue;
+                }
+
+                char escape = lyric[++index];
+                if (escape != 'c')
+                {
+                    // Windows treats \" and \\ as literal characters. Preserve unknown
+                    // escapes as their literal escaped character as well.
+                    text.Append(escape);
+                    continue;
+                }
+
+                FlushText();
+                if (index + 1 < lyric.Length && lyric[index + 1] == 's')
+                {
+                    informationLyricColor = Color.FromRgb(192, 192, 255);
+                    index++;
+                    continue;
+                }
+
+                if (index + 6 < lyric.Length
+                    && int.TryParse(lyric.Substring(index + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int red)
+                    && int.TryParse(lyric.Substring(index + 3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int green)
+                    && int.TryParse(lyric.Substring(index + 5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int blue))
+                {
+                    informationLyricColor = Color.FromRgb((byte)red, (byte)green, (byte)blue);
+                    index += 6;
+                }
+                else
+                {
+                    text.Append("\\c");
+                }
+            }
+
+            FlushText();
+        }
+
+        // Dashboard clocks use VGM sample ticks even when the audio device uses another
+        // output rate. The third clock is the loop *position*, not the loop section's
+        // duration: VGM headers provide it as TotalCounter - loop-length samples.
+        private void UpdatePlaybackTimeline()
+        {
+            if (loadedSession == null)
+            {
+                dashboardTimerDisplay.Update(0, 0, -1);
+                SetTimelineProgress(available: false, ratio: 0);
+                return;
+            }
+
+            baseDriver driver = loadedSession.Driver;
+            long current = Math.Max(0, driver.Counter);
+            long total = driver.TotalCounter;
+            // Drivers set loopTimeCounter when they reach a loop point. VGM already knows
+            // the point at load time: its header stores the length from that point to EOF.
+            // Use the saved header value, rather than driver.LoopCounter, because the
+            // latter is intentionally zeroed when the user's repeat button is off.
+            long loopPosition = driver.loopTimeCounter;
+            if (loopPosition < 0 && total > 0 && fileLoopCounter > 0 && total >= fileLoopCounter)
+                loopPosition = total - fileLoopCounter;
+
+            dashboardTimerDisplay.Update(current, total, loopPosition);
+
+            bool hasTimeline = total > 0;
+            SetTimelineProgress(hasTimeline, hasTimeline
+                ? Math.Clamp(current / (double)total, 0.0, 1.0)
+                : 0);
         }
 
         private void RestoreActiveView(bool refitChannelWindow = true)
@@ -274,6 +605,9 @@ namespace MDPlayer.UI
                     break;
                 case ActiveViewMode.Playlist when playlist.Count > 0:
                     ShowPlaylistView(refitWindow: false);
+                    break;
+                case ActiveViewMode.Information when loadedSession != null:
+                    ShowInformationView(refitWindow: false);
                     break;
                 default:
                     ShowChannelView(refitChannelWindow);
@@ -288,6 +622,7 @@ namespace MDPlayer.UI
         {
             channelViewHalfSize = !channelViewHalfSize;
             ApplyChannelViewScale();
+            ApplyDashboardTimelineScale();
             zoomButton.IsSelected = channelViewHalfSize;
             StatusLabel.Text = channelViewHalfSize ? "채널 뷰 50% 크기" : "채널 뷰 원래 크기";
 
@@ -306,6 +641,37 @@ namespace MDPlayer.UI
             {
                 screen.SetDisplayScale(scale);
             }
+        }
+
+        private void ApplyDashboardTimelineScale()
+        {
+            // The normal dashboard is 1.5x so its original 8px Windows glyphs are as
+            // legible as the channel view. Compact channel mode uses 60% glyphs and a
+            // matching shorter timeline rather than leaving a wide bar.
+            double scale = channelViewHalfSize ? 0.6 : 1.5;
+            dashboardTimerDisplay.SetDisplayScale(scale);
+            double width = dashboardTimerDisplay.Screen.NativeWidth * scale;
+            // In compact channel view the timeline is 40% of the normal channel view's
+            // own progress-bar width (which is 80% of the original 1.5x timer area).
+            double timelineWidth = channelViewHalfSize
+                ? dashboardTimerDisplay.Screen.NativeWidth * 1.5 * 0.8 * 0.4
+                : width * 0.8;
+            timelineTrackWidth = timelineWidth;
+            TimelineProgressTrack.Width = timelineWidth;
+            TimelineProgressTrack.MinWidth = timelineWidth;
+            TimelineProgressTrack.MaxWidth = timelineWidth;
+            SetTimelineProgress(timelineAvailable, timelineProgressRatio);
+            TimelineProgressTrack.InvalidateMeasure();
+            DashboardTimelinePanel.MinWidth = width;
+        }
+
+        private void SetTimelineProgress(bool available, double ratio)
+        {
+            timelineAvailable = available;
+            timelineProgressRatio = Math.Clamp(ratio, 0.0, 1.0);
+            TimelineProgressTrack.Opacity = available ? 1.0 : 0.45;
+            TimelineProgressFill.Width = available ? timelineTrackWidth * timelineProgressRatio : 0;
+            TimelineProgressFill.IsVisible = available && timelineProgressRatio > 0;
         }
 
         private void SetPlaylistPanelVisibility(bool playlistOnly)
@@ -376,6 +742,30 @@ namespace MDPlayer.UI
         public MainWindow()
         {
             InitializeComponent();
+            DashboardTimesHost.Content = dashboardTimerDisplay.Screen;
+            DashboardMasterVolumeHost.Content = dashboardMasterVolumeSlider.Screen;
+            dashboardMasterVolumeSlider.IsEnabled = false;
+            dashboardMasterVolumeSlider.ValueChanged += volume =>
+            {
+                masterVolumeOverride = volume;
+                loadedSession?.SetMasterVolume(volume);
+                mixerVisualizer?.Refresh();
+            };
+            ApplyDashboardTimelineScale();
+            informationRowsScroller.Content = informationRows;
+            Grid.SetRow(informationRowsScroller, 1);
+            Grid.SetColumn(informationRowsScroller, 1);
+            Grid.SetRow(informationLyrics, 2);
+            Grid.SetColumn(informationLyrics, 1);
+            informationViewHost.Children.Add(informationRowsScroller);
+            informationViewHost.Children.Add(informationLyrics);
+            informationTimer.Tick += (_, _) =>
+            {
+                UpdateInformationLyrics();
+                UpdatePlaybackTimeline();
+            };
+            informationTimer.Start();
+            UpdatePlaybackTimeline();
             var playlistViewTitle = new TextBlock { Text = "재생 목록" };
             DockPanel.SetDock(playlistViewTitle, Dock.Top);
             playlistViewHost.Children.Add(playlistViewTitle);
@@ -385,6 +775,7 @@ namespace MDPlayer.UI
             var compactPlaylistStyle = new Style(selector => selector.OfType<ListBoxItem>());
             compactPlaylistStyle.Setters.Add(new Setter(TemplatedControl.PaddingProperty, new Thickness(6, 1)));
             compactPlaylistStyle.Setters.Add(new Setter(Layoutable.MinHeightProperty, 0d));
+            compactPlaylistStyle.Setters.Add(new Setter(TemplatedControl.FontFamilyProperty, new FontFamily("Consolas")));
             playlistViewList.Styles.Add(compactPlaylistStyle);
             ScrollViewer.SetVerticalScrollBarVisibility(playlistViewList, ScrollBarVisibility.Auto);
             playlistViewList.SelectionChanged += OnPlaylistViewSelectionChanged;
@@ -424,6 +815,7 @@ namespace MDPlayer.UI
             {
                 StopPlayback();
                 HideVisualizers();
+                informationTimer.Stop();
                 try { loadedSession?.Setting.Save(); } catch { }
                 HideMixer();
             };
@@ -443,6 +835,7 @@ namespace MDPlayer.UI
             fastButton = MakeTransportButton("Fast", "빠르게 (재생 속도)", () => ChangePlaybackSpeed(2.0));
             nextButton = MakeTransportButton("Next", "다음 곡", OnNextClick);
             playlistViewButton = MakeTransportButton("PlayList", "재생목록 뷰", () => ShowPlaylistView());
+            informationViewButton = MakeTransportButton("Information", "곡 정보", () => ShowInformationView());
             volumeViewButton = MakeTransportButton("Mixer", "볼륨 뷰", () => ShowVolumeView());
             channelViewButton = MakeTransportButton("KBD", "채널 뷰", () => ShowChannelView());
             zoomButton = MakeTransportButton("Zoom", "채널 뷰 50% 크기 / 원래 크기", ToggleChannelViewSize);
@@ -457,6 +850,7 @@ namespace MDPlayer.UI
             TransportButtonsHost.Children.Add(nextButton.Screen);
             UtilityButtonsHost.Children.Add(openButton.Screen);
             UtilityButtonsHost.Children.Add(playlistViewButton.Screen);
+            UtilityButtonsHost.Children.Add(informationViewButton.Screen);
             UtilityButtonsHost.Children.Add(volumeViewButton.Screen);
             UtilityButtonsHost.Children.Add(channelViewButton.Screen);
             UtilityButtonsHost.Children.Add(zoomButton.Screen);
@@ -481,6 +875,7 @@ namespace MDPlayer.UI
             openButton.IsEnabled = !isStarting;
             playButton.IsEnabled = hasTrack && !isStarting;
             playlistViewButton.IsEnabled = playlist.Count > 0;
+            informationViewButton.IsEnabled = loadedSession != null;
             stopButton.IsEnabled = playbackActive;
             pauseButton.IsEnabled = playbackActive;
             previousButton.IsEnabled = canChangeTrack;
@@ -492,8 +887,18 @@ namespace MDPlayer.UI
             zoomButton.IsEnabled = activeViewMode == ActiveViewMode.Channel && VisualizerHost.Children.Count > 0;
             zoomButton.IsSelected = channelViewHalfSize;
             loopButton.IsEnabled = true;
-            loopButton.IsSelected = loopEnabled;
+            UpdateLoopButtonAppearance();
+            loopButton.IsSelected = loopEnabled || randomPlaybackEnabled;
             playButton.IsRedAlert = autoPlayEnabled;
+        }
+
+        private void UpdateLoopButtonAppearance()
+        {
+            if (loopButtonShowsRandom == randomPlaybackEnabled) return;
+            loopButtonShowsRandom = randomPlaybackEnabled;
+            loopButton.SetIcon(
+                randomPlaybackEnabled ? "Random" : "Loop",
+                randomPlaybackEnabled ? "랜덤 재생 — 한 번 더 누르면 일반 재생" : "현재 곡 반복");
         }
 
         private void ToggleAutoPlay()
@@ -578,7 +983,11 @@ namespace MDPlayer.UI
                 VisualizerHost.Children.Add(s5bVisualizer.Screen);
             }
 
-            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2413, out uint ym2413Clock))
+            // VGM playback uses MDSound's YM2413emu backend, while other sources can
+            // expose the hardware-facing YM2413 type.  The channel view represents the
+            // chip registers in either case, so accept both keys here.
+            if (session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2413, out uint ym2413Clock)
+                || session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.YM2413emu, out ym2413Clock))
             {
                 ym2413Visualizer = new Ym2413Visualizer(session.ChipRegister, ym2413Clock);
                 VisualizerHost.Children.Add(ym2413Visualizer.Screen);
@@ -939,6 +1348,11 @@ namespace MDPlayer.UI
                 && rf5c68Visualizer == null && segaPcmVisualizer == null
                 && ymz280BVisualizer == null) return;
 
+            if (vgm != null)
+            {
+                ArrangeVgmVisualizersByAudioFamily();
+            }
+
             // New visualizers are constructed at 2x. Reapply the user's current toggle
             // before measuring the stack so track changes do not reset the compact view.
             ApplyChannelViewScale();
@@ -1094,11 +1508,68 @@ namespace MDPlayer.UI
         private static bool IsSupportedMusicFile(IStorageFile file)
             => SupportedMusicExtensions.Contains(Path.GetExtension(file.Name), StringComparer.OrdinalIgnoreCase);
 
+        // Use Avalonia's storage abstraction rather than Directory.EnumerateFiles so the
+        // macOS sandbox/security scope granted by a Finder drop remains valid.  Folder
+        // contents are sorted for a stable, predictable playlist order.
+        private static async Task<System.Collections.Generic.List<IStorageFile>> ExpandDroppedStorageItemsAsync(
+            System.Collections.Generic.IEnumerable<IStorageItem> items)
+        {
+            var files = new System.Collections.Generic.List<IStorageFile>();
+            var seenFiles = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+            var seenFolders = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+
+            async Task AddItemAsync(IStorageItem item)
+            {
+                if (item is IStorageFile file)
+                {
+                    if (!IsSupportedMusicFile(file)) return;
+
+                    string key = file.Path.ToString();
+                    if (seenFiles.Add(key)) files.Add(file);
+                    return;
+                }
+
+                if (item is not IStorageFolder folder) return;
+
+                string folderKey = folder.Path.ToString();
+                if (!seenFolders.Add(folderKey)) return;
+
+                try
+                {
+                    var children = new System.Collections.Generic.List<IStorageItem>();
+                    await foreach (IStorageItem child in folder.GetItemsAsync())
+                    {
+                        children.Add(child);
+                    }
+
+                    foreach (IStorageItem child in children.OrderBy(child => child.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        await AddItemAsync(child);
+                    }
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Continue with other dropped items when macOS denies a nested folder.
+                }
+                catch (IOException)
+                {
+                    // A file-system item can disappear while Finder's drop is being read.
+                }
+            }
+
+            foreach (IStorageItem item in items)
+            {
+                await AddItemAsync(item);
+            }
+
+            return files;
+        }
+
         private void OnFileDragEnter(object? sender, DragEventArgs e)
         {
             if (e.DataTransfer.Formats.Contains(DataFormat.File))
             {
-                PlaylistHint.Text = "여기에 놓으면 재생 목록에 추가합니다";
+                PlaylistHint.Text = "음악 파일 또는 폴더를 놓으면 재생 목록에 추가합니다";
             }
         }
 
@@ -1147,7 +1618,7 @@ namespace MDPlayer.UI
         {
             if (e.DataTransfer.Formats.Contains(DataFormat.File))
             {
-                StatusLabel.Text = "여기에 놓으면 재생 목록을 교체합니다";
+                StatusLabel.Text = "음악 파일 또는 폴더를 놓으면 재생 목록을 교체합니다";
             }
             e.Handled = true;
         }
@@ -1177,13 +1648,17 @@ namespace MDPlayer.UI
 
         private async Task HandleDroppedFilesAsync(DragEventArgs e, bool replacePlaylist)
         {
-            var files = e.DataTransfer.TryGetFiles()?
-                .OfType<IStorageFile>()
-                .Where(IsSupportedMusicFile)
-                .ToArray();
-            if (files == null || files.Length == 0)
+            var droppedItems = e.DataTransfer.TryGetFiles()?.ToArray();
+            if (droppedItems == null || droppedItems.Length == 0)
             {
-                PlaylistHint.Text = "지원하는 음악 파일을 드롭하세요";
+                PlaylistHint.Text = "지원하는 음악 파일 또는 폴더를 드롭하세요";
+                return;
+            }
+
+            System.Collections.Generic.List<IStorageFile> files = await ExpandDroppedStorageItemsAsync(droppedItems);
+            if (files.Count == 0)
+            {
+                PlaylistHint.Text = "폴더 안에 지원하는 음악 파일이 없습니다";
                 return;
             }
 
@@ -1252,8 +1727,11 @@ namespace MDPlayer.UI
                 : $"재생 목록 {playlist.Count}곡 — 음악 파일을 드롭하여 추가";
 
             synchronizingPlaylistSelection = true;
+            // Use 01..09 rather than a blank-padded single digit. The width grows for
+            // 100+ track playlists as a whole, keeping every title on one column.
+            int indexColumnDigits = Math.Max(2, playlist.Count.ToString().Length);
             string[] items = playlist
-                .Select((entry, index) => $"{index + 1,2}. {entry.Name}")
+                .Select((entry, index) => (index + 1).ToString("D" + indexColumnDigits) + ".  " + entry.Name)
                 .ToArray();
             PlaylistList.ItemsSource = items;
             playlistViewList.ItemsSource = items;
@@ -1268,7 +1746,7 @@ namespace MDPlayer.UI
             if (synchronizingPlaylistSelection) return;
             focusedPlaylistList = PlaylistList;
             if (PlaylistList.SelectedItems.Count != 1) return;
-            await SelectPlaylistIndexAsync(PlaylistList.SelectedIndex);
+            await RunPlaylistInteractionAsync(() => SelectPlaylistIndexAsync(PlaylistList.SelectedIndex));
         }
 
         private async void OnPlaylistViewSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -1276,7 +1754,23 @@ namespace MDPlayer.UI
             if (synchronizingPlaylistSelection) return;
             focusedPlaylistList = playlistViewList;
             if (playlistViewList.SelectedItems.Count != 1) return;
-            await SelectPlaylistIndexAsync(playlistViewList.SelectedIndex);
+            await RunPlaylistInteractionAsync(() => SelectPlaylistIndexAsync(playlistViewList.SelectedIndex));
+        }
+
+        private async Task RunPlaylistInteractionAsync(Func<Task> action)
+        {
+            try
+            {
+                await action();
+            }
+            catch (Exception ex)
+            {
+                // Avalonia async event exceptions become a SIGABRT on macOS. Keep the
+                // player alive and surface the managed error in its normal status area.
+                StatusLabel.Text = $"재생목록 처리 오류 — {ex.Message}";
+                playbackEnded = true;
+                UpdateTransportButtons();
+            }
         }
 
         private void OnPlaylistGotFocus(object? sender, FocusChangedEventArgs e)
@@ -1428,15 +1922,21 @@ namespace MDPlayer.UI
         private async void OnPlaylistDoubleTapped(object? sender, TappedEventArgs e)
         {
             if (playlistIndex < 0 || playlistIndex >= playlist.Count) return;
-            if (queue != null && !playbackEnded) StopPlayback();
-            await StartPlaybackAsync();
+            await RunPlaylistInteractionAsync(async () =>
+            {
+                if (queue != null && !playbackEnded) StopPlayback();
+                await StartPlaybackAsync();
+            });
         }
 
         private async void OnPlaylistViewDoubleTapped(object? sender, TappedEventArgs e)
         {
             if (playlistIndex < 0 || playlistIndex >= playlist.Count) return;
-            if (queue != null && !playbackEnded) StopPlayback();
-            await StartPlaybackAsync();
+            await RunPlaylistInteractionAsync(async () =>
+            {
+                if (queue != null && !playbackEnded) StopPlayback();
+                await StartPlaybackAsync();
+            });
         }
 
         private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -1580,6 +2080,10 @@ namespace MDPlayer.UI
 
                 ShowVisualizersFor(session);
                 ShowMixerFor(session);
+                // A completed driver is reloaded when Play is pressed again. Reset the
+                // Information view too, so its lyric event index starts at the song's
+                // beginning just like Windows frmInfo.ScreenInit().
+                RefreshInformationView(session);
                 RestoreActiveView();
                 StatusLabel.Text = showSpeedReset
                     ? $"재생 중 - {session.DescribeActiveChips()} - 재생 속도 1x"
@@ -1645,16 +2149,30 @@ namespace MDPlayer.UI
             UpdateTransportButtons();
         }
 
-        private async void OnPreviousClick() => await MovePlaylistAsync(-1);
+        private async void OnPreviousClick()
+        {
+            if (playlist.Count == 0) return;
+            await MovePlaylistAsync((playlistIndex - 1 + playlist.Count) % playlist.Count);
+        }
 
-        private async void OnNextClick() => await MovePlaylistAsync(1);
+        private async void OnNextClick()
+        {
+            if (playlist.Count == 0) return;
+            await MovePlaylistAsync(randomPlaybackEnabled ? GetRandomPlaylistIndex() : (playlistIndex + 1) % playlist.Count);
+        }
 
-        private async Task MovePlaylistAsync(int delta)
+        private int GetRandomPlaylistIndex()
+        {
+            if (playlist.Count < 2) return Math.Max(0, playlistIndex);
+            int randomIndex = Random.Shared.Next(playlist.Count - 1);
+            return randomIndex >= playlistIndex ? randomIndex + 1 : randomIndex;
+        }
+
+        private async Task MovePlaylistAsync(int target)
         {
             if (playlist.Count == 0) return;
 
             bool shouldResume = (queue != null && !playbackEnded) || isPaused;
-            int target = (playlistIndex + delta + playlist.Count) % playlist.Count;
             StopPlayback();
             await SelectPlaylistEntryAsync(target);
             if (shouldResume) await StartPlaybackAsync();
@@ -1669,6 +2187,14 @@ namespace MDPlayer.UI
             {
                 StatusLabel.Text = "반복 재생";
                 await SelectPlaylistEntryAsync(playlistIndex);
+                await StartPlaybackAsync();
+                return;
+            }
+
+            if (playlistIndex >= 0 && playlist.Count > 1 && randomPlaybackEnabled)
+            {
+                StatusLabel.Text = "랜덤 다음 곡 재생";
+                await SelectPlaylistEntryAsync(GetRandomPlaylistIndex());
                 await StartPlaybackAsync();
                 return;
             }
@@ -1744,11 +2270,19 @@ namespace MDPlayer.UI
             session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
             ShowVisualizersFor(session);
             ShowMixerFor(session);
+            RefreshInformationView(session);
             channelLayoutSignature = newLayoutSignature;
             // Same layout: rebuild the controls against the new chip-register instance but
             // retain the current window geometry. A changed topology gets a normal fit.
             RestoreActiveView(refitChannelWindow: !keepChannelWindow);
-            StatusLabel.Text = $"로드됨 - 채널 뷰 대기 ({session.DescribeActiveChips()})";
+            string readyViewName = activeViewMode switch
+            {
+                ActiveViewMode.Volume => "볼륨 뷰",
+                ActiveViewMode.Playlist => "재생목록 뷰",
+                ActiveViewMode.Information => "정보 뷰",
+                _ => "채널 뷰",
+            };
+            StatusLabel.Text = $"로드됨 - {readyViewName} 대기 ({session.DescribeActiveChips()})";
             UpdateTransportButtons();
         }
 
@@ -1774,12 +2308,27 @@ namespace MDPlayer.UI
 
         private void OnLoopClick()
         {
-            loopEnabled = !loopEnabled;
+            if (!loopEnabled && !randomPlaybackEnabled)
+            {
+                loopEnabled = true;
+                StatusLabel.Text = "반복 재생 켜짐";
+            }
+            else if (loopEnabled)
+            {
+                loopEnabled = false;
+                randomPlaybackEnabled = true;
+                StatusLabel.Text = "랜덤 재생 켜짐";
+            }
+            else
+            {
+                randomPlaybackEnabled = false;
+                StatusLabel.Text = "반복 / 랜덤 재생 꺼짐";
+            }
+
             if (loadedSession is MusicEngineSession session)
             {
                 session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
             }
-            StatusLabel.Text = loopEnabled ? "반복 재생 켜짐" : "반복 재생 꺼짐";
             UpdateTransportButtons();
         }
 
@@ -1795,6 +2344,7 @@ namespace MDPlayer.UI
             session.ResetVolumesToDefaults();
             chipVolumeOverrides.Clear();
             masterVolumeOverride = null;
+            dashboardMasterVolumeSlider.SetValue(session.MasterVolume);
             mixerVisualizer.Refresh();
             StatusLabel.Text = "곡의 기본 볼륨으로 복원했습니다";
         }

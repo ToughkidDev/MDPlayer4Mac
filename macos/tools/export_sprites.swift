@@ -40,11 +40,9 @@ for sourcePath in arguments.dropLast() {
                       userInfo: [NSLocalizedDescriptionKey: "Cannot create pixel context"])
     }
     context.interpolationQuality = .none
-    // CGBitmapContext's native origin is bottom-left, while SpriteAtlas/PIL pixel arrays
-    // are top-left row-major. Flip before rasterising so exported sprite rows keep the same
-    // orientation as the Windows PNGs.
-    context.translateBy(x: 0, y: CGFloat(height))
-    context.scaleBy(x: 1, y: -1)
+    // The byte buffer returned by this bitmap context is already top-left row-major for
+    // the format SpriteAtlas reads. Applying a CoreGraphics Y flip here inverted every
+    // transport icon in the Avalonia player, so draw at native orientation.
     context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
 
     var output = Data()

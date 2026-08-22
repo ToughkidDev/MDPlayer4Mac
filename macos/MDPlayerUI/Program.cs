@@ -13,6 +13,9 @@ namespace MDPlayer.UI
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
+                // Do not overwrite the explicit MDPlayer4Mac process name with
+                // Avalonia's default "Avalonia Application" label on macOS.
+                .With(new MacOSPlatformOptions { DisableSetProcessName = true })
                 .WithInterFont()
                 .LogToTrace();
     }

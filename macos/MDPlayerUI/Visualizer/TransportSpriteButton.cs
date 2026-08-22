@@ -11,9 +11,9 @@ namespace MDPlayer.UI.Visualizer
 {
     public sealed class TransportSpriteButton
     {
-        private readonly SpriteAtlas normal;
-        private readonly SpriteAtlas hover;
-        private readonly SpriteAtlas active;
+        private SpriteAtlas normal = null!;
+        private SpriteAtlas hover = null!;
+        private SpriteAtlas active = null!;
         private bool enabled = true;
         private bool pointerOver;
         private bool pointerDown;
@@ -93,14 +93,21 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        public TransportSpriteButton(string iconName, string tooltip)
+        // Loop and random playback share one dashboard position. Swap all three Windows
+        // sprite states together so hover/pressed feedback remains faithful to the source.
+        public void SetIcon(string iconName, string tooltip)
         {
             normal = SpriteAtlas.Load($"Transport/cc{iconName}");
             hover = SpriteAtlas.Load($"Transport/ch{iconName}");
             active = SpriteAtlas.Load($"Transport/ci{iconName}");
-
-            Screen.Init(16, 16, zoom: 2);
             ToolTip.SetTip(Screen, tooltip);
+            Redraw();
+        }
+
+        public TransportSpriteButton(string iconName, string tooltip)
+        {
+            Screen.Init(16, 16, zoom: 2);
+            SetIcon(iconName, tooltip);
             Screen.PointerEntered += (_, _) => { pointerOver = true; Redraw(); };
             Screen.PointerExited += (_, _) =>
             {

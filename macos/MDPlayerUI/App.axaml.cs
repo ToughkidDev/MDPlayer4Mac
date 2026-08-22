@@ -18,6 +18,8 @@ namespace MDPlayer.UI
 
         public override void OnFrameworkInitializationCompleted()
         {
+            ForceTouchMonitor.ConfigureApplicationIdentity();
+
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 desktop.MainWindow = new MainWindow();

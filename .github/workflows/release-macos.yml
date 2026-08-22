@@ -35,9 +35,11 @@ jobs:
         run: |
           APP="release/MDPlayer4Mac.app"
           MACOS_DIR="$APP/Contents/MacOS"
+          RESOURCES_DIR="$APP/Contents/Resources"
           VERSION="${GITHUB_REF_NAME#v}"
-          mkdir -p "$MACOS_DIR"
+          mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
           cp -R release/publish/. "$MACOS_DIR/"
+          cp macos/MDPlayerUI/Assets/MDPlayer4Mac.icns "$RESOURCES_DIR/MDPlayer4Mac.icns"
           cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -45,7 +47,8 @@ jobs:
           <dict>
             <key>CFBundleDevelopmentRegion</key><string>en</string>
             <key>CFBundleDisplayName</key><string>MDPlayer4Mac</string>
-            <key>CFBundleExecutable</key><string>MDPlayerUI</string>
+            <key>CFBundleExecutable</key><string>MDPlayer4Mac</string>
+            <key>CFBundleIconFile</key><string>MDPlayer4Mac.icns</string>
             <key>CFBundleIdentifier</key><string>com.toughkiddev.mdplayer4mac</string>
             <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
             <key>CFBundleName</key><string>MDPlayer4Mac</string>

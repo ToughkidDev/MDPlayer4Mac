@@ -21,7 +21,11 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
-    <AssemblyName>MDPlayerUI</AssemblyName>
+    <!-- The assembly/app-host name is also used by macOS for the application menu
+         when the player is launched directly with `dotnet run`. -->
+    <AssemblyName>MDPlayer4Mac</AssemblyName>
+    <AssemblyTitle>MDPlayer4Mac</AssemblyTitle>
+    <Product>MDPlayer4Mac</Product>
     <RootNamespace>MDPlayer.UI</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -63,6 +67,11 @@
   -->
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!-- Also keep the macOS icon as a physical file: AppKit needs a file path
+         to update the Dock icon for a `dotnet run` launch outside a .app bundle. -->
+    <None Update="Assets\MDPlayer4Mac.icns"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

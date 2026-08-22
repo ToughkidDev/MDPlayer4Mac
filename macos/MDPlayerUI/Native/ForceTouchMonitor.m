@@ -9,6 +9,23 @@ typedef void (*MDPlayerForceTouchCallback)(void);
 static MDPlayerForceTouchCallback forceTouchCallback = NULL;
 static id forceTouchMonitor = nil;
 
+// `dotnet run` is not launched from a .app bundle, so AppKit has no Info.plist
+// from which to obtain the display name or Dock icon. Avalonia otherwise assigns
+// its generic process name here; set both explicitly for development launches.
+void MDPlayerConfigureApplication(const char *name, const char *iconPath)
+{
+    NSString *applicationName = [NSString stringWithUTF8String:name];
+    [[NSProcessInfo processInfo] setProcessName:applicationName];
+
+    if (iconPath == NULL || iconPath[0] == '\0')
+        return;
+
+    NSImage *icon = [[NSImage alloc]
+        initWithContentsOfFile:[NSString stringWithUTF8String:iconPath]];
+    if (icon != nil)
+        [[NSApplication sharedApplication] setApplicationIconImage:icon];
+}
+
 void MDPlayerInstallForceTouchMonitor(MDPlayerForceTouchCallback callback)
 {
     forceTouchCallback = callback;

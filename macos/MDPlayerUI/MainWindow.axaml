@@ -8,15 +8,38 @@
     <!-- The final row is content-sized: a view switch therefore resizes the window down
          to the bottom of its playlist panel instead of leaving a star-row gap below it. -->
     <Grid x:Name="MainLayout" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
-        <TextBlock x:Name="FileLabel" Grid.Row="0" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
-        <TextBlock x:Name="StatusLabel" Grid.Row="1" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
+        <!-- File name and status share their right edge with the always-available master
+             fader. Keeping it outside the transport dashboard leaves the button strip and
+             timeline at their original widths. -->
+        <Grid Grid.Row="0" Grid.RowSpan="2" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="4">
+            <TextBlock x:Name="FileLabel" Grid.Row="0" Grid.Column="0" Text="파일을 선택하세요" FontWeight="Bold" TextWrapping="Wrap" />
+            <TextBlock x:Name="StatusLabel" Grid.Row="1" Grid.Column="0" Text="대기 중" Foreground="Gray" TextWrapping="Wrap" />
+            <ContentControl x:Name="DashboardMasterVolumeHost" Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                            VerticalAlignment="Top" HorizontalAlignment="Right" />
+        </Grid>
         <!-- The two rows mirror frmMain's original transport / utility button placement. -->
         <Border x:Name="PlayerDashboard" Grid.Row="2" Background="Black" BorderBrush="#444" BorderThickness="1" Padding="4"
                 DragDrop.AllowDrop="True">
-            <StackPanel Spacing="2">
-                <StackPanel x:Name="TransportButtonsHost" Orientation="Horizontal" Spacing="0" />
-                <StackPanel x:Name="UtilityButtonsHost" Orientation="Horizontal" Spacing="0" />
-            </StackPanel>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <StackPanel x:Name="TransportButtonsHost" Orientation="Horizontal" Spacing="0" />
+                    <StackPanel x:Name="UtilityButtonsHost" Orientation="Horizontal" Spacing="0" />
+                </StackPanel>
+                <!-- Windows frmMain keeps three counters (current/total/loop) next to the
+                     controls and a timeline immediately beneath them. -->
+                <Grid x:Name="DashboardTimelinePanel" Grid.Column="1" MinWidth="270" VerticalAlignment="Center" RowDefinitions="Auto,Auto" RowSpacing="5">
+                    <!-- DashboardTimerDisplay draws its digits from the original Windows
+                         rFont_01 sprite sheet rather than a platform text font. -->
+                    <ContentControl x:Name="DashboardTimesHost" HorizontalAlignment="Center" />
+                    <!-- A direct pixel track, rather than a themed ProgressBar: its width
+                         stays exact when the channel view changes scale. -->
+                    <Border x:Name="TimelineProgressTrack" Grid.Row="1" Height="8" HorizontalAlignment="Center"
+                            Background="#171B2C" ClipToBounds="True">
+                        <Border x:Name="TimelineProgressFill" Height="8" HorizontalAlignment="Left"
+                                Background="#7887E8" />
+                    </Border>
+                </Grid>
+            </Grid>
         </Border>
         <!--
           ViewHost switches between the active chip's channel visualizer(s) and the native
@@ -47,6 +70,7 @@
                         <Style Selector="ListBoxItem">
                             <Setter Property="Padding" Value="6,1" />
                             <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="FontFamily" Value="Consolas" />
                         </Style>
                     </ListBox.Styles>
                 </ListBox>

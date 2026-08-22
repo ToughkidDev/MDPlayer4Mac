@@ -2080,39 +2080,47 @@
             uint YM2413clock = GetLE32(0x10);
             if (YM2413clock != 0)
             {
-                YM2413ClockValue = YM2413clock & 0x3fffffff;
-                YM2413DualChipFlag = (YM2413clock & 0x40000000) != 0;
-                YM2413VRC7Flag = (YM2413clock & 0x8000_0000) != 0;
-                if (!YM2413VRC7Flag)
-                {
-                    if (YM2413DualChipFlag) chips.Add("YM2413x2");
-                    else chips.Add("YM2413");
-                }
-                else
-                {
-                    if (YM2413DualChipFlag) chips.Add("VRC7x2");
-                    else chips.Add("VRC7");
-                }
-            }
+                // Before VGM 1.10, 0x10 was the single, legacy FM-clock field.  It can
+                // describe YM2413, YM2612, or YM2151.  Identify the real chip from the
+                // stream's write command instead of instantiating all three panels.
+                LegacyFmChip legacyChip = version <= 0x0101
+                    ? DetectLegacyFmChip()
+                    : LegacyFmChip.YM2413;
 
-            if (version == 0x0101)
-            {
-                uint YM2612clock = GetLE32(0x10);
-                if (YM2612clock != 0)
+                if (legacyChip == LegacyFmChip.Unknown)
                 {
-                    YM2612ClockValue = YM2612clock & 0x3fffffff;
-                    YM2612DualChipFlag = (YM2612clock & 0x40000000) != 0;
-                    if (YM2612DualChipFlag) chips.Add("YM2612x2");
-                    else chips.Add("YM2612");
+                    // This is the format-specified fallback for an unreadable/truncated
+                    // legacy stream. Normal files are identified by their write command.
+                    legacyChip = YM2413clock > 5_000_000
+                        ? LegacyFmChip.YM2612
+                        : LegacyFmChip.YM2151;
                 }
 
-                uint YM2151clock = GetLE32(0x10);
-                if (YM2151clock != 0)
+                switch (legacyChip)
                 {
-                    YM2151ClockValue = YM2151clock & 0x3fffffff;
-                    YM2151DualChipFlag = (YM2151clock & 0x40000000) != 0;
-                    if (YM2151DualChipFlag) chips.Add("YM2151x2");
-                    else chips.Add("YM2151");
+                    case LegacyFmChip.YM2612:
+                        YM2612ClockValue = YM2413clock & 0x3fffffff;
+                        chips.Add("YM2612");
+                        break;
+                    case LegacyFmChip.YM2151:
+                        YM2151ClockValue = YM2413clock & 0x3fffffff;
+                        chips.Add("YM2151");
+                        break;
+                    default:
+                        YM2413ClockValue = YM2413clock & 0x3fffffff;
+                        YM2413DualChipFlag = (YM2413clock & 0x40000000) != 0;
+                        YM2413VRC7Flag = (YM2413clock & 0x8000_0000) != 0;
+                        if (!YM2413VRC7Flag)
+                        {
+                            if (YM2413DualChipFlag) chips.Add("YM2413x2");
+                            else chips.Add("YM2413");
+                        }
+                        else
+                        {
+                            if (YM2413DualChipFlag) chips.Add("VRC7x2");
+                            else chips.Add("VRC7");
+                        }
+                        break;
                 }
             }
 
@@ -2146,7 +2154,7 @@
 
                 //SetYM2151Hosei();
 
-                vgmDataOffset = GetLE32(0x34);
+                vgmDataOffset = version >= 0x0150 ? GetLE32(0x34) : 0;
                 if (vgmDataOffset == 0)
                 {
                     vgmDataOffset = 0x40;
@@ -2156,7 +2164,7 @@
                     vgmDataOffset += 0x34;
                 }
 
-                //if (version >= 0x0151)
+                if (version >= 0x0151)
                 {
                     if (vgmDataOffset > 0x38)
                     {
@@ -2227,7 +2235,7 @@
                         {
                             YM3812ClockValue = YM3812clock & 0x3fffffff;
                             YM3812DualChipFlag = (YM3812clock & 0x40000000) != 0;
-                            if (YM2610DualChipFlag) chips.Add("YM3812x2");
+                            if (YM3812DualChipFlag) chips.Add("YM3812x2");
                             else chips.Add("YM3812");
                         }
                     }
@@ -2346,7 +2354,7 @@
                 //HuC6280ClockValue = 0;
                 //OKIM6295ClockValue = 0;
 
-                //if (version >= 0x0161)
+                if (version >= 0x0161)
                 {
                     if (vgmDataOffset > 0x80)
                     {
@@ -2703,6 +2711,80 @@
                 FileChipVolumes[new ChipVolumeKey(type, (byte)(flags & 0x01))]
                     = LinearGainToMixerDb(linearGain);
             }
+        }
+
+        private enum LegacyFmChip
+        {
+            Unknown,
+            YM2413,
+            YM2612,
+            YM2151,
+        }
+
+        // VGM 1.01 and older have a single FM clock at 0x10.  The command stream is the
+        // authoritative source of its chip identity: 0x51=YM2413, 0x52/0x53=YM2612 and
+        // 0x54=YM2151. Those early versions predate data blocks, so the complete command
+        // grammar needed here is deliberately small and avoids treating command operands
+        // as potential opcodes.
+        private LegacyFmChip DetectLegacyFmChip()
+        {
+            bool usesYm2413 = false;
+            bool usesYm2612 = false;
+            bool usesYm2151 = false;
+            int address = 0x40;
+            int end = vgmEof == 0
+                ? vgmBuf.Length
+                : (int)Math.Min(vgmEof, (uint)vgmBuf.Length);
+
+            while (address < end)
+            {
+                byte command = vgmBuf[address];
+                switch (command)
+                {
+                    case 0x51:
+                        usesYm2413 = true;
+                        address += 3;
+                        break;
+                    case 0x52:
+                    case 0x53:
+                        usesYm2612 = true;
+                        address += 3;
+                        break;
+                    case 0x54:
+                        usesYm2151 = true;
+                        address += 3;
+                        break;
+                    case 0x4f:
+                    case 0x50:
+                        address += 2;
+                        break;
+                    case >= 0x55 and <= 0x5f:
+                    case 0x61:
+                        address += 3;
+                        break;
+                    case 0x62:
+                    case 0x63:
+                    case 0x66:
+                        address++;
+                        if (command == 0x66) address = end;
+                        break;
+                    case >= 0x70 and <= 0x7f:
+                        address++;
+                        break;
+                    default:
+                        // Unknown commands make the identity unreliable, but stepping one
+                        // byte still lets a truncated stream reach a valid end command.
+                        address++;
+                        break;
+                }
+            }
+
+            int usedChipCount = (usesYm2413 ? 1 : 0) + (usesYm2612 ? 1 : 0) + (usesYm2151 ? 1 : 0);
+            return usedChipCount == 1
+                ? usesYm2413 ? LegacyFmChip.YM2413
+                    : usesYm2612 ? LegacyFmChip.YM2612
+                    : LegacyFmChip.YM2151
+                : LegacyFmChip.Unknown;
         }
 
         private bool HasBytes(ulong offset, ulong length)

@@ -51,6 +51,8 @@ namespace MDPlayer.UI.Visualizer
             screen = new PixelScreen();
             screen.Init(bg.Width, bg.Height, zoom: 2);
             screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
+            // FM 1-3, FM-EX 1-3, then SSG 1-3.
+            screen.ReorderRowsFrom(bg, 8, 8, 0, 1, 2, 6, 7, 8, 3, 4, 5);
             screen.Present();
         }
 
@@ -231,12 +233,8 @@ namespace MDPlayer.UI.Visualizer
             newParam.etype = ym2203Register[0x0d] & 0xf;
         }
 
-        // frmYM2203.cs:289 screenDrawParams. Row-placement quirk kept exactly as the
-        // original: the FM-EX channels' (3,4,5) Volume/KeyBoard/Slot/font4Hex16Bit calls
-        // draw at row (c+3) (i.e. rows 6/7/8), but their ChYm2203 badge call passes the raw
-        // loop variable `c` (3,4,5), which ChYm2203's own row math (8+ch*8) places at rows
-        // 3/4/5 instead - a visual mismatch versus the rest of that channel's row, but
-        // that's what frmYM2203.cs itself does (see DrawBuffYm2203.cs's ChYm2203 comment).
+        // FM (including FM-EX) is shown first, followed by SSG.  This is intentionally
+        // clearer than the original screen's interleaved FM-EX/SSG row arrangement.
         public void ScreenDrawParams()
         {
             for (int c = 0; c < 6; c++)
@@ -264,11 +262,11 @@ namespace MDPlayer.UI.Visualizer
                 }
                 else
                 {
-                    DrawBuffYm2203.Volume(screen, 272, 8 + (c + 3) * 8, 0, ref oyc.volumeL, nyc.volumeL);
-                    DrawBuffYm2203.KeyBoard(screen, 32, 8 + (c + 3) * 8, ref oyc.note, nyc.note);
-                    DrawBuffYm2203.ChYm2203(screen, c, ref oyc.mask, nyc.mask);
-                    DrawBuffYm2203.Slot(screen, 0 + 4 * 64, 8 + (c + 3) * 8, ref oyc.slot, nyc.slot);
-                    DrawBuffYm2203.Font4Hex16Bit(screen, 0 + 4 * 78, 8 + (c + 3) * 8, ref oyc.freq, nyc.freq);
+                    DrawBuffYm2203.Volume(screen, 272, 8 + c * 8, 0, ref oyc.volumeL, nyc.volumeL);
+                    DrawBuffYm2203.KeyBoard(screen, 32, 8 + c * 8, ref oyc.note, nyc.note);
+                    DrawBuffYm2203.ChYm2203At(screen, c, c, ref oyc.mask, nyc.mask);
+                    DrawBuffYm2203.Slot(screen, 0 + 4 * 64, 8 + c * 8, ref oyc.slot, nyc.slot);
+                    DrawBuffYm2203.Font4Hex16Bit(screen, 0 + 4 * 78, 8 + c * 8, ref oyc.freq, nyc.freq);
                 }
             }
 
@@ -277,14 +275,14 @@ namespace MDPlayer.UI.Visualizer
                 MDChipParams.Channel oyc = oldParam.channels[c + 6];
                 MDChipParams.Channel nyc = newParam.channels[c + 6];
 
-                DrawBuffYm2203.VolumeShort(screen, 280 + 0, 8 + (c + 3) * 8, 0, ref oyc.volume, nyc.volume);
-                DrawBuffYm2203.KeyBoard(screen, 32, 8 + (c + 3) * 8, ref oyc.note, nyc.note);
-                DrawBuffYm2203.Tn(screen, 6, 2, c + 3, ref oyc.tn, nyc.tn, ref oyc.tntp, 0);
+                DrawBuffYm2203.VolumeShort(screen, 280 + 0, 8 + (c + 6) * 8, 0, ref oyc.volume, nyc.volume);
+                DrawBuffYm2203.KeyBoard(screen, 32, 8 + (c + 6) * 8, ref oyc.note, nyc.note);
+                DrawBuffYm2203.Tn(screen, 6, 2, c + 6, ref oyc.tn, nyc.tn, ref oyc.tntp, 0);
 
-                DrawBuffYm2203.ChYm2203(screen, c + 6, ref oyc.mask, nyc.mask);
-                DrawBuffYm2203.DrawNesSw(screen, 268 + 0, 8 + (c + 3) * 8, ref oyc.ex, nyc.ex);
-                DrawBuffYm2203.Font4Hex16Bit(screen, 0 + 4 * 78, 8 + (c + 3) * 8, ref oyc.freq, nyc.freq);
-                DrawBuffYm2203.Font4HexByte(screen, 272 + 0, 8 + (c + 3) * 8, ref oyc.volumeL, nyc.volumeL);
+                DrawBuffYm2203.ChYm2203At(screen, c + 6, c + 6, ref oyc.mask, nyc.mask);
+                DrawBuffYm2203.DrawNesSw(screen, 268 + 0, 8 + (c + 6) * 8, ref oyc.ex, nyc.ex);
+                DrawBuffYm2203.Font4Hex16Bit(screen, 0 + 4 * 78, 8 + (c + 6) * 8, ref oyc.freq, nyc.freq);
+                DrawBuffYm2203.Font4HexByte(screen, 272 + 0, 8 + (c + 6) * 8, ref oyc.volumeL, nyc.volumeL);
             }
 
             DrawBuffYm2203.Nfrq(screen, 5, 32, ref oldParam.nfrq, newParam.nfrq);

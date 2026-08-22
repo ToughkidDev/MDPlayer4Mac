@@ -346,12 +346,21 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs:2425 ChYM2612 - dirty-diff wrapper.
+        // Places a normal/extended FM badge at a visual row independently of its source
+        // channel number.  YM2612's DAC channel shares FM channel 6, so this lets the
+        // channel view keep all FM rows above the final DAC/PCM row.
+        public static void ChYM2612At(PixelScreen screen, int row, int ch, ref bool? om, bool? nm)
+        {
+            bool mask = nm ?? false;
+            if (om.HasValue && om.Value == mask) return;
+            ChYM2612P(screen, 1, 8 + row * 8, ch, mask);
+            om = mask;
+        }
+
+        // drawBuff.cs:2425 ChYM2612 - original source-channel placement.
         public static void ChYM2612(PixelScreen screen, int ch, ref bool? om, bool? nm)
         {
-            if (om == nm) return;
-            ChYM2612P(screen, 1, 8 + ch * 8, ch, nm ?? false);
-            om = nm;
+            ChYM2612At(screen, ch, ch, ref om, nm);
         }
 
         // drawBuff.cs:4879 Ch3YM2612_P - ch3's badge, either the plain "3" badge or (when
@@ -397,15 +406,20 @@ namespace MDPlayer.UI.Visualizer
             }
         }
 
-        // drawBuff.cs:2450 Ch6YM2612 - dirty-diff wrapper (plain/non-XGM path; `tp`
-        // tracking dropped since it's always 0 here, see file header - only `buff`/pcmMode/
-        // mask are compared).
+        // Places channel 6's combined FM/DAC badge at a chosen visual row.
+        public static void Ch6YM2612At(PixelScreen screen, int row, int buff, ref int ot, int nt, ref bool? om, bool? nm)
+        {
+            bool mask = nm ?? false;
+            if (buff == 0 && ot == nt && om.HasValue && om.Value == mask) return;
+            Ch6YM2612P(screen, 1, 8 + row * 8, nt, mask);
+            ot = nt;
+            om = mask;
+        }
+
+        // drawBuff.cs:2450 Ch6YM2612 - original source-channel placement.
         public static void Ch6YM2612(PixelScreen screen, int buff, ref int ot, int nt, ref bool? om, bool? nm)
         {
-            if (buff == 0 && ot == nt && om == nm) return;
-            Ch6YM2612P(screen, 1, 48, nt, nm ?? false);
-            ot = nt;
-            om = nm;
+            Ch6YM2612At(screen, 5, buff, ref ot, nt, ref om, nm);
         }
 
         // drawBuff.cs:711 InstOPN2 - the instrument/operator parameter table. Draws all 4
