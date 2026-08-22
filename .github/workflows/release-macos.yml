@@ -31,11 +31,36 @@ jobs:
           --property:DebugType=None
           --output release/publish
 
-      - name: Package application
+      - name: Create signed macOS app bundle
         run: |
-          mkdir -p release/package
-          cp -R release/publish release/package/MDPlayer4Mac
-          ditto -c -k --sequesterRsrc --keepParent release/package/MDPlayer4Mac release/MDPlayer4Mac-osx-arm64.zip
+          APP="release/MDPlayer4Mac.app"
+          MACOS_DIR="$APP/Contents/MacOS"
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p "$MACOS_DIR"
+          cp -R release/publish/. "$MACOS_DIR/"
+          cat > "$APP/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleDisplayName</key><string>MDPlayer4Mac</string>
+            <key>CFBundleExecutable</key><string>MDPlayerUI</string>
+            <key>CFBundleIdentifier</key><string>com.toughkiddev.mdplayer4mac</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>MDPlayer4Mac</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>$VERSION</string>
+            <key>CFBundleVersion</key><string>$VERSION</string>
+            <key>LSMinimumSystemVersion</key><string>13.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          find "$MACOS_DIR" -type f \( -name "*.dylib" -o -perm -111 \) -exec codesign --force --sign - --timestamp=none {} \;
+          codesign --force --deep --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" release/MDPlayer4Mac-osx-arm64.zip
 
       - name: Create GitHub release
         env:

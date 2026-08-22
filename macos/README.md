@@ -141,9 +141,11 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-생성물은 `MDPlayer4Mac-osx-arm64.zip`이다. 현재 배포본은 Apple Developer ID 서명과
-notarization을 적용하지 않으므로, 다른 Mac에서 처음 실행할 때 Gatekeeper의 확인 절차가
-필요할 수 있다.
+생성물은 `MDPlayer4Mac-osx-arm64.zip`이며, 압축을 풀면 하나의
+`MDPlayer4Mac.app` 번들이 나온다. 필요한 .NET·Avalonia·Force Touch dylib는 모두 앱
+번들 안에 포함되며, CI에서 ad-hoc 서명을 적용한다. 다만 Apple Developer ID 서명과
+notarization은 적용하지 않으므로, 다른 Mac에서 처음 실행할 때 Gatekeeper의 확인 절차는
+여전히 필요할 수 있다.
 
 ## 남은 과제와 범위 밖 기능
 
