@@ -35,6 +35,9 @@ namespace MDPlayer.Driver.MXDRV
             public uint mode = 0;
             public uint length = 0;
             public bool Keyon = false;
+            // Keyon is a one-shot notification for the UI.  Keep the actual
+            // voice state separately so a slow UI refresh cannot miss it.
+            public bool Active = false;
         }
         public Pcm8St[] pcm8St = new Pcm8St[8] { new(), new(), new(), new(), new(), new(), new(), new() };
 
@@ -165,7 +168,11 @@ namespace MDPlayer.Driver.MXDRV
             if (!string.IsNullOrEmpty(pdxFileName) && pdx == null)
             {
                 errMsg = string.Format("PCMファイル[{0}]の読み込みに失敗しました。", pdxFileName);
-                return false;
+                // PDX only contains the PCM8/ADPCM sample bank.  An absent companion must
+                // not discard the MDX's independent OPM/YM2151 score: MXDRV_Play below
+                // already has a no-PDX branch which clears the PCM-bank flag and leaves
+                // FM playback active.  Keep the diagnostic in errMsg for callers that want
+                // to report the missing samples, but continue initializing the song.
             }
 
             if (model == EnmModel.VirtualModel)
@@ -189,11 +196,23 @@ namespace MDPlayer.Driver.MXDRV
             mdxPCM?.x68sound[0].MountMemory(mm.mm);
             pcm8pp?.MountMemory(mm.mm);
 
-            uint playtime = MXDRV_MeasurePlayTime(mdx, mdxsize, mdxPtr, pdx, pdxsize, pdxPtr, 1, depend.TRUE);
+            // MXDRV's analysis mode must only walk one loop. Some real MDX files (including
+            // A-JAX) make PDX/sequence calls which are valid during live playback but not a
+            // second time while PCM callbacks are deliberately suppressed for measurement.
+            // Configure the user-visible limit after this one-pass duration analysis.
+            const int MeasureLoopLimit = 1;
+            int playbackLoopLimit = setting.other.UseLoopTimes
+                ? System.Math.Max(1, setting.other.LoopTimes)
+                : int.MaxValue;
+            uint playtime = MXDRV_MeasurePlayTime(mdx, mdxsize, mdxPtr, pdx, pdxsize, pdxPtr, MeasureLoopLimit, depend.TRUE);
             //Console.WriteLine("({0}:{1:d02}) {2}", playtime / 1000 / 60, playtime / 1000 % 60, "");
             TotalCounter = playtime * setting.outputDevice.SampleRate / 1000;
             TerminatePlay = false;
             MXDRV_Play(mdx, mdxsize, mdxPtr, pdx, pdxsize, pdxPtr);
+            LoopCount = 0;
+            LoopLimit = playbackLoopLimit;
+            FadeoutStart = false;
+            ReqFadeout = true;
 
             //Console.WriteLine("********************");
 
@@ -912,7 +931,20 @@ namespace MDPlayer.Driver.MXDRV
             reg.d1 = 0xffffffff;
             MXDRV_(reg);
 
-            while (!TerminatePlay) OPMINTFUNC();
+            try
+            {
+                while (!TerminatePlay) OPMINTFUNC();
+            }
+            catch (IndexOutOfRangeException)
+            {
+                // A few older MDX files contain sequence/PDX branches that are accepted by
+                // MXDRV during normal playback but walk beyond the temporary driver image
+                // while this optional, callback-suppressed duration probe is running
+                // (e.g. A-JAX/00_AJAX.MDX).  The probe must not make the song unloadable:
+                // stop this estimate, restore the callback below, and let MXDRV_Play build
+                // a fresh live sequence state.
+                TerminatePlay = true;
+            }
 
             MXDRV_Stop();
 
@@ -988,6 +1020,7 @@ namespace MDPlayer.Driver.MXDRV
                     pcm8St[ch].mode = D1;
                     pcm8St[ch].length = D2;
                     pcm8St[ch].Keyon = true;
+                    pcm8St[ch].Active = true;
                     break;
                 case 0x0100:
                     switch (D0 & 0xffff)
@@ -998,11 +1031,17 @@ namespace MDPlayer.Driver.MXDRV
                             pcm8St[ch].mode = 0;
                             pcm8St[ch].length = 0;
                             pcm8St[ch].Keyon = false;
+                            pcm8St[ch].Active = false;
                             if (pcm8type == 0) mdxPCM?.x68sound[0].X68Sound_Pcm8_Out((int)D0 & 0xff, null, 0, 0, 0);//指定チャンネル発音停止
                             else pcm8pp?.KeyOff((int)D0 & 0xff);//指定チャンネル発音停止
                             break;
                         case 0x0101:
                             mdxPCM?.x68sound[0].X68Sound_Pcm8_Abort();//全チャンネル発音停止
+                            foreach (Pcm8St voice in pcm8St)
+                            {
+                                voice.Keyon = false;
+                                voice.Active = false;
+                            }
                             break;
                     }
                     break;
@@ -1060,18 +1099,36 @@ namespace MDPlayer.Driver.MXDRV
         {
             if(pcm8type==0) mdxPCM?.sound_Iocs[0]._iocs_adpcmout(A1, (Int32)D1, (Int32)D2);
             else pcm8pp?.KeyOn((int)0, A1, (int)(D1 + 0x0c00), (int)D2);
+
+            // Some MDX files use the legacy one-voice ADPCM IOCS call rather
+            // than PCM8_OUT.  Present it on PCM8 channel 0 so it is visible in
+            // the existing ADPCM channel view as well.
+            pcm8St[0].tablePtr = A1;
+            // IOCS ADPCMOUT's mode is only ``rate << 8 | pan``.  Unlike
+            // PCM8_OUT it has no volume byte, so preserving it as-is leaves
+            // the PCM8 view's volume field at zero and its meter invisible.
+            // The IOCS voice uses the fixed hardware ADPCM gain: expose that
+            // as PCM8 level 15 while retaining its rate/pan bits.
+            pcm8St[0].mode = 0x000F_0000u | (D1 & 0x0000_FFFFu);
+            pcm8St[0].length = D2;
+            pcm8St[0].Keyon = true;
+            pcm8St[0].Active = true;
         }
 
         private void ADPCMMOD_STOP()
         {
             if (pcm8type == 0) mdxPCM?.sound_Iocs[0]._iocs_adpcmmod(1);
             else pcm8pp?.KeyOff((int)0);
+            pcm8St[0].Keyon = false;
+            pcm8St[0].Active = false;
         }
 
         private void ADPCMMOD_END()
         {
             if (pcm8type == 0) mdxPCM?.sound_Iocs[0]._iocs_adpcmmod(0);
             else pcm8pp?.KeyOff((int)0);
+            pcm8St[0].Keyon = false;
+            pcm8St[0].Active = false;
         }
 
         /***************************************************************/
@@ -3372,7 +3429,16 @@ namespace MDPlayer.Driver.MXDRV
             A2 = mm.ReadUInt32(G + MXWORK_GLOBAL.L002218);
             D1 = depend.GETBWORD(mm, A2 + 2);
             if ((Int16)D1 < 0) goto L000848;
-            if (mm.ReadByte(G + MXWORK_GLOBAL.L002231) == 0) { L_ERROR(); return; }
+            if (mm.ReadByte(G + MXWORK_GLOBAL.L002231) == 0)
+            {
+                // A PDX bank is optional for FM-only playback.  The original driver
+                // aborts here because it is about to select a PDX track table; that also
+                // prevents L00056a from registering the OPM timer callback, and the
+                // subsequent play-time measurement dereferences that null callback.
+                // Skip only the unavailable PDX table.  L000848 still initializes the
+                // MDX's OPM tracks, while the PCM8 loop remains disabled by L001df4.
+                goto L000848;
+            }
             A0 = mm.ReadUInt32(G + MXWORK_GLOBAL.L00221c);
             goto L00083c;
 

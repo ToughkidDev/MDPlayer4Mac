@@ -90,8 +90,8 @@ namespace MDPlayer
                 EnmFileFormat.MND => LoadMnd(buf, samplingBuffer),
                 EnmFileFormat.ZMS => LoadZms(buf, EnmFileFormat.ZMS, samplingBuffer),
                 EnmFileFormat.ZMD => LoadZms(buf, EnmFileFormat.ZMD, samplingBuffer),
-                EnmFileFormat.MDX => LoadMdx(buf, EnmFileFormat.MDX, samplingBuffer),
-                EnmFileFormat.MDR => LoadMdx(buf, EnmFileFormat.MDR, samplingBuffer),
+                EnmFileFormat.MDX => LoadMdx(buf, EnmFileFormat.MDX, samplingBuffer, fileNameHint),
+                EnmFileFormat.MDR => LoadMdx(buf, EnmFileFormat.MDR, samplingBuffer, fileNameHint),
                 EnmFileFormat.NSF => LoadNsf(buf, samplingBuffer),
                 EnmFileFormat.GBS => LoadGbs(buf, samplingBuffer),
                 EnmFileFormat.HES => LoadHes(buf, samplingBuffer),
@@ -157,12 +157,26 @@ namespace MDPlayer
             System.Collections.Generic.List<ChipVolumeSlot> chipVolumeSlots = new();
             foreach (MDSound.MDSound.Chip c in lstChips)
             {
-                chipVolumeSlots.Add(new ChipVolumeSlot
+                foreach (ChipVolumeKey key in MusicEngineSession.EnumerateMixerSources(c.type, c.ID))
                 {
-                    Key = new ChipVolumeKey(c.type, c.ID),
-                    Volume = c.Volume,
-                    DefaultVolume = c.Volume,
-                });
+                    bool isWholeChip = key.Component == ChipVolumeComponent.Whole;
+                    int initialVolume = isWholeChip
+                        ? c.Volume
+                        : MusicEngineSession.GetPersistedComponentVolume(setting, key);
+                    chipVolumeSlots.Add(new ChipVolumeSlot
+                    {
+                        Key = key,
+                        Volume = initialVolume,
+                        // Sequence formats do not carry VGM volume tags. Component gains
+                        // therefore reset to their canonical 0 dB default as well.
+                        DefaultVolume = isWholeChip ? c.Volume : 0,
+                    });
+
+                    if (!isWholeChip)
+                    {
+                        MusicEngineSession.ApplyComponentVolume(mds, key, initialVolume);
+                    }
+                }
             }
 
             return new MusicEngineSession
@@ -417,11 +431,10 @@ namespace MDPlayer
         // format here (MND/ZMS/MDX's siblings): MXDRV.cs runs a full X68000 IOCS-level sound
         // driver (MDSound.NX68Sound.X68Sound/sound_iocs, via a MDSound.ym2151_x68sound
         // instance called `mdxPCM`) that renders BOTH the OPM and the PCM8 ADPCM channel
-        // itself and hands back finished PCM through its own Render(), not through
-        // MDSound.MDSound.Chip.Update()/ChipRegister's register-write dispatch - matching
-        // Audio.cs's TrdVgmVirtualMainFunction, which special-cases `DriverVirtual is
-        // Driver.MXDRV.MXDRV` to call `mXDRV.Render(buffer, offset+i, 2)` two samples (one
-        // stereo frame) at a time rather than mds.Update(). The MDSound.MDSound.Chip entry
+        // itself and hands back finished PCM through its own Render().  The Windows mixer
+        // then calls mds.Update() with its increment flag set so that this already-rendered
+        // PCM is preserved while the normal MDSound output path is mixed in. The MDSound
+        // chip entry
         // below (Update/Start/Stop/Reset all null) exists only so ChipRegister/MDSound.Init
         // have a non-empty chip list to register - matching Audio.cs's MdxPlay, which adds
         // the exact same null-delegate placeholder chip for its `mdxPCM_V` instrument.
@@ -431,7 +444,53 @@ namespace MDPlayer
         // pcm8type 0 (mdxPCM's own built-in PCM8, no separate PCM8PP chip) is upstream's own
         // default, so using it here isn't a simplification this port introduced.
         // MDR is the same driver/chip set under a slightly different file variant.
-        private static MusicEngineSession LoadMdx(byte[] buf, EnmFileFormat format, uint samplingBuffer)
+        // MDX can refer to an external PDX sample bank by name. Resolve only a sibling file
+        // beside the selected MDX/MDR file: this mirrors the X68000 convention and avoids
+        // treating a path encoded in music data as permission to read arbitrary locations.
+        // Callers that have only bytes (and therefore no source path) still support FM-only
+        // MDX files; MXDRV reports its normal initialization failure when a required PDX is
+        // unavailable.
+        private static Tuple<string, byte[]>? TryLoadMdxPdx(byte[] mdxBytes, string? sourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath)) return null;
+
+            try
+            {
+                Driver.MXDRV.MXDRV.GetPDXFileName(mdxBytes, out string pdxName);
+                if (string.IsNullOrWhiteSpace(pdxName)) return null;
+
+                string? directory = Path.GetDirectoryName(sourcePath);
+                string siblingName = Path.GetFileName(pdxName.Replace('\\', '/'));
+                if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(siblingName)) return null;
+
+                // Many MDX files store the PDX *stem* rather than its full filename.
+                // The Windows player therefore tries both `PDX` and `PDX + ".PDX"`
+                // (frmMain.cs:getExtendFileAllBytes). Mirroring that fallback is essential:
+                // without it, ordinary MDX+PDX pairs fail Init() and appear in the UI as
+                // an unsupported format.
+                string[] candidateNames = { siblingName, siblingName + ".PDX" };
+                string? siblingPath = null;
+                foreach (string candidateName in candidateNames.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    string candidatePath = Path.Combine(directory, candidateName);
+                    if (!File.Exists(candidatePath)) continue;
+
+                    siblingPath = candidatePath;
+                    break;
+                }
+                if (siblingPath == null) return null;
+
+                return Tuple.Create(siblingName, File.ReadAllBytes(siblingPath));
+            }
+            catch
+            {
+                // A malformed MDX should be handled by MXDRV's own parser. Do not turn
+                // optional companion discovery into an unrelated load exception.
+                return null;
+            }
+        }
+
+        private static MusicEngineSession LoadMdx(byte[] buf, EnmFileFormat format, uint samplingBuffer, string? sourcePath)
         {
             var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
 
@@ -439,8 +498,14 @@ namespace MDPlayer
             mdxPCM.x68sound[0] = new MDSound.NX68Sound.X68Sound();
             mdxPCM.sound_Iocs[0] = new MDSound.NX68Sound.sound_iocs(mdxPCM.x68sound[0]);
 
+            // MXDRV uses two distinct paths, just as Audio.cs:MdxPlay does:
+            //   1. OPM register writes go through ChipRegister into a normal YM2151 chip.
+            //   2. The X68Sound instance renders the PCM8/ADPCM stream directly.
+            // The previous port kept only (2), so the channel view showed PCM8 alone and
+            // there was no YM2151 instrument for MXDRV's OPM_SUB register writes.
             var lstChips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
             {
+                MakeYM2151(setting, 4_000_000),
                 new MDSound.MDSound.Chip
                 {
                     type = MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM,
@@ -450,19 +515,31 @@ namespace MDPlayer
                     Start = null,
                     Stop = null,
                     Reset = null,
-                    Volume = setting.balance.YM2151Volume,
+                    // This placeholder represents MXDRV's separate PCM8/ADPCM output,
+                    // rather than the preceding YM2151 FM chip.
+                    Volume = setting.balance.PCM8Volume,
                     Clock = 4000000,
                 },
             };
 
-            Driver.MXDRV.MXDRV driver = new() { setting = setting, ExtendFile = null, pcm8type = 0 };
-            if (!driver.Init(buf, chipRegister, EnmModel.VirtualModel, new EnmChip[] { EnmChip.Unuse }, 0, 0, mdxPCM, null))
-                return null;
-
+            Driver.MXDRV.MXDRV driver = new()
+            {
+                setting = setting,
+                ExtendFile = TryLoadMdxPdx(buf, sourcePath),
+                pcm8type = 0,
+            };
+            // MdxPlay initializes MDSound and ChipRegister before starting MXDRV.  That
+            // order matters now that OPM_SUB has a real YM2151 target for its writes.
             chipRegister.initChipRegister(lstChips.ToArray());
             mds.Init(sampleRate, samplingBuffer, lstChips.ToArray());
 
-            return new MusicEngineSession
+            if (!driver.Init(buf, chipRegister, EnmModel.VirtualModel, new EnmChip[] { EnmChip.Unuse }, 0, 0, mdxPCM, null))
+                return null;
+
+            bool pcmBankMissing = !string.IsNullOrEmpty(driver.errMsg);
+
+            MusicEngineSession? mdxSession = null;
+            mdxSession = new MusicEngineSession
             {
                 Setting = setting,
                 ChipRegister = chipRegister,
@@ -470,27 +547,87 @@ namespace MDPlayer
                 Driver = driver,
                 SampleRate = sampleRate,
                 Format = format,
-                ActiveChips = "YM2151+PCM8 (X68000 IOCS sound driver, via MXDRV/NX68Sound)",
+                ActiveChips = pcmBankMissing
+                    ? "YM2151 (PDX 미발견 — PCM8/ADPCM은 음소거됨)"
+                    : "YM2151+PCM8 (X68000 IOCS sound driver, via MXDRV/NX68Sound)",
+                // LoadMdx has a custom render delegate instead of going through Finish(),
+                // so carry across the YM2151 clock metadata explicitly. Channel-view
+                // creation is correctly keyed from this map and will now draw the OPM view.
+                ChipClocks = new()
+                {
+                    [MDSound.MDSound.enmInstrumentType.YM2151] = 4_000_000,
+                },
+                ChipVolumes = new()
+                {
+                    [MDSound.MDSound.enmInstrumentType.YM2151] = setting.balance.YM2151Volume,
+                    [MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM] = setting.balance.PCM8Volume,
+                },
+                DefaultChipVolumes = new()
+                {
+                    [MDSound.MDSound.enmInstrumentType.YM2151] = setting.balance.YM2151Volume,
+                    [MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM] = setting.balance.PCM8Volume,
+                },
+                ChipVolumeSlots = new()
+                {
+                    new ChipVolumeSlot
+                    {
+                        Key = new ChipVolumeKey(MDSound.MDSound.enmInstrumentType.YM2151, 0),
+                        Volume = setting.balance.YM2151Volume,
+                        DefaultVolume = setting.balance.YM2151Volume,
+                    },
+                },
+                HasDirectPcmVolume = !pcmBankMissing,
+                DirectPcmVolume = setting.balance.PCM8Volume,
+                DefaultDirectPcmVolume = setting.balance.PCM8Volume,
                 RenderSamples = (b, off, count) =>
                 {
-                    // Called 2 samples (1 stereo frame) at a time, matching Audio.cs's own
-                    // MXDRV loop exactly - MXDRV.Render()'s internal OneFrameProc2 timer
-                    // callback expects to be driven at this granularity for correct playback
-                    // speed; handing it a large count in one call was not how the original
-                    // ever exercised this path.
-                    int total = 0;
+                    // MXDRV.Render's return value is not an end-of-song indication. In
+                    // particular, X68Sound may return zero after successfully filling the
+                    // requested samples. The original Audio.cs intentionally ignores it,
+                    // always mixes the produced PCM, and reports the whole buffer consumed.
+                    // Treating zero as EOF stopped MDX playback immediately on macOS.
+                    mds.setIncFlag();
                     for (int i = 0; i < count; i += 2)
                     {
                         int n = System.Math.Min(2, count - i);
-                        int r = driver.Render(b, off + i, n);
-                        if (r <= 0) break;
-                        total += n;
+                        if (n < 2)
+                            break; // MDSound's stereo mixer requires complete frames.
+
+                        driver.Render(b, off + i, n);
+                        // MXDRV starts X68Sound with OPM output disabled; its buffer is the
+                        // PDX-backed PCM8/ADPCM stream, while MDSound adds the OPM below.
+                        // Scale this stream first to keep the ADPCM fader independent.
+                        if (mdxSession!.DirectPcmVolume != 0)
+                        {
+                            double gain = System.Math.Pow(10.0, mdxSession.DirectPcmVolume / 40.0);
+                            for (int sample = 0; sample < n; sample++)
+                            {
+                                int index = off + i + sample;
+                                b[index] = (short)System.Math.Clamp(
+                                    (int)System.Math.Round(b[index] * gain), short.MinValue, short.MaxValue);
+                            }
+                        }
+                        mds.Update(b, off + i, n, null);
                     }
-                    return total;
+                    return count;
                 },
                 MasterVolume = setting.balance.MasterVolume,
                 DefaultMasterVolume = setting.balance.MasterVolume,
             };
+
+            if (!pcmBankMissing)
+            {
+                // PCM8 is MXDRV's eight-voice ADPCM/sample stream sourced by the companion
+                // PDX bank, not the OPM FM output above. Do not show a meaningless fader
+                // for MDX files whose PDX companion was not found.
+                mdxSession.ChipVolumeSlots.Add(new ChipVolumeSlot
+                {
+                    Key = new ChipVolumeKey(MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM, 0),
+                    Volume = setting.balance.PCM8Volume,
+                    DefaultVolume = setting.balance.PCM8Volume,
+                });
+            }
+            return mdxSession;
         }
 
         // NES/Famicom (NSF). Unlike VGM's NES block (VgmEngine.cs, which drives a MDSound.
@@ -813,7 +950,7 @@ namespace MDPlayer
                     Stop = ym2609.Stop,
                     Reset = ym2609.Reset,
                     SamplingRate = 55467,
-                    Volume = 0,
+                    Volume = setting.balance.YM2609Volume,
                     Clock = (uint)ch.defineInfo.clock,
                     Option = new object[] { (Func<string, Stream>)Common.GetOPNARyhthmStream },
                 });

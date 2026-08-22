@@ -1,11 +1,10 @@
 // Port of the subset of MDPlayer/MDPlayerx64/drawBuff.cs's sprite-blit functions that
 // frmPCM8.cs's screenDrawParams path calls. PCM8 is the X68000's "PCM8" 8-voice sample-driver
 // convention (used by the MXDRV/ZMS/RCS sequenced-music formats, similar in spirit to
-// MpcmX68k). 16 channel rows are drawn (matching MDChipParams.PCM8's Channel[16]), each
+// MpcmX68k). Eight PCM8 voice rows are drawn, each
 // showing a channel badge, a raw single-tile pan icon, 32-bit sample pointer/length hex
 // readouts, 2-digit decimal readouts for PCM mode and playback rate, a 2-digit decimal raw
-// volume-register readout, and a volume LED bar - though only the first 8 rows are ever
-// actually driven by live data (see PCM8Visualizer.cs's header for why).
+// volume-register readout, and a volume LED bar.
 //
 // Data source: same architectural shape as MpcmX68k - reads driver-internal state directly
 // (this port's live driver, not the dead AudioShim.Audio.DriverVirtual stub - see

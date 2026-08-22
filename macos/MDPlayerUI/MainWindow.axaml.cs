@@ -22,6 +22,7 @@ using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using MDPlayer;
 using MDPlayer.CoreAudioOutput;
 using MDPlayer.UI.Visualizer;
@@ -52,14 +53,27 @@ namespace MDPlayer.UI
         private bool isStarting;
         private bool playbackEnded;
         private bool loopEnabled;
+        private bool autoPlayEnabled;
         private long fileLoopCounter;
         private string? channelLayoutSignature;
         private ActiveViewMode activeViewMode = ActiveViewMode.Channel;
+        // Channel screens are created at the Windows-compatible 2x display scale. The
+        // dashboard Zoom button toggles the complete channel stack to its native 1x size.
+        private bool channelViewHalfSize;
+        // Captured from the channel screen after it has completed a layout pass. Every
+        // dashboard mode keeps at least this width, so changing to the narrower playlist
+        // or mixer content cannot make the player window collapse below the channel view.
+        private double channelViewMinimumWidth;
 
-        private sealed record PlaylistEntry(byte[] Bytes, string Name);
+        // SourcePath is retained separately from the display name so formats such as MDX
+        // can resolve their companion PDX bank in the same directory after being selected
+        // again from the playlist or restarted by the Play button.
+        private sealed record PlaylistEntry(byte[] Bytes, string Name, string? SourcePath);
         private readonly System.Collections.Generic.List<PlaylistEntry> playlist = new();
         private int playlistIndex = -1;
         private bool synchronizingPlaylistSelection;
+        private ListBox? focusedPlaylistList;
+        private KeyEventArgs? lastHandledPlaylistKeyEvent;
 
         // Built from the Windows frmMain cc/ch/ci sprite triplets after XAML has created
         // the two host rows. The transport row is Stop, Pause, Previous, Slow, Play, Fast,
@@ -75,6 +89,7 @@ namespace MDPlayer.UI
         private TransportSpriteButton playlistViewButton = null!;
         private TransportSpriteButton volumeViewButton = null!;
         private TransportSpriteButton channelViewButton = null!;
+        private TransportSpriteButton zoomButton = null!;
         private TransportSpriteButton loopButton = null!;
 
         // Kept independently of a playback session so a volume change made for one song is
@@ -151,8 +166,13 @@ namespace MDPlayer.UI
         private readonly DockPanel playlistViewHost = new() { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch };
         private readonly ListBox playlistViewList = new()
         {
+            // A playlist-only window is always a 20-row viewer. More tracks scroll inside
+            // the ListBox instead of increasing the outer window's desired height.
+            Height = CompactPlaylistRowHeight * PlaylistViewRows,
             MinHeight = CompactPlaylistRowHeight * PlaylistViewRows,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
+            MaxHeight = CompactPlaylistRowHeight * PlaylistViewRows,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            SelectionMode = SelectionMode.Multiple,
         };
 
         private void ApplyChipVolumeOverrides(MusicEngineSession session)
@@ -195,6 +215,7 @@ namespace MDPlayer.UI
         private void ShowVolumeView(bool refitWindow = true)
         {
             if (mixerVisualizer == null) return;
+            MaxHeight = double.PositiveInfinity;
             activeViewMode = ActiveViewMode.Volume;
             SetEmbeddedPlaylistSize();
             SetPlaylistPanelVisibility(playlistOnly: false);
@@ -208,11 +229,13 @@ namespace MDPlayer.UI
             playlistViewButton.IsSelected = false;
             volumeViewButton.IsEnabled = true;
             channelViewButton.IsEnabled = true;
+            UpdateTransportButtons();
             if (refitWindow) RefitWindowToActiveView();
         }
 
         private void ShowChannelView(bool refitWindow = true)
         {
+            MaxHeight = double.PositiveInfinity;
             activeViewMode = ActiveViewMode.Channel;
             SetEmbeddedPlaylistSize();
             SetPlaylistPanelVisibility(playlistOnly: false);
@@ -222,18 +245,23 @@ namespace MDPlayer.UI
             playlistViewButton.IsSelected = false;
             volumeViewButton.IsEnabled = mixerVisualizer != null;
             channelViewButton.IsEnabled = mixerVisualizer != null;
+            UpdateTransportButtons();
             if (refitWindow) RefitWindowToActiveView();
         }
 
         private void ShowPlaylistView(bool refitWindow = true)
         {
             if (playlist.Count == 0) return;
+            // Let SizeToContent measure the fixed 20-row ListBox first. The matching
+            // MinHeight/MaxHeight lock is applied in UpdateActiveViewMinimumSize.
+            if (refitWindow) MaxHeight = double.PositiveInfinity;
             activeViewMode = ActiveViewMode.Playlist;
             SetPlaylistPanelVisibility(playlistOnly: true);
             ViewHost.Content = playlistViewHost;
             volumeViewButton.IsSelected = false;
             channelViewButton.IsSelected = false;
             playlistViewButton.IsSelected = true;
+            UpdateTransportButtons();
             if (refitWindow) RefitWindowToActiveView();
         }
 
@@ -255,6 +283,30 @@ namespace MDPlayer.UI
 
         private void SetEmbeddedPlaylistSize()
             => PlaylistList.Height = CompactPlaylistRowHeight * EmbeddedPlaylistRows;
+
+        private void ToggleChannelViewSize()
+        {
+            channelViewHalfSize = !channelViewHalfSize;
+            ApplyChannelViewScale();
+            zoomButton.IsSelected = channelViewHalfSize;
+            StatusLabel.Text = channelViewHalfSize ? "채널 뷰 50% 크기" : "채널 뷰 원래 크기";
+
+            // Only the channel view's desired size changes. Mixer/playlist modes retain
+            // their own layout until the user explicitly returns to the channel view.
+            if (activeViewMode == ActiveViewMode.Channel)
+            {
+                RefitWindowToActiveView();
+            }
+        }
+
+        private void ApplyChannelViewScale()
+        {
+            double scale = channelViewHalfSize ? 1.0 : 2.0;
+            foreach (PixelScreen screen in VisualizerHost.Children.OfType<PixelScreen>())
+            {
+                screen.SetDisplayScale(scale);
+            }
+        }
 
         private void SetPlaylistPanelVisibility(bool playlistOnly)
         {
@@ -281,31 +333,44 @@ namespace MDPlayer.UI
                 InvalidateMeasure();
                 InvalidateArrange();
                 SizeToContent = Avalonia.Controls.SizeToContent.WidthAndHeight;
-                // Capture the post-measure channel minimum only after SizeToContent has
-                // allowed the complete channel view and its playlist panel to arrange.
-                Dispatcher.UIThread.Post(UpdateChannelViewMinimumSize, DispatcherPriority.Render);
+                // Capture the post-measure minimum only after SizeToContent has allowed the
+                // active view and its playlist panel to arrange.
+                Dispatcher.UIThread.Post(UpdateActiveViewMinimumSize, DispatcherPriority.Render);
             }, DispatcherPriority.Render);
         }
 
-        private void UpdateChannelViewMinimumSize()
+        private void UpdateActiveViewMinimumSize()
         {
-            if (!ReferenceEquals(ViewHost.Content, VisualizerHost) || ViewHost.Bounds.Width <= 0) return;
+            if (ActiveViewPanel.Bounds.Width <= 0 || ActiveViewPanel.Bounds.Height <= 0) return;
 
-            // ViewHost includes the channel border/padding. The difference to the outer
-            // window covers the dashboard, root margin and native window chrome.
-            double windowChromeWidth = Math.Max(0, Bounds.Width - ViewHost.Bounds.Width);
-            MinWidth = Math.Ceiling(ViewHost.DesiredSize.Width + windowChromeWidth);
+            // ActiveViewPanel includes its border/padding. The remainder covers the
+            // dashboard, outer margins and native window chrome.
+            double windowChromeWidth = Math.Max(0, Bounds.Width - ActiveViewPanel.Bounds.Width);
+            double activeViewWidth = ActiveViewPanel.DesiredSize.Width;
 
-            if (!PlaylistPanel.IsVisible || PlaylistPanel.Bounds.Height <= 0) return;
+            // A channel view defines the player's canonical minimum width. Remember it so
+            // the volume and playlist-only views cannot be shrunk narrower afterwards.
+            if (ReferenceEquals(ViewHost.Content, VisualizerHost) && activeViewWidth > 0)
+            {
+                channelViewMinimumWidth = Math.Ceiling(activeViewWidth + windowChromeWidth);
+            }
 
-            // Playlist items use Padding="6,1" (about 18 px high at the default font).
-            // Preserve the panel heading/chrome plus one-and-a-half visible entries when
-            // the user makes the window shorter.
-            const double visiblePlaylistRows = EmbeddedPlaylistRows;
-            double playlistFixedHeight = Math.Max(0, PlaylistPanel.DesiredSize.Height - PlaylistList.DesiredSize.Height);
-            double minimumPlaylistHeight = playlistFixedHeight + CompactPlaylistRowHeight * visiblePlaylistRows;
-            double nonPlaylistHeight = Math.Max(0, Bounds.Height - PlaylistPanel.Bounds.Height);
-            MinHeight = Math.Ceiling(nonPlaylistHeight + minimumPlaylistHeight);
+            double activeViewMinimumWidth = Math.Ceiling(activeViewWidth + windowChromeWidth);
+            MinWidth = Math.Max(channelViewMinimumWidth, activeViewMinimumWidth);
+
+            // Each mode has a different essential view height (channel stack, all mixer
+            // faders, or the 20-row playlist). Lock the minimum to the post-fit desired
+            // height so the active content cannot disappear below the window bottom.
+            double nonViewHeight = Math.Max(0, Bounds.Height - ActiveViewPanel.Bounds.Height);
+            double activeMinimumHeight = Math.Ceiling(nonViewHeight + ActiveViewPanel.DesiredSize.Height);
+            MinHeight = activeMinimumHeight;
+
+            // Playlist-only mode is deliberately a fixed 20-row window, not merely a
+            // fixed-height ListBox. Extra tracks use the ListBox's internal scrollbar and
+            // cannot make the outer window taller.
+            MaxHeight = activeViewMode == ActiveViewMode.Playlist
+                ? activeMinimumHeight
+                : double.PositiveInfinity;
         }
 
         public MainWindow()
@@ -321,8 +386,34 @@ namespace MDPlayer.UI
             compactPlaylistStyle.Setters.Add(new Setter(TemplatedControl.PaddingProperty, new Thickness(6, 1)));
             compactPlaylistStyle.Setters.Add(new Setter(Layoutable.MinHeightProperty, 0d));
             playlistViewList.Styles.Add(compactPlaylistStyle);
+            ScrollViewer.SetVerticalScrollBarVisibility(playlistViewList, ScrollBarVisibility.Auto);
             playlistViewList.SelectionChanged += OnPlaylistViewSelectionChanged;
             playlistViewList.DoubleTapped += OnPlaylistViewDoubleTapped;
+            PlaylistList.GotFocus += OnPlaylistGotFocus;
+            playlistViewList.GotFocus += OnPlaylistGotFocus;
+            PlaylistList.PointerPressed += OnPlaylistPointerPressed;
+            playlistViewList.PointerPressed += OnPlaylistPointerPressed;
+            // Avalonia's macOS backend can route a key through either tunnel or bubble
+            // depending on whether a ListBoxItem owns the native focus. Observe both,
+            // including already-handled keys; the event-instance guard below prevents a
+            // single physical key press from being applied twice.
+            AddHandler(InputElement.KeyDownEvent, OnWindowKeyDown,
+                RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+            // The full playlist-only view is created in code rather than XAML, so wire the
+            // same append target here as the compact playlist panel.
+            DragDrop.SetAllowDrop(playlistViewHost, true);
+            DragDrop.AddDragEnterHandler(playlistViewHost, OnPlaylistDragEnter);
+            DragDrop.AddDragOverHandler(playlistViewHost, OnPlaylistDragOver);
+            DragDrop.AddDragLeaveHandler(playlistViewHost, OnPlaylistDragLeave);
+            DragDrop.AddDropHandler(playlistViewHost, OnPlaylistDrop);
+            DragDrop.AddDragEnterHandler(PlaylistPanel, OnPlaylistDragEnter);
+            DragDrop.AddDragOverHandler(PlaylistPanel, OnPlaylistDragOver);
+            DragDrop.AddDragLeaveHandler(PlaylistPanel, OnPlaylistDragLeave);
+            DragDrop.AddDropHandler(PlaylistPanel, OnPlaylistDrop);
+            DragDrop.AddDragEnterHandler(PlayerDashboard, OnDashboardDragEnter);
+            DragDrop.AddDragOverHandler(PlayerDashboard, OnDashboardDragOver);
+            DragDrop.AddDragLeaveHandler(PlayerDashboard, OnDashboardDragLeave);
+            DragDrop.AddDropHandler(PlayerDashboard, OnDashboardDrop);
             BuildTransportButtons();
             DragDrop.AddDragOverHandler(this, OnFileDragOver);
             DragDrop.AddDragEnterHandler(this, OnFileDragEnter);
@@ -345,12 +436,16 @@ namespace MDPlayer.UI
             pauseButton = MakeTransportButton("Pause", "일시 정지 / 계속", OnPauseClick);
             previousButton = MakeTransportButton("Previous", "이전 곡", OnPreviousClick);
             slowButton = MakeTransportButton("Slow", "느리게 (재생 속도)", () => ChangePlaybackSpeed(0.5));
-            playButton = MakeTransportButton("Play", "재생 / 계속", () => OnPlayClick(null, null));
+            playButton = MakeTransportButton("Play", "재생 / 계속 — 2초 누름: 자동 재생", () => OnPlayClick(null, null));
+            playButton.LongPressed += ToggleAutoPlay;
+            playButton.AllowLongPressWhenDisabled = true;
+            playButton.EnableForceTouchLongPress();
             fastButton = MakeTransportButton("Fast", "빠르게 (재생 속도)", () => ChangePlaybackSpeed(2.0));
             nextButton = MakeTransportButton("Next", "다음 곡", OnNextClick);
             playlistViewButton = MakeTransportButton("PlayList", "재생목록 뷰", () => ShowPlaylistView());
             volumeViewButton = MakeTransportButton("Mixer", "볼륨 뷰", () => ShowVolumeView());
             channelViewButton = MakeTransportButton("KBD", "채널 뷰", () => ShowChannelView());
+            zoomButton = MakeTransportButton("Zoom", "채널 뷰 50% 크기 / 원래 크기", ToggleChannelViewSize);
             loopButton = MakeTransportButton("Loop", "현재 곡 반복", OnLoopClick);
 
             TransportButtonsHost.Children.Add(stopButton.Screen);
@@ -364,6 +459,7 @@ namespace MDPlayer.UI
             UtilityButtonsHost.Children.Add(playlistViewButton.Screen);
             UtilityButtonsHost.Children.Add(volumeViewButton.Screen);
             UtilityButtonsHost.Children.Add(channelViewButton.Screen);
+            UtilityButtonsHost.Children.Add(zoomButton.Screen);
             UtilityButtonsHost.Children.Add(loopButton.Screen);
             UpdateTransportButtons();
         }
@@ -393,8 +489,18 @@ namespace MDPlayer.UI
             fastButton.IsEnabled = playbackActive && !isStarting;
             playButton.IsSelected = playing;
             pauseButton.IsSelected = isPaused;
+            zoomButton.IsEnabled = activeViewMode == ActiveViewMode.Channel && VisualizerHost.Children.Count > 0;
+            zoomButton.IsSelected = channelViewHalfSize;
             loopButton.IsEnabled = true;
             loopButton.IsSelected = loopEnabled;
+            playButton.IsRedAlert = autoPlayEnabled;
+        }
+
+        private void ToggleAutoPlay()
+        {
+            autoPlayEnabled = !autoPlayEnabled;
+            playButton.IsRedAlert = autoPlayEnabled;
+            StatusLabel.Text = autoPlayEnabled ? "자동 재생 켜짐" : "자동 재생 꺼짐";
         }
 
         // Builds whichever chip visualizers this session's ChipClocks says are present and
@@ -833,6 +939,9 @@ namespace MDPlayer.UI
                 && rf5c68Visualizer == null && segaPcmVisualizer == null
                 && ymz280BVisualizer == null) return;
 
+            // New visualizers are constructed at 2x. Reapply the user's current toggle
+            // before measuring the stack so track changes do not reset the compact view.
+            ApplyChannelViewScale();
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
             {
@@ -1007,6 +1116,67 @@ namespace MDPlayer.UI
 
         private async void OnFileDrop(object? sender, DragEventArgs e)
         {
+            await HandleDroppedFilesAsync(e, replacePlaylist: false);
+        }
+
+        private void OnPlaylistDragEnter(object? sender, DragEventArgs e)
+        {
+            OnFileDragEnter(sender, e);
+            e.Handled = true;
+        }
+
+        private void OnPlaylistDragLeave(object? sender, DragEventArgs e)
+        {
+            OnFileDragLeave(sender, e);
+            e.Handled = true;
+        }
+
+        private void OnPlaylistDragOver(object? sender, DragEventArgs e)
+        {
+            OnFileDragOver(sender, e);
+            e.Handled = true;
+        }
+
+        private async void OnPlaylistDrop(object? sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            await HandleDroppedFilesAsync(e, replacePlaylist: false);
+        }
+
+        private void OnDashboardDragEnter(object? sender, DragEventArgs e)
+        {
+            if (e.DataTransfer.Formats.Contains(DataFormat.File))
+            {
+                StatusLabel.Text = "여기에 놓으면 재생 목록을 교체합니다";
+            }
+            e.Handled = true;
+        }
+
+        private void OnDashboardDragLeave(object? sender, DragEventArgs e)
+        {
+            if (!isStarting)
+            {
+                StatusLabel.Text = isPaused
+                    ? "일시 정지"
+                    : queue != null && !playbackEnded ? "재생 중" : "대기 중";
+            }
+            e.Handled = true;
+        }
+
+        private void OnDashboardDragOver(object? sender, DragEventArgs e)
+        {
+            OnFileDragOver(sender, e);
+            e.Handled = true;
+        }
+
+        private async void OnDashboardDrop(object? sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            await HandleDroppedFilesAsync(e, replacePlaylist: true);
+        }
+
+        private async Task HandleDroppedFilesAsync(DragEventArgs e, bool replacePlaylist)
+        {
             var files = e.DataTransfer.TryGetFiles()?
                 .OfType<IStorageFile>()
                 .Where(IsSupportedMusicFile)
@@ -1017,17 +1187,32 @@ namespace MDPlayer.UI
                 return;
             }
 
-            bool wasEmpty = playlist.Count == 0;
-            int added = await AppendFilesAsync(files);
+            System.Collections.Generic.List<PlaylistEntry> droppedEntries = await ReadPlaylistEntriesAsync(files);
+            int added = droppedEntries.Count;
             if (added == 0) return;
 
+            if (replacePlaylist)
+            {
+                StopPlayback();
+                HideMixer();
+                HideVisualizers();
+                playlist.Clear();
+                playlist.AddRange(droppedEntries);
+                playlistIndex = -1;
+                await SelectPlaylistEntryAsync(0);
+                if (autoPlayEnabled) await StartPlaybackAsync();
+                return;
+            }
+
+            bool wasEmpty = playlist.Count == 0;
+            playlist.AddRange(droppedEntries);
             if (wasEmpty)
             {
                 StopPlayback();
                 HideMixer();
                 HideVisualizers();
                 await SelectPlaylistEntryAsync(0);
-                if (AutoPlayCheckBox.IsChecked == true) await StartPlaybackAsync();
+                if (autoPlayEnabled) await StartPlaybackAsync();
             }
             else
             {
@@ -1039,16 +1224,23 @@ namespace MDPlayer.UI
 
         private async Task<int> AppendFilesAsync(System.Collections.Generic.IEnumerable<IStorageFile> files)
         {
-            int added = 0;
+            System.Collections.Generic.List<PlaylistEntry> entries = await ReadPlaylistEntriesAsync(files);
+            playlist.AddRange(entries);
+            return entries.Count;
+        }
+
+        private static async Task<System.Collections.Generic.List<PlaylistEntry>> ReadPlaylistEntriesAsync(System.Collections.Generic.IEnumerable<IStorageFile> files)
+        {
+            var entries = new System.Collections.Generic.List<PlaylistEntry>();
             foreach (IStorageFile file in files)
             {
                 await using var stream = await file.OpenReadAsync();
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);
-                playlist.Add(new PlaylistEntry(ms.ToArray(), file.Name));
-                added++;
+                string? sourcePath = file.Path.IsFile ? file.Path.LocalPath : null;
+                entries.Add(new PlaylistEntry(ms.ToArray(), file.Name, sourcePath));
             }
-            return added;
+            return entries;
         }
 
         private void RefreshPlaylistPanel()
@@ -1074,13 +1266,153 @@ namespace MDPlayer.UI
         private async void OnPlaylistSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (synchronizingPlaylistSelection) return;
+            focusedPlaylistList = PlaylistList;
+            if (PlaylistList.SelectedItems.Count != 1) return;
             await SelectPlaylistIndexAsync(PlaylistList.SelectedIndex);
         }
 
         private async void OnPlaylistViewSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (synchronizingPlaylistSelection) return;
+            focusedPlaylistList = playlistViewList;
+            if (playlistViewList.SelectedItems.Count != 1) return;
             await SelectPlaylistIndexAsync(playlistViewList.SelectedIndex);
+        }
+
+        private void OnPlaylistGotFocus(object? sender, FocusChangedEventArgs e)
+        {
+            if (sender is ListBox list) focusedPlaylistList = list;
+        }
+
+        private void OnPlaylistPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is ListBox list) focusedPlaylistList = list;
+        }
+
+        // Mirrors the desktop list editor behaviour from the Windows player: ordinary
+        // Cmd/Ctrl-click and Shift-click are handled by ListBox's Multiple selection mode;
+        // this supplies the keyboard actions missing from the default Avalonia list.
+        private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (ReferenceEquals(lastHandledPlaylistKeyEvent, e)) return;
+
+            ListBox? list = GetPlaylistListFromKeySource(e.Source);
+            list ??= focusedPlaylistList;
+            if (list == null) return;
+            if (!IsPlaylistEditorKey(e)) return;
+
+            lastHandledPlaylistKeyEvent = e;
+            await HandlePlaylistKeyAsync(list, e);
+        }
+
+        private static bool IsPlaylistEditorKey(KeyEventArgs e)
+            => e.Key is Key.Delete or Key.Back or Key.Escape
+                || (e.Key == Key.A && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0);
+
+        private ListBox? GetPlaylistListFromKeySource(object? source)
+        {
+            if (source is ListBox list && IsPlaylistList(list)) return list;
+            if (source is not Visual visual) return null;
+
+            return visual.GetVisualAncestors()
+                .OfType<ListBox>()
+                .FirstOrDefault(IsPlaylistList);
+        }
+
+        private bool IsPlaylistList(ListBox list)
+            => ReferenceEquals(list, PlaylistList) || ReferenceEquals(list, playlistViewList);
+
+        private async Task HandlePlaylistKeyAsync(ListBox list, KeyEventArgs e)
+        {
+            bool selectAllModifier = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
+            if (e.Key == Key.A && selectAllModifier)
+            {
+                list.SelectAll();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Escape)
+            {
+                list.UnselectAll();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key is not (Key.Delete or Key.Back)) return;
+
+            int[] selectedIndexes = (list.SelectedItems ?? Array.Empty<object>())
+                .OfType<string>()
+                .Select(GetPlaylistItemIndex)
+                .Where(index => index >= 0 && index < playlist.Count)
+                .Distinct()
+                .OrderBy(index => index)
+                .ToArray();
+            if (selectedIndexes.Length == 0 && list.SelectedIndex is int selectedIndex
+                && selectedIndex >= 0 && selectedIndex < playlist.Count)
+            {
+                selectedIndexes = new[] { selectedIndex };
+            }
+            if (selectedIndexes.Length == 0) return;
+
+            e.Handled = true;
+            await RemovePlaylistEntriesAsync(selectedIndexes);
+        }
+
+        private static int GetPlaylistItemIndex(string item)
+        {
+            int separator = item.IndexOf('.');
+            return separator > 0 && int.TryParse(item.AsSpan(0, separator), out int oneBasedIndex)
+                ? oneBasedIndex - 1
+                : -1;
+        }
+
+        private async Task RemovePlaylistEntriesAsync(int[] selectedIndexes)
+        {
+            bool removesCurrentTrack = selectedIndexes.Contains(playlistIndex);
+            bool shouldResume = removesCurrentTrack && ((queue != null && !playbackEnded) || isPaused);
+            int oldPlaylistIndex = playlistIndex;
+
+            if (removesCurrentTrack) StopPlayback();
+            for (int i = selectedIndexes.Length - 1; i >= 0; i--)
+            {
+                playlist.RemoveAt(selectedIndexes[i]);
+            }
+
+            if (playlist.Count == 0)
+            {
+                playlistIndex = -1;
+                loadedVgmBytes = null;
+                loadedFileName = null;
+                FileLabel.Text = "파일을 선택하세요";
+                StatusLabel.Text = "대기 중";
+                RefreshPlaylistPanel();
+                UpdateTransportButtons();
+                return;
+            }
+
+            int nextIndex;
+            if (removesCurrentTrack)
+            {
+                // The item which moved into the first removed slot is the natural next song.
+                nextIndex = Math.Min(selectedIndexes[0], playlist.Count - 1);
+            }
+            else
+            {
+                nextIndex = oldPlaylistIndex - selectedIndexes.Count(index => index < oldPlaylistIndex);
+            }
+
+            if (removesCurrentTrack)
+            {
+                await SelectPlaylistEntryAsync(nextIndex);
+                if (shouldResume) await StartPlaybackAsync();
+            }
+            else
+            {
+                playlistIndex = nextIndex;
+                RefreshPlaylistPanel();
+                UpdateTransportButtons();
+            }
         }
 
         private async Task SelectPlaylistIndexAsync(int selectedIndex)
@@ -1152,24 +1484,32 @@ namespace MDPlayer.UI
             }
 
             await SelectPlaylistEntryAsync(0);
-            if (AutoPlayCheckBox.IsChecked == true) await StartPlaybackAsync();
+            if (autoPlayEnabled) await StartPlaybackAsync();
         }
 
         private async void OnPlayClick(object? sender, RoutedEventArgs e)
         {
+            // Play is the transport's return-to-normal action. Fast/Slow are
+            // temporary playback adjustments, so any Play press restores ×1
+            // before it resumes, restarts, or leaves an already-playing song alone.
+            bool speedReset = ResetPlaybackSpeed();
             if (isPaused && queue != null && !playbackEnded)
             {
                 queue.Start();
                 isPaused = false;
-                StatusLabel.Text = "재생 계속";
+                StatusLabel.Text = speedReset ? "재생 계속 - 재생 속도 1x" : "재생 계속";
                 UpdateTransportButtons();
                 return;
             }
-            if (queue != null && !playbackEnded) return;
-            await StartPlaybackAsync();
+            if (queue != null && !playbackEnded)
+            {
+                if (speedReset) StatusLabel.Text = "재생 속도 1x";
+                return;
+            }
+            await StartPlaybackAsync(showSpeedReset: speedReset);
         }
 
-        private async Task StartPlaybackAsync()
+        private async Task StartPlaybackAsync(bool showSpeedReset = false)
         {
             byte[]? vgmBuf = loadedVgmBytes;
             string? fileName = loadedFileName;
@@ -1228,10 +1568,9 @@ namespace MDPlayer.UI
                         (buf, count) =>
                         {
                             if (stopRequested || session.Driver.Stopped) return 0;
-                            // RenderSamplesWithMasterVolume, not Mds.Update() directly - see
-                            // EngineSmokeTest/Program.cs's identical comment (SID/NSF/MDX
-                            // bypass MDSound.MDSound.Chip.Update() entirely and pull PCM
-                            // straight from their own driver's Render()).
+                            // Render through the session rather than calling Mds.Update()
+                            // directly: SID/NSF render their own PCM, and MXDRV first
+                            // renders X68000 PCM before feeding it through MDSound's mixer.
                             return session.RenderSamplesWithMasterVolume(buf, 0, count);
                         });
 
@@ -1242,7 +1581,9 @@ namespace MDPlayer.UI
                 ShowVisualizersFor(session);
                 ShowMixerFor(session);
                 RestoreActiveView();
-                StatusLabel.Text = $"재생 중 - {session.DescribeActiveChips()}";
+                StatusLabel.Text = showSpeedReset
+                    ? $"재생 중 - {session.DescribeActiveChips()} - 재생 속도 1x"
+                    : $"재생 중 - {session.DescribeActiveChips()}";
 
                 // Poll for completion off the UI thread; only hop back to update labels/buttons.
                 CoreAudioQueue? watchedQueue = queue;
@@ -1361,7 +1702,7 @@ namespace MDPlayer.UI
             playlistIndex = index;
             PlaylistEntry entry = playlist[index];
             loadedVgmBytes = entry.Bytes;
-            loadedFileName = entry.Name;
+            loadedFileName = entry.SourcePath ?? entry.Name;
             loadedSession = null;
             playbackEnded = true;
             isPaused = false;
@@ -1370,7 +1711,22 @@ namespace MDPlayer.UI
             RefreshPlaylistPanel();
             UpdateTransportButtons();
 
-            MusicEngineSession? session = await Task.Run(() => MusicEngine.Load(entry.Bytes, entry.Name));
+            MusicEngineSession? session;
+            try
+            {
+                session = await Task.Run(() => MusicEngine.Load(entry.Bytes, entry.SourcePath ?? entry.Name));
+            }
+            catch (Exception ex)
+            {
+                // This method is ultimately reached from Avalonia async event handlers.
+                // Never let a malformed/partially supported music file propagate out of one
+                // of those handlers: on macOS an unhandled managed exception terminates the
+                // whole app with SIGABRT rather than merely rejecting the file.
+                StatusLabel.Text = $"오류: {entry.Name} 로드 실패 — {ex.Message}";
+                playbackEnded = true;
+                UpdateTransportButtons();
+                return;
+            }
             if (playlistIndex != index || !ReferenceEquals(loadedVgmBytes, entry.Bytes)) return;
 
             if (session == null)
@@ -1403,6 +1759,17 @@ namespace MDPlayer.UI
 
             session.Driver.vgmSpeed = Math.Clamp(session.Driver.vgmSpeed * factor, 0.25, 4.0);
             StatusLabel.Text = $"재생 속도 {session.Driver.vgmSpeed:0.##}x";
+        }
+
+        private bool ResetPlaybackSpeed()
+        {
+            if (loadedSession is MusicEngineSession session)
+            {
+                if (Math.Abs(session.Driver.vgmSpeed - 1.0) < 0.001) return false;
+                session.Driver.vgmSpeed = 1.0;
+                return true;
+            }
+            return false;
         }
 
         private void OnLoopClick()

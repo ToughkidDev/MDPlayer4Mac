@@ -10,3 +10,7 @@ runtime-independent `.rgba32` form for `TransportSpriteButton`:
 The macOS player draws them with nearest-neighbour scaling at 2×, preserving the Windows
 pixel-art transport layout. Regenerate with `macos/tools/export_sprites.py`, or use
 `macos/tools/export_sprites.swift` on a Mac without Pillow.
+
+`ccZoom`/`chZoom`/`ciZoom` are the Windows Zoom button sprites. In the macOS dashboard
+they toggle every channel screen between its regular 2× presentation and compact 1×
+presentation.

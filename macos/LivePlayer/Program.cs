@@ -60,9 +60,8 @@ namespace MDPlayer.LivePlayer
             {
                 if (stopRequested || driver.Stopped)
                     return 0;
-                // session.RenderSamples, not mds.Update() directly - see EngineSmokeTest/
-                // Program.cs's identical comment (SID/NSF/MDX bypass MDSound.MDSound.Chip.
-                // Update() entirely).
+                // Render through the session: SID/NSF provide PCM directly and MXDRV
+                // performs its X68000 PCM render before its MDSound mix step.
                 return session.RenderSamplesWithMasterVolume(buf, 0, sampleCount);
             }
 

@@ -232,6 +232,11 @@ namespace MDSound
 
             public Int32 fm_l, fm_r;
             public Int32 pcm_l, pcm_r;
+            // Q16 post-mix gains for OPL4's two independently generated busses.  The
+            // original MDSound wrapper only exposed one whole-chip gain, even though this
+            // emulator already generates the FM and wavetable PCM paths separately.
+            public Int32 fmGain = 1 << 16;
+            public Int32 pcmGain = 1 << 16;
 
             //byte timer_a_count, timer_b_count, enable, current_irq;
             //emu_timer *timer_a, *timer_b;
@@ -758,8 +763,8 @@ namespace MDSound
                 vl = (vl * 0xB5) >> 7; vr = (vr * 0xB5) >> 7;
                 for (j = 0; j < samples; j++)
                 {
-                    outputs[0][j] = (outputs[0][j] * vl) >> 15;
-                    outputs[1][j] = (outputs[1][j] * vr) >> 15;
+                    outputs[0][j] = (Int32)(((Int64)outputs[0][j] * vl * chip.fmGain) >> 31);
+                    outputs[1][j] = (Int32)(((Int64)outputs[1][j] * vr * chip.fmGain) >> 31);
                 }
             }
             else
@@ -811,8 +816,8 @@ namespace MDSound
                     volLeft &= 0x3FF;   // catch negative Volume values in a hardware-like way
                     volRight &= 0x3FF;  // (anything beyond 0x100 results in *0)
 
-                    outputs[0][j] += (sample * chip.volume[volLeft]) >> 17;
-                    outputs[1][j] += (sample * chip.volume[volRight]) >> 17;
+                    outputs[0][j] += (Int32)(((Int64)sample * chip.volume[volLeft] * chip.pcmGain) >> 33);
+                    outputs[1][j] += (Int32)(((Int64)sample * chip.volume[volRight] * chip.pcmGain) >> 33);
 
                     if (sl.lfo_active != 0 && sl.vib != 0)
                     {
@@ -1411,6 +1416,7 @@ namespace MDSound
             chip.wavetblhdr = chip.memmode = 0; chip.memadr = 0;
             chip.fm_l = chip.fm_r = 3;
             chip.pcm_l = chip.pcm_r = 0;
+            chip.fmGain = chip.pcmGain = 1 << 16;
             //busyTime = time;
             //loadTime = time;
         }
@@ -1484,6 +1490,24 @@ namespace MDSound
                 chip.slots[CurChn].Muted = (byte)((MuteMaskWT >> CurChn) & 0x01);
 
             return;
+        }
+
+        private static Int32 GainFromDb(int db)
+        {
+            db = Math.Max(-192, Math.Min(20, db));
+            return (Int32)Math.Round(Math.Pow(10.0, db / 40.0) * (1 << 16));
+        }
+
+        public void SetFMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YMF278BData.Length) return;
+            YMF278BData[ChipID].fmGain = GainFromDb(db);
+        }
+
+        public void SetPCMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YMF278BData.Length) return;
+            YMF278BData[ChipID].pcmGain = GainFromDb(db);
         }
 
         public override int Write(byte ChipID, int port, int adr, int data)

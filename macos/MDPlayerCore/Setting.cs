@@ -1790,6 +1790,8 @@ namespace MDPlayer
         [Serializable]
         public class Balance
         {
+            private static int NormalizeComponentVolume(int value)
+                => value is > 20 or < -192 ? 0 : value;
 
             private int _MasterVolume = 0;
             public int MasterVolume
@@ -1821,6 +1823,22 @@ namespace MDPlayer
                     _YM2612Volume = value;
                     if (_YM2612Volume > 20 || _YM2612Volume < -192) _YM2612Volume = 0;
                 }
+            }
+
+            // YM2612 has an FM core plus a DAC PCM stream (not an ADPCM decoder).
+            // These source gains are intentionally separate from the whole-chip fader.
+            private int _YM2612FMVolume = 0;
+            public int YM2612FMVolume
+            {
+                get => _YM2612FMVolume = NormalizeComponentVolume(_YM2612FMVolume);
+                set => _YM2612FMVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _YM2612DACVolume = 0;
+            public int YM2612DACVolume
+            {
+                get => _YM2612DACVolume = NormalizeComponentVolume(_YM2612DACVolume);
+                set => _YM2612DACVolume = NormalizeComponentVolume(value);
             }
 
             private int _SN76489Volume = 0;
@@ -2015,6 +2033,20 @@ namespace MDPlayer
                 }
             }
 
+            private int _Y8950FMVolume = 0;
+            public int Y8950FMVolume
+            {
+                get => _Y8950FMVolume = NormalizeComponentVolume(_Y8950FMVolume);
+                set => _Y8950FMVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _Y8950AdpcmVolume = 0;
+            public int Y8950AdpcmVolume
+            {
+                get => _Y8950AdpcmVolume = NormalizeComponentVolume(_Y8950AdpcmVolume);
+                set => _Y8950AdpcmVolume = NormalizeComponentVolume(value);
+            }
+
             private int _HuC6280Volume = 0;
             public int HuC6280Volume
             {
@@ -2125,6 +2157,43 @@ namespace MDPlayer
                     _YM2608AdpcmVolume = value;
                     if (_YM2608AdpcmVolume > 20 || _YM2608AdpcmVolume < -192) _YM2608AdpcmVolume = 0;
                 }
+            }
+
+            // YM2609 is the ZGM virtual dual-OPNA device. Its two internal OPNA cores
+            // share each source gain, matching MDSound.ym2609's component setters.
+            private int _YM2609Volume = 0;
+            public int YM2609Volume
+            {
+                get => _YM2609Volume = NormalizeComponentVolume(_YM2609Volume);
+                set => _YM2609Volume = NormalizeComponentVolume(value);
+            }
+
+            private int _YM2609FMVolume = 0;
+            public int YM2609FMVolume
+            {
+                get => _YM2609FMVolume = NormalizeComponentVolume(_YM2609FMVolume);
+                set => _YM2609FMVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _YM2609PSGVolume = 0;
+            public int YM2609PSGVolume
+            {
+                get => _YM2609PSGVolume = NormalizeComponentVolume(_YM2609PSGVolume);
+                set => _YM2609PSGVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _YM2609RhythmVolume = 0;
+            public int YM2609RhythmVolume
+            {
+                get => _YM2609RhythmVolume = NormalizeComponentVolume(_YM2609RhythmVolume);
+                set => _YM2609RhythmVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _YM2609AdpcmVolume = 0;
+            public int YM2609AdpcmVolume
+            {
+                get => _YM2609AdpcmVolume = NormalizeComponentVolume(_YM2609AdpcmVolume);
+                set => _YM2609AdpcmVolume = NormalizeComponentVolume(value);
             }
 
             private int _YM2203Volume = 0;
@@ -2575,6 +2644,20 @@ namespace MDPlayer
                 }
             }
 
+            private int _YMF271FMVolume = 0;
+            public int YMF271FMVolume
+            {
+                get => _YMF271FMVolume = NormalizeComponentVolume(_YMF271FMVolume);
+                set => _YMF271FMVolume = NormalizeComponentVolume(value);
+            }
+
+            private int _YMF271PCMVolume = 0;
+            public int YMF271PCMVolume
+            {
+                get => _YMF271PCMVolume = NormalizeComponentVolume(_YMF271PCMVolume);
+                set => _YMF271PCMVolume = NormalizeComponentVolume(value);
+            }
+
             private int _YMF262Volume = 0;
             public int YMF262Volume
             {
@@ -2604,6 +2687,41 @@ namespace MDPlayer
                 {
                     _YMF278BVolume = value;
                     if (_YMF278BVolume > 20 || _YMF278BVolume < -192) _YMF278BVolume = 0;
+                }
+            }
+
+            // OPL4 has independent OPL3-compatible FM and wavetable PCM output busses.
+            // These values intentionally mirror the existing OPN component gains and stay
+            // at 0 dB for older settings files that do not contain the new XML elements.
+            private int _YMF278BFMVolume = 0;
+            public int YMF278BFMVolume
+            {
+                get
+                {
+                    if (_YMF278BFMVolume > 20 || _YMF278BFMVolume < -192) _YMF278BFMVolume = 0;
+                    return _YMF278BFMVolume;
+                }
+
+                set
+                {
+                    _YMF278BFMVolume = value;
+                    if (_YMF278BFMVolume > 20 || _YMF278BFMVolume < -192) _YMF278BFMVolume = 0;
+                }
+            }
+
+            private int _YMF278BPCMVolume = 0;
+            public int YMF278BPCMVolume
+            {
+                get
+                {
+                    if (_YMF278BPCMVolume > 20 || _YMF278BPCMVolume < -192) _YMF278BPCMVolume = 0;
+                    return _YMF278BPCMVolume;
+                }
+
+                set
+                {
+                    _YMF278BPCMVolume = value;
+                    if (_YMF278BPCMVolume > 20 || _YMF278BPCMVolume < -192) _YMF278BPCMVolume = 0;
                 }
             }
 
@@ -2815,6 +2933,11 @@ namespace MDPlayer
                     YM2608PSGVolume = this.YM2608PSGVolume,
                     YM2608RhythmVolume = this.YM2608RhythmVolume,
                     YM2608AdpcmVolume = this.YM2608AdpcmVolume,
+                    YM2609Volume = this.YM2609Volume,
+                    YM2609FMVolume = this.YM2609FMVolume,
+                    YM2609PSGVolume = this.YM2609PSGVolume,
+                    YM2609RhythmVolume = this.YM2609RhythmVolume,
+                    YM2609AdpcmVolume = this.YM2609AdpcmVolume,
                     YM2610Volume = this.YM2610Volume,
                     YM2610FMVolume = this.YM2610FMVolume,
                     YM2610PSGVolume = this.YM2610PSGVolume,
@@ -2822,6 +2945,8 @@ namespace MDPlayer
                     YM2610AdpcmBVolume = this.YM2610AdpcmBVolume,
 
                     YM2612Volume = this.YM2612Volume,
+                    YM2612FMVolume = this.YM2612FMVolume,
+                    YM2612DACVolume = this.YM2612DACVolume,
                     AY8910Volume = this.AY8910Volume,
                     SN76489Volume = this.SN76489Volume,
                     HuC6280Volume = this.HuC6280Volume,
@@ -2854,10 +2979,16 @@ namespace MDPlayer
                     GA20Volume = this.GA20Volume,
                     YMZ280BVolume = this.YMZ280BVolume,
                     YMF271Volume = this.YMF271Volume,
+                    YMF271FMVolume = this.YMF271FMVolume,
+                    YMF271PCMVolume = this.YMF271PCMVolume,
                     YMF262Volume = this.YMF262Volume,
                     YMF278BVolume = this.YMF278BVolume,
+                    YMF278BFMVolume = this.YMF278BFMVolume,
+                    YMF278BPCMVolume = this.YMF278BPCMVolume,
                     YM3526Volume = this.YM3526Volume,
                     Y8950Volume = this.Y8950Volume,
+                    Y8950FMVolume = this.Y8950FMVolume,
+                    Y8950AdpcmVolume = this.Y8950AdpcmVolume,
                     YM3812Volume = this.YM3812Volume,
 
                     PPZ8Volume = this.PPZ8Volume,

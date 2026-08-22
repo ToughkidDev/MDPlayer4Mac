@@ -12,18 +12,20 @@
 // referencing a nonexistent type. MXDRV and ZMS (both ported) are handled exactly as the
 // original does.
 //
-// Genuinely-preserved original quirk: MDChipParams.PCM8 has Channel[16], and
-// screenDrawParams always draws all 16 rows, but screenChangeParams only ever updates
-// channels 0..pcm8St.Length-1 (pcm8St is a fixed 8-element array on both MXDRV and ZMS) - so
-// channels 8-15 are always idle/default in this chip's display. This isn't a bug introduced
-// by the port; frmPCM8.cs's own screenChangeParams loops `ch < pcm8St.Length` (8) while
-// screenDrawParams loops `c < 16`.
+// The original UI keeps 16 rows because MDChipParams.PCM8 has Channel[16], even though the
+// MXDRV/ZMS PCM8 driver only supplies eight voices. The Mac player deliberately shows only
+// those eight meaningful rows; rows 8-15 were permanently idle and only consumed vertical
+// space in the combined channel view.
 using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
 {
     public sealed class PCM8Visualizer
     {
+        private const int Pcm8VoiceCount = 8;
+        private const int FirstChannelY = 8;
+        private const int ChannelRowHeight = 8;
+
         private readonly PixelScreen screen;
         private readonly MDPlayer.baseDriver driver;
 
@@ -38,10 +40,11 @@ namespace MDPlayer.UI.Visualizer
 
             DrawBuffPCM8.LoadSprites();
             SpriteAtlas bg = SpriteAtlas.Load("planePCM8");
+            int screenHeight = FirstChannelY + Pcm8VoiceCount * ChannelRowHeight;
 
             screen = new PixelScreen();
-            screen.Init(bg.Width, bg.Height, zoom: 2);
-            screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
+            screen.Init(bg.Width, screenHeight, zoom: 2);
+            screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, screenHeight);
             screen.Present();
         }
 
@@ -65,7 +68,7 @@ namespace MDPlayer.UI.Visualizer
             for (int ch = 0; ch < pcm8St.Length; ch++)
             {
                 MDChipParams.Channel nyc = newParam.channels[ch];
-                if (pcm8St[ch].Keyon)
+                if (pcm8St[ch].Keyon || pcm8St[ch].Active)
                 {
                     nyc.volume = System.Math.Min(System.Math.Max((int)(((pcm8St[ch].mode >> 16) & 0x0f) * 20.0 / 16.0), 0), 19);
                     nyc.volumeL = (int)((pcm8St[ch].mode >> 16) & 0xff);
@@ -86,7 +89,7 @@ namespace MDPlayer.UI.Visualizer
         // frmPCM8.cs:132 screenDrawParams.
         public void ScreenDrawParams()
         {
-            for (int c = 0; c < 16; c++)
+            for (int c = 0; c < Pcm8VoiceCount; c++)
             {
                 MDChipParams.Channel oyc = oldParam.channels[c];
                 MDChipParams.Channel nyc = newParam.channels[c];

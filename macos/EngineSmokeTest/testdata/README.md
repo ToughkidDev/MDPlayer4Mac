@@ -107,8 +107,7 @@ against the VGM spec if you want to sanity-check them yourself.
   1789773 / (16 * 254) ~= 440.19Hz) and returns; the `play` routine (at
   0x801A) is just `RTS` since the tone is already latched and doesn't need
   per-frame updates. This exercises the `MusicEngine.LoadNsf` →
-  `nsf.Render()` bypass path (see macos/README.md's "SID/NSF/MDX는
-  `MDSound.MDSound.Chip.Update()`... 아예 안 씁니다" note) end-to-end,
+  `nsf.Render()` custom-PCM path end-to-end,
   including the CPU actually executing the init routine's ten instructions
   in the right order with the right operands (confirmed via `km6502.cs`'s
   built-in `#if TRACE` CPU trace, which Release builds enable by default -

@@ -65,4 +65,25 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    Avalonia's macOS backend does not currently route AppKit's separate
+    NSEventTypePressure (Force Touch) event. Build a tiny, app-local bridge
+    rather than replacing Avalonia's full native backend.
+  -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(IntermediateOutputPath)ForceTouch\libMDPlayerForceTouch.dylib"
+          Link="libMDPlayerForceTouch.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="BuildForceTouchMonitor"
+          BeforeTargets="CoreCompile"
+          Condition="$([MSBuild]::IsOSPlatform('OSX'))"
+          Inputs="$(MSBuildProjectDirectory)\Native\ForceTouchMonitor.m"
+          Outputs="$(IntermediateOutputPath)ForceTouch\libMDPlayerForceTouch.dylib">
+    <MakeDir Directories="$(IntermediateOutputPath)ForceTouch" />
+    <Exec Command="xcrun clang -dynamiclib -arch arm64 -fobjc-arc -framework AppKit &quot;$(MSBuildProjectDirectory)/Native/ForceTouchMonitor.m&quot; -o &quot;$(IntermediateOutputPath)ForceTouch/libMDPlayerForceTouch.dylib&quot;" />
+  </Target>
+
 </Project>

@@ -2532,6 +2532,7 @@ namespace MDSound
                         YM2612.dac_highpass += dac >> 9;
                     //dac >>= highpass.fract;
                     dac >>= 15;
+                    dac = (int)(((long)dac * YM2612.dacGain) >> 16);
                     bufL[i] += (int)(dac & YM2612.CHANNEL[5].LEFT);
                     bufR[i] += (int)(dac & YM2612.CHANNEL[5].RIGHT);
                     YM2612.CHANNEL[5].fmVol[0] = (int)(dac & YM2612.CHANNEL[5].LEFT);
@@ -2664,12 +2665,35 @@ namespace MDSound
             YM2612_Reset(YM2612);
         }
 
+        private static int GainFromDb(int db)
+        {
+            db = Math.Max(-192, Math.Min(20, db));
+            return (int)Math.Round(Math.Pow(10.0, db / 40.0) * (1 << 16));
+        }
+
+        public void SetFMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YM2612_Chip.Length || YM2612_Chip[ChipID] == null) return;
+            YM2612_Chip[ChipID].fmGain = GainFromDb(db);
+        }
+
+        public void SetDACVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YM2612_Chip.Length || YM2612_Chip[ChipID] == null) return;
+            YM2612_Chip[ChipID].dacGain = GainFromDb(db);
+        }
+
         public override void Update(byte ChipID, int[][] outputs, int samples)
         {
             ym2612_ YM2612 = YM2612_Chip[ChipID];
             if (YM2612 == null) return;
 
             YM2612_Update(YM2612, outputs, samples);
+            for (int i = 0; i < samples; i++)
+            {
+                outputs[0][i] = (int)(((long)outputs[0][i] * YM2612.fmGain) >> 16);
+                outputs[1][i] = (int)(((long)outputs[1][i] * YM2612.fmGain) >> 16);
+            }
             YM2612_DacAndTimers_Update(YM2612, outputs, samples);
 
             visVolume[ChipID][0][0] = outputs[0][0];
@@ -2804,6 +2828,9 @@ namespace MDSound
             public int Mode;           // Mode actuel des voie 3 et 6 (normal / sp馗ial)
             public int DAC;            // DAC enabled flag
             public int DACdata;        // DAC data
+            // Q16 source gains for the independent FM and DAC PCM output paths.
+            public int fmGain = 1 << 16;
+            public int dacGain = 1 << 16;
             public int dac_highpass;
             public double Frequence;   // Fr駲uence de base, se calcul par rapport � l'horlage et au sample rate
             public uint Inter_Cnt;         // Interpolation Counter

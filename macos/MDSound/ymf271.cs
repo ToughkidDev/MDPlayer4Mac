@@ -353,6 +353,9 @@ namespace MDSound
 
         public class YMF271Chip
         {
+            // Q16 gains for the chip's FM and external-waveform PCM contributions.
+            public Int32 fmGain = 1 << 16;
+            public Int32 pcmGain = 1 << 16;
             // lookup tables
             public Int16[][] lut_waves = new Int16[8][];
             public double[][][] lut_plfo = new double[4][][] { new double[8][], new double[8][], new double[8][], new double[8][] };
@@ -650,6 +653,13 @@ namespace MDSound
             return volume;
         }
 
+        // The attenuation tables and operator output are both 16.16 fixed point.
+        // Applying the Q16 component gain therefore needs a total 32-bit shift.
+        private static Int32 MixWithGain(Int64 signalTimesVolume, Int32 gain)
+        {
+            return (Int32)((signalTimesVolume * gain) >> 32);
+        }
+
         private void update_pcm(YMF271Chip chip, Int32 slotnum, Int32[] mixp, Int32 length, Int32 ptrMixp)
         {
             Int32 i;
@@ -720,8 +730,8 @@ namespace MDSound
                 if (ch0_vol > 65536) ch0_vol = 65536;
                 if (ch1_vol > 65536) ch1_vol = 65536;
 
-                mixp[ptrMixp++] += (Int32)((sample * ch0_vol) >> 16);
-                mixp[ptrMixp++] += (Int32)((sample * ch1_vol) >> 16);
+                mixp[ptrMixp++] += (Int32)((sample * ch0_vol * chip.pcmGain) >> 32);
+                mixp[ptrMixp++] += (Int32)((sample * ch1_vol * chip.pcmGain) >> 32);
 
                 // go to next step
                 slot.stepptr += slot.step;
@@ -1008,14 +1018,16 @@ namespace MDSound
                                             break;
                                     }
 
-                                    mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
+                                    mixp[ptrMixp++] += MixWithGain(
+                                                (output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
                                                 (output2 * chip.lut_attenuation[chip.slots[slot2].ch0_level]) +
                                                 (output3 * chip.lut_attenuation[chip.slots[slot3].ch0_level]) +
-                                                (output4 * chip.lut_attenuation[chip.slots[slot4].ch0_level])) >> 16;
-                                    mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
+                                                (output4 * chip.lut_attenuation[chip.slots[slot4].ch0_level]), chip.fmGain);
+                                    mixp[ptrMixp++] += MixWithGain(
+                                                (output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
                                                 (output2 * chip.lut_attenuation[chip.slots[slot2].ch1_level]) +
                                                 (output3 * chip.lut_attenuation[chip.slots[slot3].ch1_level]) +
-                                                (output4 * chip.lut_attenuation[chip.slots[slot4].ch1_level])) >> 16;
+                                                (output4 * chip.lut_attenuation[chip.slots[slot4].ch1_level]), chip.fmGain);
                                 }
                             }
                             break;
@@ -1075,10 +1087,12 @@ namespace MDSound
                                                 break;
                                         }
 
-                                        mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
-                                                    (output3 * chip.lut_attenuation[chip.slots[slot3].ch0_level])) >> 16;
-                                        mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
-                                                    (output3 * chip.lut_attenuation[chip.slots[slot3].ch1_level])) >> 16;
+                                        mixp[ptrMixp++] += MixWithGain(
+                                                    (output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
+                                                    (output3 * chip.lut_attenuation[chip.slots[slot3].ch0_level]), chip.fmGain);
+                                        mixp[ptrMixp++] += MixWithGain(
+                                                    (output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
+                                                    (output3 * chip.lut_attenuation[chip.slots[slot3].ch1_level]), chip.fmGain);
                                     }
                                 }
                             }
@@ -1185,12 +1199,14 @@ namespace MDSound
                                             break;
                                     }
 
-                                    mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
+                                    mixp[ptrMixp++] += MixWithGain(
+                                                (output1 * chip.lut_attenuation[chip.slots[slot1].ch0_level]) +
                                                 (output2 * chip.lut_attenuation[chip.slots[slot2].ch0_level]) +
-                                                (output3 * chip.lut_attenuation[chip.slots[slot3].ch0_level])) >> 16;
-                                    mixp[ptrMixp++] += (Int32)((output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
+                                                (output3 * chip.lut_attenuation[chip.slots[slot3].ch0_level]), chip.fmGain);
+                                    mixp[ptrMixp++] += MixWithGain(
+                                                (output1 * chip.lut_attenuation[chip.slots[slot1].ch1_level]) +
                                                 (output2 * chip.lut_attenuation[chip.slots[slot2].ch1_level]) +
-                                                (output3 * chip.lut_attenuation[chip.slots[slot3].ch1_level])) >> 16;
+                                                (output3 * chip.lut_attenuation[chip.slots[slot3].ch1_level]), chip.fmGain);
                                 }
                             }
 
@@ -1218,6 +1234,24 @@ namespace MDSound
                 outputs[0][i] = mixp[ptrMixp++] >> 2;
                 outputs[1][i] = mixp[ptrMixp++] >> 2;
             }
+        }
+
+        private static Int32 GainFromDb(int db)
+        {
+            db = Math.Max(-192, Math.Min(20, db));
+            return (Int32)Math.Round(Math.Pow(10.0, db / 40.0) * (1 << 16));
+        }
+
+        public void SetFMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YMF271Data.Length) return;
+            YMF271Data[ChipID].fmGain = GainFromDb(db);
+        }
+
+        public void SetPCMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= YMF271Data.Length) return;
+            YMF271Data[ChipID].pcmGain = GainFromDb(db);
         }
 
         private void write_register(YMF271Chip chip, Int32 slotnum, Int32 reg, byte data)

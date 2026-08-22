@@ -4606,6 +4606,14 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYM2203FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2203 && c.ID == chipId)
+                    ((ym2203)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
         public void SetVolumeYM2203PSG(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2203)) return;
@@ -4618,6 +4626,14 @@ namespace MDSound
                 ((ym2203)c.Instrument).SetPSGVolume(0, vol);
                 ((ym2203)c.Instrument).SetPSGVolume(1, vol);
             }
+        }
+
+        public void SetVolumeYM2203PSG(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2203 && c.ID == chipId)
+                    ((ym2203)c.Instrument).SetPSGVolume(chipId, vol);
         }
 
         public void SetVolumeYM2413(int vol)
@@ -4696,6 +4712,14 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYM2608FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2608 && c.ID == chipId)
+                    ((ym2608)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
         public void SetVolumeYM2608PSG(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2608)) return;
@@ -4708,6 +4732,14 @@ namespace MDSound
                 ((ym2608)c.Instrument).SetPSGVolume(0, vol);
                 ((ym2608)c.Instrument).SetPSGVolume(1, vol);
             }
+        }
+
+        public void SetVolumeYM2608PSG(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2608 && c.ID == chipId)
+                    ((ym2608)c.Instrument).SetPSGVolume(chipId, vol);
         }
 
         public void SetVolumeYM2608Rhythm(int vol)
@@ -4724,6 +4756,14 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYM2608Rhythm(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2608 && c.ID == chipId)
+                    ((ym2608)c.Instrument).SetRhythmVolume(chipId, vol);
+        }
+
         public void SetVolumeYM2608Adpcm(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2608)) return;
@@ -4736,6 +4776,14 @@ namespace MDSound
                 ((ym2608)c.Instrument).SetAdpcmVolume(0, vol);
                 ((ym2608)c.Instrument).SetAdpcmVolume(1, vol);
             }
+        }
+
+        public void SetVolumeYM2608Adpcm(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2608 && c.ID == chipId)
+                    ((ym2608)c.Instrument).SetAdpcmVolume(chipId, vol);
         }
 
         public void SetVolumeYM2609FM(int vol)
@@ -4825,6 +4873,14 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYM2610FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2610 && c.ID == chipId)
+                    ((ym2610)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
         public void SetVolumeYM2610PSG(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2610)) return;
@@ -4837,6 +4893,14 @@ namespace MDSound
                 ((ym2610)c.Instrument).SetPSGVolume(0, vol);
                 ((ym2610)c.Instrument).SetPSGVolume(1, vol);
             }
+        }
+
+        public void SetVolumeYM2610PSG(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2610 && c.ID == chipId)
+                    ((ym2610)c.Instrument).SetPSGVolume(chipId, vol);
         }
 
         public void SetVolumeYM2610AdpcmA(int vol)
@@ -4853,6 +4917,14 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYM2610AdpcmA(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2610 && c.ID == chipId)
+                    ((ym2610)c.Instrument).SetAdpcmAVolume(chipId, vol);
+        }
+
         public void SetVolumeYM2610AdpcmB(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2610)) return;
@@ -4865,6 +4937,14 @@ namespace MDSound
                 ((ym2610)c.Instrument).SetAdpcmBVolume(0, vol);
                 ((ym2610)c.Instrument).SetAdpcmBVolume(1, vol);
             }
+        }
+
+        public void SetVolumeYM2610AdpcmB(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2610 && c.ID == chipId)
+                    ((ym2610)c.Instrument).SetAdpcmBVolume(chipId, vol);
         }
 
         public void SetVolumeYM2612(int vol)
@@ -4882,6 +4962,22 @@ namespace MDSound
                 //16384 = 0x4000 = short.MAXValue + 1
                 c.tVolume = Math.Max(Math.Min((int)(n * volumeMul), short.MaxValue), short.MinValue);
             }
+        }
+
+        public void SetVolumeYM2612FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2612 && c.ID == chipId)
+                    ((ym2612)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
+        public void SetVolumeYM2612DAC(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YM2612 && c.ID == chipId)
+                    ((ym2612)c.Instrument).SetDACVolume(chipId, vol);
         }
 
         public void SetVolumeYM3438(int vol)
@@ -5136,6 +5232,22 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeY8950FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.Y8950 && c.ID == chipId)
+                    ((y8950)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
+        public void SetVolumeY8950Adpcm(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.Y8950 && c.ID == chipId)
+                    ((y8950)c.Instrument).SetAdpcmVolume(chipId, vol);
+        }
+
         public void SetVolumeYM3526(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM3526)) return;
@@ -5272,6 +5384,22 @@ namespace MDSound
             }
         }
 
+        public void SetVolumeYMF271FM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YMF271 && c.ID == chipId)
+                    ((ymf271)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
+        public void SetVolumeYMF271PCM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YMF271 && c.ID == chipId)
+                    ((ymf271)c.Instrument).SetPCMVolume(chipId, vol);
+        }
+
         public void SetVolumeYMF262(int vol)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YMF262)) return;
@@ -5304,6 +5432,22 @@ namespace MDSound
                 //16384 = 0x4000 = short.MAXValue + 1
                 c.tVolume = Math.Max(Math.Min((int)(n * volumeMul), short.MaxValue), short.MinValue);
             }
+        }
+
+        public void SetVolumeYMF278BFM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YMF278B && c.ID == chipId)
+                    ((ymf278b)c.Instrument).SetFMVolume(chipId, vol);
+        }
+
+        public void SetVolumeYMF278BPCM(byte chipId, int vol)
+        {
+            if (insts == null) return;
+            foreach (Chip c in insts)
+                if (c.type == enmInstrumentType.YMF278B && c.ID == chipId)
+                    ((ymf278b)c.Instrument).SetPCMVolume(chipId, vol);
         }
 
         public void SetVolumeMultiPCM(int vol)

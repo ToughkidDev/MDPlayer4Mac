@@ -70,11 +70,9 @@ namespace MDPlayer.EngineSmokeTest
 
             for (int chunk = 0; chunk < safetyLimitChunks && !driver.Stopped; chunk++)
             {
-                // session.RenderSamples, NOT mds.Update() directly - for most formats
-                // RenderSamples just forwards to mds.Update(driver.oneFrameProc), but SID/NSF/
-                // MDX bypass MDSound.MDSound.Chip.Update() entirely and pull PCM straight from
-                // their own driver's Render() (see MusicEngine.cs's LoadSid/LoadNsf/LoadMdx) -
-                // calling mds.Update() directly here would silently produce silence for them.
+                // session.RenderSamples, NOT mds.Update() directly - for most formats it
+                // forwards to mds.Update(driver.oneFrameProc), while SID/NSF render their
+                // own PCM and MDX renders X68000 PCM before its MDSound mix step.
                 int written = session.RenderSamplesWithMasterVolume(buffer, 0, chunkSamples);
                 if (written <= 0) break;
                 waveWriter.Write(buffer, 0, written);

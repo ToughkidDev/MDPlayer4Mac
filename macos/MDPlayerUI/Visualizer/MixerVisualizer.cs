@@ -14,9 +14,11 @@ namespace MDPlayer.UI.Visualizer
         private const int DefaultScreenWidth = 354;
         private const int MinimumScreenWidth = 160;
         private const int DisplayScale = 2;
-        private const int RowHeight = 28;
+        // Keep the Windows-style fader graphics intact, but pack consecutive faders at
+        // half of the former row pitch so a multi-block chip stays easy to scan.
+        private const int RowHeight = 14;
         private const int FaderX = 80;
-        private const int FaderY = 8;
+        private const int FaderY = 3;
         private const int FaderKnobWidth = 13;
 
         private sealed class Slot
@@ -272,14 +274,18 @@ namespace MDPlayer.UI.Visualizer
             MDSound.MDSound.enmInstrumentType.SN76489 => "DCSG",
             MDSound.MDSound.enmInstrumentType.YM2612 => "OPN2",
             MDSound.MDSound.enmInstrumentType.YM2151 => "OPM",
+            MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM => "ADPCM",
             MDSound.MDSound.enmInstrumentType.YM2203 => "OPN",
             MDSound.MDSound.enmInstrumentType.YM2608 => "OPNA",
+            MDSound.MDSound.enmInstrumentType.YM2609 => "OPN9",
             MDSound.MDSound.enmInstrumentType.YM2610 => "OPNB",
             MDSound.MDSound.enmInstrumentType.YM2413 => "OPLL",
             MDSound.MDSound.enmInstrumentType.YM3526 => "OPL",
             MDSound.MDSound.enmInstrumentType.YM3812 => "OPL2",
             MDSound.MDSound.enmInstrumentType.YMF262 => "OPL3",
             MDSound.MDSound.enmInstrumentType.YMF278B => "OPL4",
+            MDSound.MDSound.enmInstrumentType.YMF271 => "OPX",
+            MDSound.MDSound.enmInstrumentType.Y8950 => "Y895",
             MDSound.MDSound.enmInstrumentType.YMZ280B => "YMZ",
             MDSound.MDSound.enmInstrumentType.RF5C164 => "RF16",
             MDSound.MDSound.enmInstrumentType.RF5C68 => "RF68",
@@ -297,9 +303,30 @@ namespace MDPlayer.UI.Visualizer
         private static string ChipLabel(ChipVolumeKey key, IReadOnlyCollection<ChipVolumeSlot> allSlots)
         {
             string label = ShortName(key.Type);
-            return allSlots.Count(slot => slot.Key.Type == key.Type) > 1
-                ? $"{label}#{key.ChipId + 1}"
-                : label;
+            bool isDualChip = allSlots
+                .Where(slot => slot.Key.Type == key.Type)
+                .Select(slot => slot.Key.ChipId)
+                .Distinct()
+                .Skip(1)
+                .Any();
+            if (isDualChip) label += (key.ChipId + 1).ToString();
+
+            // The original 4px font has a 32px label area before the dB readout. Keep the
+            // source names compact while making the separate blocks unmistakable:
+            // OPNAFM/OPNASSG/OPNARHY/OPNAADP and OPL4FM/OPL4PCM.
+            return key.Component switch
+            {
+                ChipVolumeComponent.Whole => label,
+                ChipVolumeComponent.Fm => label + "FM",
+                ChipVolumeComponent.Ssg => label + "SSG",
+                ChipVolumeComponent.Rhythm => label + "RHY",
+                ChipVolumeComponent.Adpcm => label + "ADP",
+                ChipVolumeComponent.AdpcmA => label + "AA",
+                ChipVolumeComponent.AdpcmB => label + "AB",
+                ChipVolumeComponent.Pcm => label + "PCM",
+                ChipVolumeComponent.Dac => label + "DAC",
+                _ => label,
+            };
         }
     }
 }

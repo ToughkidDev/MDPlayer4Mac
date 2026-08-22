@@ -50,6 +50,24 @@ namespace MDSound
             return 0;
         }
 
+        private static Int32 GainFromDb(int db)
+        {
+            db = Math.Max(-192, Math.Min(20, db));
+            return (Int32)Math.Round(Math.Pow(10.0, db / 40.0) * (1 << 16));
+        }
+
+        public void SetFMVolume(byte ChipID, int db)
+        {
+            if (ChipID >= Y8950Data.Length || Y8950Data[ChipID].chip == null) return;
+            Y8950Data[ChipID].chip.fmGain = GainFromDb(db);
+        }
+
+        public void SetAdpcmVolume(byte ChipID, int db)
+        {
+            if (ChipID >= Y8950Data.Length || Y8950Data[ChipID].chip == null) return;
+            Y8950Data[ChipID].chip.adpcmGain = GainFromDb(db);
+        }
+
 
 
 
@@ -1653,6 +1671,9 @@ namespace MDSound
             public Int32[] output = new Int32[1];
             //#if BUILD_Y8950
             public Int32[] output_deltat = new Int32[4];     /* for Y8950 DELTA-T, chip is mono, that 4 here is just for safety */
+            // Q16 gains for the separately accumulated OPL FM and Delta-T ADPCM outputs.
+            public Int32 fmGain = 1 << 16;
+            public Int32 adpcmGain = 1 << 16;
                                                              //#endif
         }
 
@@ -4060,7 +4081,8 @@ namespace MDSound
                     //System.Console.WriteLine("P_CH[0R] OPL->output[0]={0}", OPL.output[0]);
                 }
 
-                lt = OPL.output[0] + (OPL.output_deltat[0]>> 11);
+                lt = (Int32)(((Int64)OPL.output[0] * OPL.fmGain
+                    + (Int64)(OPL.output_deltat[0] >> 11) * OPL.adpcmGain) >> 16);
                 /*System.Console.WriteLine("OPL.output_deltat[0]={0} acc={1} now_step={2} adpcmd={3}"
                     , OPL.output_deltat[0]
                     ,DELTAT.acc

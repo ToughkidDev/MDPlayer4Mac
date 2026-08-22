@@ -20,7 +20,26 @@ namespace MDPlayer
     // A chip type can occur more than once in a song (for example a dual-YM2612
     // VGM).  The mixer must retain the MDSound Chip.ID as part of its identity;
     // keying solely by instrument type silently merges those two faders.
-    public readonly record struct ChipVolumeKey(MDSound.MDSound.enmInstrumentType Type, byte ChipId);
+    // A physical chip can expose several independently mixed synthesis blocks.  Keep that
+    // block in the key as well as the MDSound chip ID: e.g. the FM and ADPCM-B faders on
+    // dual-YM2610 music must never overwrite each other.
+    public enum ChipVolumeComponent : byte
+    {
+        Whole,
+        Fm,
+        Ssg,
+        Rhythm,
+        Adpcm,
+        AdpcmA,
+        AdpcmB,
+        Pcm,
+        Dac,
+    }
+
+    public readonly record struct ChipVolumeKey(
+        MDSound.MDSound.enmInstrumentType Type,
+        byte ChipId,
+        ChipVolumeComponent Component = ChipVolumeComponent.Whole);
 
     public sealed class ChipVolumeSlot
     {
@@ -54,10 +73,9 @@ namespace MDPlayer
         public string DescribeActiveChips() => ActiveChips;
 
         // How a caller pulls rendered stereo samples out of this session. For every format
-        // except SID this is just `mds.Update(buf, off, count, driver.oneFrameProc)` (set by
-        // MusicEngine.Finish); SID substitutes a delegate that calls sid.Render(...) directly
-        // instead, since it bypasses MDSound.MDSound.Update()/oneFrameProc entirely (see
-        // MusicEngine.LoadSid's header comment).
+        // except drivers with custom PCM paths this is `mds.Update(buf, off, count,
+        // driver.oneFrameProc)` (set by MusicEngine.Finish). SID/NSF render PCM directly;
+        // MXDRV renders X68000 PCM first and then mixes it through MDSound.
         public System.Func<short[], int, int, int> RenderSamples;
 
         // Per-chip clock (Hz) actually used to wire up MDSound for this session, keyed by
@@ -94,6 +112,125 @@ namespace MDPlayer
         // supported file format, including drivers that render their own PCM.
         public int MasterVolume;
         public int DefaultMasterVolume;
+
+        // MXDRV's PCM8/ADPCM stream is rendered directly by X68Sound before MDSound adds
+        // the separately-emulated YM2151 stream, so it needs a session-owned gain.
+        public bool HasDirectPcmVolume;
+        public int DirectPcmVolume;
+        public int DefaultDirectPcmVolume;
+
+        // Every source below is backed by a distinct MDSound output path.  Keep a whole-chip
+        // fader as well (matching the Windows mixer), then add the chip's actual synthesis
+        // blocks beneath it.  Chips with one output path deliberately only produce Whole.
+        public static IEnumerable<ChipVolumeKey> EnumerateMixerSources(
+            MDSound.MDSound.enmInstrumentType type, byte chipId)
+        {
+            yield return new ChipVolumeKey(type, chipId);
+
+            switch (type)
+            {
+                case MDSound.MDSound.enmInstrumentType.YM2612:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Dac);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YM2203:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Ssg);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YM2608:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Ssg);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Rhythm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Adpcm);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YM2610:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Ssg);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.AdpcmA);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.AdpcmB);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YM2609:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Ssg);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Rhythm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Adpcm);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.Y8950:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Adpcm);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YMF278B:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Pcm);
+                    break;
+                case MDSound.MDSound.enmInstrumentType.YMF271:
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Fm);
+                    yield return new ChipVolumeKey(type, chipId, ChipVolumeComponent.Pcm);
+                    break;
+            }
+        }
+
+        // Component gains are independent from a VGM's per-chip volume tag.  The original
+        // song therefore resets them to 0 dB unless a user has adjusted them in this session.
+        public static int GetPersistedComponentVolume(Setting setting, ChipVolumeKey key)
+        {
+            return (key.Type, key.Component) switch
+            {
+                (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Fm) => setting.balance.YM2612FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Dac) => setting.balance.YM2612DACVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Fm) => setting.balance.YM2203FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Ssg) => setting.balance.YM2203PSGVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Fm) => setting.balance.YM2608FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Ssg) => setting.balance.YM2608PSGVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Rhythm) => setting.balance.YM2608RhythmVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Adpcm) => setting.balance.YM2608AdpcmVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Fm) => setting.balance.YM2610FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Ssg) => setting.balance.YM2610PSGVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmA) => setting.balance.YM2610AdpcmAVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmB) => setting.balance.YM2610AdpcmBVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Fm) => setting.balance.YM2609FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Ssg) => setting.balance.YM2609PSGVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Rhythm) => setting.balance.YM2609RhythmVolume,
+                (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Adpcm) => setting.balance.YM2609AdpcmVolume,
+                (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Fm) => setting.balance.Y8950FMVolume,
+                (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Adpcm) => setting.balance.Y8950AdpcmVolume,
+                (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Fm) => setting.balance.YMF278BFMVolume,
+                (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Pcm) => setting.balance.YMF278BPCMVolume,
+                (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Fm) => setting.balance.YMF271FMVolume,
+                (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Pcm) => setting.balance.YMF271PCMVolume,
+                _ => 0,
+            };
+        }
+
+        public static void ApplyComponentVolume(MDSound.MDSound mds, ChipVolumeKey key, int volume)
+        {
+            int clamped = Math.Clamp(volume, -192, 20);
+            switch (key.Type, key.Component)
+            {
+                case (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Fm): mds.SetVolumeYM2612FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Dac): mds.SetVolumeYM2612DAC(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Fm): mds.SetVolumeYM2203FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Ssg): mds.SetVolumeYM2203PSG(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Fm): mds.SetVolumeYM2608FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Ssg): mds.SetVolumeYM2608PSG(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Rhythm): mds.SetVolumeYM2608Rhythm(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Adpcm): mds.SetVolumeYM2608Adpcm(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Fm): mds.SetVolumeYM2610FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Ssg): mds.SetVolumeYM2610PSG(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmA): mds.SetVolumeYM2610AdpcmA(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmB): mds.SetVolumeYM2610AdpcmB(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Fm): mds.SetVolumeYM2609FM(clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Ssg): mds.SetVolumeYM2609PSG(clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Rhythm): mds.SetVolumeYM2609Rhythm(clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Adpcm): mds.SetVolumeYM2609Adpcm(clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Fm): mds.SetVolumeY8950FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Adpcm): mds.SetVolumeY8950Adpcm(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Fm): mds.SetVolumeYMF278BFM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Pcm): mds.SetVolumeYMF278BPCM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Fm): mds.SetVolumeYMF271FM(key.ChipId, clamped); break;
+                case (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Pcm): mds.SetVolumeYMF271PCM(key.ChipId, clamped); break;
+            }
+        }
 
         public void SetMasterVolume(int volume)
         {
@@ -138,6 +275,12 @@ namespace MDPlayer
         {
             int clamped = Math.Clamp(volume, -192, 20);
 
+            if (type == MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM && HasDirectPcmVolume)
+            {
+                SetChipVolume(new ChipVolumeKey(type, 0), clamped);
+                return;
+            }
+
             // NES expansion voices share a single nes_intf renderer.  Their individual
             // MDSound chip records are present for register routing, but are not each an
             // independently rendered stream, so use the original specialised setters.
@@ -167,6 +310,26 @@ namespace MDPlayer
         {
             int clamped = Math.Clamp(volume, -192, 20);
 
+            if (key.Component != ChipVolumeComponent.Whole)
+            {
+                ApplyComponentVolume(Mds, key, clamped);
+                ChipVolumeSlot? componentSlot = ChipVolumeSlots.Find(slot => slot.Key == key);
+                if (componentSlot != null) componentSlot.Volume = clamped;
+                SetPersistedComponentVolume(key, clamped);
+                return;
+            }
+
+            if (key.Type == MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM && HasDirectPcmVolume)
+            {
+                DirectPcmVolume = clamped;
+                Mds.SetVolumePCM8(clamped); // keep MDSound's diagnostic value in sync.
+                ChipVolumes[key.Type] = clamped;
+                ChipVolumeSlot? directPcmSlot = ChipVolumeSlots.Find(slot => slot.Key == key);
+                if (directPcmSlot != null) directPcmSlot.Volume = clamped;
+                Setting.balance.PCM8Volume = clamped;
+                return;
+            }
+
             // NES-family submixes are represented by one shared renderer, so their existing
             // specialised controls remain type-level. Other MDSound chips have independent
             // resampler records and can be addressed by their Chip.ID.
@@ -182,6 +345,35 @@ namespace MDPlayer
             ChipVolumeSlot? slot = ChipVolumeSlots.Find(slot => slot.Key == key);
             if (slot != null) slot.Volume = clamped;
             SetPersistedChipVolume(key.Type, clamped);
+        }
+
+        private void SetPersistedComponentVolume(ChipVolumeKey key, int volume)
+        {
+            switch (key.Type, key.Component)
+            {
+                case (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Fm): Setting.balance.YM2612FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2612, ChipVolumeComponent.Dac): Setting.balance.YM2612DACVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Fm): Setting.balance.YM2203FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2203, ChipVolumeComponent.Ssg): Setting.balance.YM2203PSGVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Fm): Setting.balance.YM2608FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Ssg): Setting.balance.YM2608PSGVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Rhythm): Setting.balance.YM2608RhythmVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2608, ChipVolumeComponent.Adpcm): Setting.balance.YM2608AdpcmVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Fm): Setting.balance.YM2610FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.Ssg): Setting.balance.YM2610PSGVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmA): Setting.balance.YM2610AdpcmAVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2610, ChipVolumeComponent.AdpcmB): Setting.balance.YM2610AdpcmBVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Fm): Setting.balance.YM2609FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Ssg): Setting.balance.YM2609PSGVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Rhythm): Setting.balance.YM2609RhythmVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YM2609, ChipVolumeComponent.Adpcm): Setting.balance.YM2609AdpcmVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Fm): Setting.balance.Y8950FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.Y8950, ChipVolumeComponent.Adpcm): Setting.balance.Y8950AdpcmVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Fm): Setting.balance.YMF278BFMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YMF278B, ChipVolumeComponent.Pcm): Setting.balance.YMF278BPCMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Fm): Setting.balance.YMF271FMVolume = volume; break;
+                case (MDSound.MDSound.enmInstrumentType.YMF271, ChipVolumeComponent.Pcm): Setting.balance.YMF271PCMVolume = volume; break;
+            }
         }
 
         private void SetPersistedChipVolume(MDSound.MDSound.enmInstrumentType type, int volume)
@@ -204,6 +396,7 @@ namespace MDPlayer
                 MDSound.MDSound.enmInstrumentType.YM2151 or MDSound.MDSound.enmInstrumentType.YM2151mame or MDSound.MDSound.enmInstrumentType.YM2151x68sound => nameof(Setting.Balance.YM2151Volume),
                 MDSound.MDSound.enmInstrumentType.YM2203 => nameof(Setting.Balance.YM2203Volume),
                 MDSound.MDSound.enmInstrumentType.YM2608 => nameof(Setting.Balance.YM2608Volume),
+                MDSound.MDSound.enmInstrumentType.YM2609 => nameof(Setting.Balance.YM2609Volume),
                 MDSound.MDSound.enmInstrumentType.YM2610 => nameof(Setting.Balance.YM2610Volume),
                 MDSound.MDSound.enmInstrumentType.YM3812 => nameof(Setting.Balance.YM3812Volume),
                 MDSound.MDSound.enmInstrumentType.YM3526 => nameof(Setting.Balance.YM3526Volume),
@@ -1281,15 +1474,29 @@ namespace MDPlayer
             System.Collections.Generic.List<ChipVolumeSlot> chipVolumeSlots = new();
             foreach (MDSound.MDSound.Chip c in lstChips)
             {
-                ChipVolumeKey key = new(c.type, c.ID);
-                int fileVolume = vgm.FileChipVolumes.TryGetValue(key, out int volume) ? volume : 0;
+                ChipVolumeKey wholeChipKey = new(c.type, c.ID);
+                int fileVolume = vgm.FileChipVolumes.TryGetValue(wholeChipKey, out int volume) ? volume : 0;
                 fileChipVolumes[c.type] = fileVolume;
-                chipVolumeSlots.Add(new ChipVolumeSlot
+
+                foreach (ChipVolumeKey key in MusicEngineSession.EnumerateMixerSources(c.type, c.ID))
                 {
-                    Key = key,
-                    Volume = c.Volume,
-                    DefaultVolume = fileVolume,
-                });
+                    bool isWholeChip = key.Component == ChipVolumeComponent.Whole;
+                    int initialVolume = isWholeChip
+                        ? c.Volume
+                        : MusicEngineSession.GetPersistedComponentVolume(setting, key);
+                    int defaultVolume = isWholeChip ? fileVolume : 0;
+                    chipVolumeSlots.Add(new ChipVolumeSlot
+                    {
+                        Key = key,
+                        Volume = initialVolume,
+                        DefaultVolume = defaultVolume,
+                    });
+
+                    if (!isWholeChip)
+                    {
+                        MusicEngineSession.ApplyComponentVolume(mds, key, initialVolume);
+                    }
+                }
             }
 
             return new MusicEngineSession

@@ -53,6 +53,17 @@ namespace MDPlayer.UI.Visualizer
             Height = nativeHeight * zoom;
         }
 
+        // Changes only the Avalonia display rectangle. The backing bitmap and native pixel
+        // buffer remain untouched, so channel visualizers can switch cleanly between the
+        // Windows-style 2x view and the compact 1x view without reinitializing state.
+        public void SetDisplayScale(double scale)
+        {
+            if (NativeWidth <= 0 || NativeHeight <= 0 || scale <= 0) return;
+            Width = NativeWidth * scale;
+            Height = NativeHeight * scale;
+            InvalidateMeasure();
+        }
+
         // Direct port of FrameBuffer.drawIntArray (MDPlayer/MDPlayerx64/FrameBuffer.cs) -
         // unconditional pixel copy (no transparency/colorkey check), used by every sprite
         // blit this port needs. src/srcWidth is the source sprite sheet (a SpriteAtlas's
