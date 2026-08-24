@@ -79,7 +79,9 @@ namespace MDPlayer.UI.Visualizer
                 nyc.bank = qSoundRegister[(ch << 2) + 0xcc];
                 nyc.sadr = qSoundRegister[(ch << 2) + 0xca];
                 nyc.eadr = qSoundRegister[(ch << 2) + 0xcb];
-                int vol = qSoundRegister[(ch << 2) + 0xcd] >> 16;
+                // ChipRegister stores QSound command values as ushort. The inherited
+                // 16-bit right shift therefore made every ADPCM meter permanently zero.
+                int vol = qSoundRegister[(ch << 2) + 0xcd];
                 int pan = qSoundRegister[ch + 16 + 0x80] - 0x110;
                 if (pan >= 97) pan = 16; // center?
                 int panL = (int)(15.0 / 16.0 * (pan > 16 ? (16 - (33 - pan)) : 16));

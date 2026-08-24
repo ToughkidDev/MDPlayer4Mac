@@ -3963,7 +3963,7 @@ namespace MDPlayer
                                 fmVolYM2609Adpcm[chipID][1][0] =
                                     (int)((256 * 0.5 * fmRegisterYM2609[chipID][3][0x0b] / 64.0)
                                     * fmVolYM2609AdpcmPan[chipID][1][0]);
-                            if (fmVolYM2609AdpcmPan[chipID][1][0] != 0)
+                            if (fmVolYM2609AdpcmPan[chipID][1][1] != 0)
                                 fmVolYM2609Adpcm[chipID][1][1] =
                                    (int)((256 * 0.5 * fmRegisterYM2609[chipID][3][0x0b] / 64.0)
                                     * fmVolYM2609AdpcmPan[chipID][1][1]);
@@ -3994,7 +3994,7 @@ namespace MDPlayer
                                 fmVolYM2609Adpcm[chipID][2][0] =
                                     (int)((256 * 0.5 * fmRegisterYM2609[chipID][3][0x1c] / 64.0)
                                     * fmVolYM2609AdpcmPan[chipID][2][0]);
-                            if (fmVolYM2609AdpcmPan[chipID][2][0] != 0)
+                            if (fmVolYM2609AdpcmPan[chipID][2][1] != 0)
                                 fmVolYM2609Adpcm[chipID][2][1] =
                                    (int)((256 * 0.5 * fmRegisterYM2609[chipID][3][0x1c] / 64.0)
                                     * fmVolYM2609AdpcmPan[chipID][2][1]);
@@ -4183,8 +4183,10 @@ namespace MDPlayer
                         if (fmVolYM2610AdpcmPan[chipID] != p)
                             fmVolYM2610AdpcmPan[chipID] = p;
 
-                        fmVolYM2610Adpcm[chipID][0] = ((fmVolYM2610AdpcmPan[chipID] & 0x02) != 0 ? 1 : 0);
-                        fmVolYM2610Adpcm[chipID][1] = ((fmVolYM2610AdpcmPan[chipID] & 0x01) != 0 ? 1 : 0);
+                        int level = fmRegisterYM2610[chipID][0][0x1b] & 0xff;
+                        int peak = (int)(256 * 6.0 * level / 255.0);
+                        fmVolYM2610Adpcm[chipID][0] = (fmVolYM2610AdpcmPan[chipID] & 0x02) != 0 ? peak : 0;
+                        fmVolYM2610Adpcm[chipID][1] = (fmVolYM2610AdpcmPan[chipID] & 0x01) != 0 ? peak : 0;
                     }
                     else
                     {
@@ -4203,12 +4205,11 @@ namespace MDPlayer
                         {
                             if ((dData & (0x1 << i)) != 0)
                             {
-                                //int il = fmRegisterYM2610[chipID][1][0x08 + i] & 0x1f;
+                                int il = fmRegisterYM2610[chipID][1][0x08 + i] & 0x1f;
                                 int pan = ((fmRegisterYM2610[chipID][1][0x08 + i] & 0xc0) >> 6) * (((dData & 0x80) == 0) ? 1 : 0);
-                                //fmVolYM2610Rhythm[chipID][i][0] = (int)(256 * 6 * ((tl * il) >> 4) / 127.0) * ((pan & 2) > 0 ? 1 : 0);
-                                //fmVolYM2610Rhythm[chipID][i][1] = (int)(256 * 6 * ((tl * il) >> 4) / 127.0) * ((pan & 1) > 0 ? 1 : 0);
-                                fmVolYM2610Rhythm[chipID][i][0] = ((pan & 2) > 0 ? 1 : 0);
-                                fmVolYM2610Rhythm[chipID][i][1] = ((pan & 1) > 0 ? 1 : 0);
+                                int peak = (int)(256 * 6 * ((tl * il) >> 4) / 127.0);
+                                fmVolYM2610Rhythm[chipID][i][0] = (pan & 2) > 0 ? peak : 0;
+                                fmVolYM2610Rhythm[chipID][i][1] = (pan & 1) > 0 ? peak : 0;
                             }
                             else
                             {
@@ -6956,8 +6957,8 @@ namespace MDPlayer
                 }
                 for (int i = 0; i < 3; i++)
                 {
-                    if (fmVolYM2609Adpcm[chipID][i][0] > 0) { fmVolYM2609Adpcm[chipID][i][0] -= 50; if (fmVolYM2609Adpcm[chipID][i][0] < 0) fmVolYM2609Rhythm[chipID][i][0] = 0; }
-                    if (fmVolYM2609Adpcm[chipID][i][1] > 0) { fmVolYM2609Adpcm[chipID][i][1] -= 50; if (fmVolYM2609Adpcm[chipID][i][1] < 0) fmVolYM2609Rhythm[chipID][i][1] = 0; }
+                    if (fmVolYM2609Adpcm[chipID][i][0] > 0) { fmVolYM2609Adpcm[chipID][i][0] -= 50; if (fmVolYM2609Adpcm[chipID][i][0] < 0) fmVolYM2609Adpcm[chipID][i][0] = 0; }
+                    if (fmVolYM2609Adpcm[chipID][i][1] > 0) { fmVolYM2609Adpcm[chipID][i][1] -= 50; if (fmVolYM2609Adpcm[chipID][i][1] < 0) fmVolYM2609Adpcm[chipID][i][1] = 0; }
                 }
 
 
@@ -7089,6 +7090,22 @@ namespace MDPlayer
             return fmVolYM2608Adpcm[chipID];
         }
 
+        public int[][] GetYM2608VisVolume(int chipID)
+        {
+            int[][][] levels = mds.getYM2608VisVolume(chipID);
+            return levels != null && chipID >= 0 && chipID < levels.Length ? levels[chipID] : null;
+        }
+
+        public byte GetYM2608RhythmKeyMask(int chipID)
+        {
+            return mds.getYM2608RhythmKeyMask(chipID, (byte)chipID);
+        }
+
+        public bool IsYM2608AdpcmBPlaying(int chipID)
+        {
+            return mds.isYM2608AdpcmBPlaying(chipID, (byte)chipID);
+        }
+
         public int[][] GetYM2609AdpcmVolume(int chipID)
         {
             return fmVolYM2609Adpcm[chipID];
@@ -7102,6 +7119,28 @@ namespace MDPlayer
         public int[] GetYM2610AdpcmVolume(int chipID)
         {
             return fmVolYM2610Adpcm[chipID];
+        }
+
+        // The OPNB emulator exposes live output levels for FM, SSG, ADPCM-A, and
+        // ADPCM-B. Register/key events alone cannot describe a sustained PCM voice,
+        // so channel visualizers use this alongside their per-channel register state.
+        public int[][] GetYM2610VisVolume(int chipID)
+        {
+            int[][][] levels = mds.getYM2610VisVolume(chipID);
+            return levels != null && chipID >= 0 && chipID < levels.Length ? levels[chipID] : null;
+        }
+
+        public byte GetYM2610AdpcmAKeyMask(int chipID)
+        {
+            return mds.getYM2610AdpcmAKeyMask(chipID, (byte)chipID);
+        }
+
+        // The channel view remains open after Stop. Clear every emulation-side output
+        // meter at that transition, so a present or future visualizer never displays a
+        // frozen final sample from its chip's `visVolume` latch.
+        public void ClearVisualizationVolumes()
+        {
+            mds.ClearVisualizationVolumes();
         }
 
         // Audio.cs:12100 GetYMF271Register - unlike the OPN-family chips above (which

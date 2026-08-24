@@ -116,6 +116,9 @@ namespace MDSound
             visVolume[ChipID][1][1] = chip[ChipID].visVolume[1];
             visVolume[ChipID][2][0] = chip[ChipID].psg.visVolume;
             visVolume[ChipID][2][1] = chip[ChipID].psg.visVolume;
+            // OPNA2 owns its own Rhythm/ADPCM012 mixers.  Unlike the base OPNA
+            // implementation, it does not populate the base class's pre-mixer
+            // source latches, so keep publishing its native live meters here.
             visVolume[ChipID][3][0] = chip[ChipID].visRtmVolume[0];
             visVolume[ChipID][3][1] = chip[ChipID].visRtmVolume[1];
             visVolume[ChipID][4][0] = chip[ChipID].visAPCMVolume[0];

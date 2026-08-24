@@ -232,29 +232,29 @@ namespace MDPlayer
             }
         }
 
-        public void SetMasterVolume(int volume)
+        public void SetMasterVolume(int volume, bool persist = true)
         {
             MasterVolume = Math.Clamp(volume, -192, 20);
-            Setting.balance.MasterVolume = MasterVolume;
+            if (persist) Setting.balance.MasterVolume = MasterVolume;
         }
 
-        public void ResetVolumesToDefaults()
+        public void ResetVolumesToDefaults(bool persist = false)
         {
             if (ChipVolumeSlots.Count > 0)
             {
                 foreach (ChipVolumeSlot slot in ChipVolumeSlots)
                 {
-                    SetChipVolume(slot.Key, slot.DefaultVolume);
+                    SetChipVolume(slot.Key, slot.DefaultVolume, persist);
                 }
-                SetMasterVolume(DefaultMasterVolume);
+                SetMasterVolume(DefaultMasterVolume, persist);
                 return;
             }
 
             foreach (var defaultVolume in DefaultChipVolumes)
             {
-                SetChipVolume(defaultVolume.Key, defaultVolume.Value);
+                SetChipVolume(defaultVolume.Key, defaultVolume.Value, persist);
             }
-            SetMasterVolume(DefaultMasterVolume);
+            SetMasterVolume(DefaultMasterVolume, persist);
         }
 
         public int RenderSamplesWithMasterVolume(short[] buffer, int offset, int count)
@@ -271,13 +271,13 @@ namespace MDPlayer
             return written;
         }
 
-        public void SetChipVolume(MDSound.MDSound.enmInstrumentType type, int volume)
+        public void SetChipVolume(MDSound.MDSound.enmInstrumentType type, int volume, bool persist = true)
         {
             int clamped = Math.Clamp(volume, -192, 20);
 
             if (type == MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM && HasDirectPcmVolume)
             {
-                SetChipVolume(new ChipVolumeKey(type, 0), clamped);
+                SetChipVolume(new ChipVolumeKey(type, 0), clamped, persist);
                 return;
             }
 
@@ -297,7 +297,7 @@ namespace MDPlayer
             {
                 if (slot.Key.Type == type) slot.Volume = clamped;
             }
-            SetPersistedChipVolume(type, clamped);
+            if (persist) SetPersistedChipVolume(type, clamped);
         }
 
         public int GetChipVolume(ChipVolumeKey key)
@@ -306,7 +306,7 @@ namespace MDPlayer
             return slot?.Volume ?? (ChipVolumes.TryGetValue(key.Type, out int volume) ? volume : 0);
         }
 
-        public void SetChipVolume(ChipVolumeKey key, int volume)
+        public void SetChipVolume(ChipVolumeKey key, int volume, bool persist = true)
         {
             int clamped = Math.Clamp(volume, -192, 20);
 
@@ -315,7 +315,7 @@ namespace MDPlayer
                 ApplyComponentVolume(Mds, key, clamped);
                 ChipVolumeSlot? componentSlot = ChipVolumeSlots.Find(slot => slot.Key == key);
                 if (componentSlot != null) componentSlot.Volume = clamped;
-                SetPersistedComponentVolume(key, clamped);
+                if (persist) SetPersistedComponentVolume(key, clamped);
                 return;
             }
 
@@ -326,7 +326,7 @@ namespace MDPlayer
                 ChipVolumes[key.Type] = clamped;
                 ChipVolumeSlot? directPcmSlot = ChipVolumeSlots.Find(slot => slot.Key == key);
                 if (directPcmSlot != null) directPcmSlot.Volume = clamped;
-                Setting.balance.PCM8Volume = clamped;
+                if (persist) Setting.balance.PCM8Volume = clamped;
                 return;
             }
 
@@ -344,7 +344,7 @@ namespace MDPlayer
             ChipVolumes[key.Type] = clamped;
             ChipVolumeSlot? slot = ChipVolumeSlots.Find(slot => slot.Key == key);
             if (slot != null) slot.Volume = clamped;
-            SetPersistedChipVolume(key.Type, clamped);
+            if (persist) SetPersistedChipVolume(key.Type, clamped);
         }
 
         private void SetPersistedComponentVolume(ChipVolumeKey key, int volume)
@@ -634,7 +634,16 @@ namespace MDPlayer
                         Stop = ym2151.Stop,
                         Reset = ym2151.Reset,
                         SamplingRate = vgm.YM2151ClockValue / 64, // matches Audio.cs: OPM's internal rate is Clock/64
-                        Volume = setting.balance.YM2151Volume,
+                        // A VGM's OPM gain is defined by its extra-header chip-volume
+                        // entry (or 0 dB when that entry is absent).  Using the saved
+                        // global YM2151 balance here made every newly loaded VGM jump
+                        // back to that preference (for example -18 dB) after the user
+                        // had reset the current song to its file default.
+                        Volume = vgm.FileChipVolumes.TryGetValue(
+                            new ChipVolumeKey(MDSound.MDSound.enmInstrumentType.YM2151, (byte)i),
+                            out int ym2151FileVolume)
+                            ? ym2151FileVolume
+                            : 0,
                         Clock = vgm.YM2151ClockValue,
                         Option = null,
                     });

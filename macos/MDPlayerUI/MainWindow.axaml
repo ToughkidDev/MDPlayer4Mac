@@ -27,7 +27,7 @@
                 </StackPanel>
                 <!-- Windows frmMain keeps three counters (current/total/loop) next to the
                      controls and a timeline immediately beneath them. -->
-                <Grid x:Name="DashboardTimelinePanel" Grid.Column="1" MinWidth="270" VerticalAlignment="Center" RowDefinitions="Auto,Auto" RowSpacing="5">
+                <Grid x:Name="DashboardTimelinePanel" Grid.Column="1" MinWidth="270" VerticalAlignment="Center" RowDefinitions="Auto,Auto,Auto" RowSpacing="5">
                     <!-- DashboardTimerDisplay draws its digits from the original Windows
                          rFont_01 sprite sheet rather than a platform text font. -->
                     <ContentControl x:Name="DashboardTimesHost" HorizontalAlignment="Center" />
@@ -38,6 +38,9 @@
                         <Border x:Name="TimelineProgressFill" Height="8" HorizontalAlignment="Left"
                                 Background="#7887E8" />
                     </Border>
+                    <TextBlock x:Name="ActiveChipsLabel" Grid.Row="2" Text="—" HorizontalAlignment="Center"
+                               Foreground="#BFC8FF" FontFamily="Consolas" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
                 </Grid>
             </Grid>
         </Border>

@@ -269,7 +269,13 @@ namespace MDSound.fmgen
     public class OPNABase : OPNBase
     {
         public int[] visRtmVolume = new int[2] { 0, 0 };
+        // Rhythm (YM2608) / ADPCM-A (YM2610) monitor signal before the
+        // user-controlled component mixer gain is applied.
+        public int[] visRtmSourceVolume = new int[2] { 0, 0 };
         public int[] visAPCMVolume = new int[2] { 0, 0 };
+        // Channel monitors use this pre-mixer ADPCM-B signal so their meters show
+        // the music data's amplitude rather than the user's mixer-slider gain.
+        public int[] visAPCMSourceVolume = new int[2] { 0, 0 };
 
         public OPNABase()
         {
@@ -847,9 +853,16 @@ namespace MDSound.fmgen
         protected void DecodeADPCMB()
         {
             apout0 = apout1;
-            int n = (ReadRAMN() * adpcmvolume) >> 13;
+            apoutSource0 = apoutSource1;
+            int decoded = ReadRAMN();
+            int n = (decoded * adpcmvolume) >> 13;
+            // Equivalent to the normal ADPCM path at 0 dB, while retaining the
+            // chip's own ADPCM level register and excluding SetVolumeADPCM().
+            int sourceN = (decoded * adpcmlevel) >> 9;
             apout1 = adpcmout + n;
             adpcmout = n;
+            apoutSource1 = adpcmoutSource + sourceN;
+            adpcmoutSource = sourceN;
         }
 
         // ---------------------------------------------------------------------------
@@ -880,10 +893,13 @@ namespace MDSound.fmgen
                                 break;
                         }
                         int s = (adplc * apout0 + (8192 - adplc) * apout1) >> 13;
+                        int sourceS = (adplc * apoutSource0 + (8192 - adplc) * apoutSource1) >> 13;
                         fmgen.StoreSample(ref dest[ptrDest+0], (int)(s & maskl));
                         fmgen.StoreSample(ref dest[ptrDest + 1], (int)(s & maskr));
                         visAPCMVolume[0] = (int)(s & maskl);
                         visAPCMVolume[1] = (int)(s & maskr);
+                        visAPCMSourceVolume[0] = (int)(sourceS & maskl);
+                        visAPCMSourceVolume[1] = (int)(sourceS & maskr);
                         ptrDest += 2;
                         adplc -= adpld;
                     }
@@ -893,13 +909,18 @@ namespace MDSound.fmgen
                         {
                             apout0 = apout1;
                             apout1 = 0;
+                            apoutSource0 = apoutSource1;
+                            apoutSource1 = 0;
                             adplc += 8192;
                         }
                         int s = (adplc * apout1) >> 13;
+                        int sourceS = (adplc * apoutSource1) >> 13;
                         fmgen.StoreSample(ref dest[ptrDest + 0], (int)(s & maskl));
                         fmgen.StoreSample(ref dest[ptrDest + 1], (int)(s & maskr));
                         visAPCMVolume[0] = (int)(s & maskl);
                         visAPCMVolume[1] = (int)(s & maskr);
+                        visAPCMSourceVolume[0] = (int)(sourceS & maskl);
+                        visAPCMSourceVolume[1] = (int)(sourceS & maskr);
                         ptrDest += 2;
                         adplc -= adpld;
                     }
@@ -910,20 +931,25 @@ namespace MDSound.fmgen
                     for (; count > 0; count--)
                     {
                         int s = apout0 * (8192 + adplc);
+                        int sourceS = apoutSource0 * (8192 + adplc);
                         while (adplc < 0)
                         {
                             DecodeADPCMB();
                             if (!adpcmplay)
                                 goto stop;
                             s -= apout0 * Math.Max(adplc, t);
+                            sourceS -= apoutSource0 * Math.Max(adplc, t);
                             adplc -= t;
                         }
                         adplc -= 8192;
                         s >>= 13;
+                        sourceS >>= 13;
                         fmgen.StoreSample(ref dest[ptrDest + 0], (int)(s & maskl));
                         fmgen.StoreSample(ref dest[ptrDest + 1], (int)(s & maskr));
                         visAPCMVolume[0] = (int)(s & maskl);
                         visAPCMVolume[1] = (int)(s & maskr);
+                        visAPCMSourceVolume[0] = (int)(sourceS & maskl);
+                        visAPCMSourceVolume[1] = (int)(sourceS & maskr);
                         ptrDest += 2;
                     }
                     stop:
@@ -933,6 +959,7 @@ namespace MDSound.fmgen
             if (!adpcmplay)
             {
                 apout0 = apout1 = adpcmout = 0;
+                apoutSource0 = apoutSource1 = adpcmoutSource = 0;
                 adplc = 0;
             }
         }
@@ -1184,6 +1211,9 @@ namespace MDSound.fmgen
         protected int adpcmd;         // ADPCM 合成用 ⊿
         protected int adpcmout;       // ADPCM 合成後の出力
         protected int apout0;         // out(t-2)+out(t-1)
+        protected int adpcmoutSource; // ADPCM output before the user's mixer gain
+        protected int apoutSource0;
+        protected int apoutSource1;
         protected int apout1;         // out(t-1)+out(t)
 
         protected uint adpcmreadbuf;  // ADPCM リード用バッファ
@@ -1851,6 +1881,11 @@ namespace MDSound.fmgen
             return adpcmbuf;
         }
 
+        public bool IsADPCMBPlaying()
+        {
+            return adpcmplay;
+        }
+
         public int dbgGetOpOut(int c, int s)
         {
             return ch[c].op[s].dbgopout_;
@@ -1884,11 +1919,14 @@ namespace MDSound.fmgen
         //
         private void RhythmMix(int[] buffer, uint count)
         {
+            visRtmVolume[0] = 0;
+            visRtmVolume[1] = 0;
+            visRtmSourceVolume[0] = 0;
+            visRtmSourceVolume[1] = 0;
+
             if (rhythmtvol < 128 && rhythm[0].sample != null && ((rhythmkey & 0x3f) != 0))
             {
                 int limit = (int)count * 2;
-                visRtmVolume[0] = 0;
-                visRtmVolume[1] = 0;
                 for (int i = 0; i < 6; i++)
                 {
                     Rhythm r = rhythm[i];
@@ -1896,6 +1934,8 @@ namespace MDSound.fmgen
                     {
                         int db = fmgen.Limit(rhythmtl + rhythmtvol + r.level + r.volume, 127, -31);
                         int vol = tltable[fmgen.FM_TLPOS + (db << (fmgen.FM_TLBITS - 7))] >> 4;
+                        int sourceDb = fmgen.Limit(rhythmtl + r.level, 127, -31);
+                        int sourceVol = tltable[fmgen.FM_TLPOS + (sourceDb << (fmgen.FM_TLBITS - 7))] >> 4;
                         int maskl = -((r.pan >> 1) & 1);
                         int maskr = -(r.pan & 1);
 
@@ -1907,11 +1947,14 @@ namespace MDSound.fmgen
                         for (int dest = 0; dest < limit && r.pos < r.size; dest += 2)
                         {
                             int sample = (r.sample[r.pos / 1024] * vol) >> 12;
+                            int sourceSample = (r.sample[r.pos / 1024] * sourceVol) >> 12;
                             r.pos += r.step;
                             fmgen.StoreSample(ref buffer[dest + 0], sample & maskl);
                             fmgen.StoreSample(ref buffer[dest + 1], sample & maskr);
                             visRtmVolume[0] += sample & maskl;
                             visRtmVolume[1] += sample & maskr;
+                            visRtmSourceVolume[0] += sourceSample & maskl;
+                            visRtmSourceVolume[1] += sourceSample & maskr;
                         }
                     }
                 }
@@ -1921,6 +1964,11 @@ namespace MDSound.fmgen
         public string ReadErrMsg()
         {
             return errMsg;
+        }
+
+        public byte GetRhythmKeyMask()
+        {
+            return rhythmkey;
         }
 
         // リズム音源関係
@@ -2294,6 +2342,10 @@ namespace MDSound.fmgen
         //
         public void ADPCMAMix(int[] buffer, uint count)
         {
+            visRtmVolume[0] = 0;
+            visRtmVolume[1] = 0;
+            visRtmSourceVolume[0] = 0;
+            visRtmSourceVolume[1] = 0;
 
             if (adpcmatvol < 128 && (adpcmakey & 0x3f)!=0)
             {
@@ -2313,6 +2365,8 @@ namespace MDSound.fmgen
 
                         int db = fmgen.Limit(adpcmatl + adpcmatvol + r.level + r.volume, 127, -31);
                         int vol = tltable[fmgen.FM_TLPOS + (db << (fmgen.FM_TLBITS - 7))] >> 4;
+                        int sourceDb = fmgen.Limit(adpcmatl + r.level, 127, -31);
+                        int sourceVol = tltable[fmgen.FM_TLPOS + (sourceDb << (fmgen.FM_TLBITS - 7))] >> 4;
 
                         //Sample* dest = buffer;
                         uint dest = 0;
@@ -2347,10 +2401,13 @@ namespace MDSound.fmgen
                             }
                             //int sample = (r.adpcmx * vol) >> 10; //InitADPCMATableのとき
                             int sample = (r.adpcmx * vol) / (int)(512 * 0.60); // jedi_table_initのとき
+                            int sourceSample = (r.adpcmx * sourceVol) / (int)(512 * 0.60);
                             fmgen.StoreSample(ref buffer[dest+0], (int)(sample & maskl));
                             fmgen.StoreSample(ref buffer[dest+1], (int)(sample & maskr));
                             visRtmVolume[0] = (int)(sample & maskl);
                             visRtmVolume[1] = (int)(sample & maskr);
+                            visRtmSourceVolume[0] = (int)(sourceSample & maskl);
+                            visRtmSourceVolume[1] = (int)(sourceSample & maskr);
                         }
                     }
                 }

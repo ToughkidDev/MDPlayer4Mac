@@ -75,10 +75,10 @@ namespace MDSound
             visVolume[ChipID][1][1] = chip[ChipID].visVolume[1];
             visVolume[ChipID][2][0] = chip[ChipID].psg.visVolume;
             visVolume[ChipID][2][1] = chip[ChipID].psg.visVolume;
-            visVolume[ChipID][3][0] = chip[ChipID].visRtmVolume[0];
-            visVolume[ChipID][3][1] = chip[ChipID].visRtmVolume[1];
-            visVolume[ChipID][4][0] = chip[ChipID].visAPCMVolume[0];
-            visVolume[ChipID][4][1] = chip[ChipID].visAPCMVolume[1];
+            visVolume[ChipID][3][0] = chip[ChipID].visRtmSourceVolume[0];
+            visVolume[ChipID][3][1] = chip[ChipID].visRtmSourceVolume[1];
+            visVolume[ChipID][4][0] = chip[ChipID].visAPCMSourceVolume[0];
+            visVolume[ChipID][4][1] = chip[ChipID].visAPCMSourceVolume[1];
         }
 
         private int YM2610_Write(byte ChipID, uint adr, byte data)
@@ -126,6 +126,14 @@ namespace MDSound
             if (chip[ChipID] == null) return;
 
             chip[ChipID].SetVolumeADPCMB(db);
+        }
+
+        // The OPNB core owns the actual ADPCM-A key state.  Expose it for the
+        // channel monitor instead of trying to infer six simultaneous voices from
+        // the last register write.
+        public byte GetAdpcmAKeyMask(byte ChipID)
+        {
+            return chip[ChipID]?.adpcmakey ?? 0;
         }
 
         public override int Write(byte ChipID, int port, int adr, int data)

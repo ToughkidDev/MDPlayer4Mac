@@ -22,6 +22,7 @@ namespace MDPlayer.UI.Visualizer
 
         private readonly MDChipParams.Y8950 newParam = new();
         private readonly MDChipParams.Y8950 oldParam = new();
+        private bool adpcmActive;
 
         public PixelScreen Screen => screen;
 
@@ -122,31 +123,26 @@ namespace MDPlayer.UI.Visualizer
             // ADPCM (channel 14) - Delta-N drives the playback sample rate, TL the volume.
             newParam.channels[14].inst[12] = y8950Register[0x10] + (y8950Register[0x11] << 8); // Delta
 
-            if (ki.On[14])
+            if (ki.On[14]) adpcmActive = true;
+            if (ki.Off[14]) adpcmActive = false;
+
+            if (adpcmActive)
             {
                 // fSample = deltaN * 50KHz / (2^16)
                 double fSample = newParam.channels[14].inst[12] * 50000.0 / (1 << 16);
                 int pnt = Common.searchSegaPCMNote(fSample / 8000.0);
-
-                if (newParam.channels[14].note != pnt)
-                {
-                    newParam.channels[14].note = pnt;
-                    int tl = y8950Register[0x12];
-                    newParam.channels[14].volume = pnt == -1 ? 0 : Common.Range(tl >> 3, 0, 19);
-                }
-                else
-                {
-                    newParam.channels[14].volume--;
-                    if (newParam.channels[14].volume < 0) newParam.channels[14].volume = 0;
-                }
+                newParam.channels[14].note = pnt;
+                int tl = y8950Register[0x12];
+                newParam.channels[14].volume = pnt == -1 ? 0 : Common.Range(tl >> 3, 0, 19);
             }
-
-            newParam.channels[14].volume--;
-            if (newParam.channels[14].volume <= 0)
+            else
             {
-                newParam.channels[14].note = -1;
                 newParam.channels[14].volume--;
-                if (newParam.channels[14].volume < 0) newParam.channels[14].volume = 0;
+                if (newParam.channels[14].volume <= 0)
+                {
+                    newParam.channels[14].note = -1;
+                    newParam.channels[14].volume = 0;
+                }
             }
         }
 

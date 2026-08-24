@@ -30,6 +30,7 @@ namespace MDPlayer.UI.Visualizer
 
         private readonly MDChipParams.YM2610 newParam = new();
         private readonly MDChipParams.YM2610 oldParam = new();
+        private readonly int[] liveMeterLevels = new int[10];
 
         public PixelScreen Screen => screen;
 
@@ -52,7 +53,43 @@ namespace MDPlayer.UI.Visualizer
             screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
             // FM 1-6 + FM-EX 1-3, then SSG 1-3, then ADPCM-B/ADPCM-A.
             screen.ReorderRowsFrom(bg, 8, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11, 6, 7, 8, 12);
+
+            // The background sprite contains the bar artwork.  Leaving these channels
+            // at Channel's sentinel value (-1) means the first draw is skipped and
+            // the background can look like a fully lit meter.  New values are zero
+            // while old values remain -1, so the first UI tick actively clears them.
+            for (int channel = 12; channel < 19; channel++)
+            {
+                newParam.channels[channel].volumeL = 0;
+                newParam.channels[channel].volumeR = 0;
+            }
             screen.Present();
+        }
+
+        private static int ToMeterLevel(int[][]? levels, int source, int side)
+        {
+            if (levels == null || source < 0 || source >= levels.Length
+                || levels[source] == null || side < 0 || side >= levels[source].Length)
+            {
+                return 0;
+            }
+
+            // The emulated OPNB emits 16-bit-ish mixer values.  1,600 units per LED
+            // segment leaves visible headroom for the loudest Neo Geo ADPCM samples.
+            long sample = levels[source][side];
+            return Math.Min((int)(Math.Abs(sample) / 1600), 19);
+        }
+
+        private int UpdateLiveMeter(int meterIndex, int rawLevel)
+        {
+            // This is deliberately driven by the UI timer, not the audio callback:
+            // the bar falls naturally after Stop even though the renderer no longer
+            // supplies samples.  A small hold also prevents zero crossings flickering.
+            int previous = liveMeterLevels[meterIndex];
+            liveMeterLevels[meterIndex] = rawLevel >= previous
+                ? rawLevel
+                : Math.Max(0, previous - 2);
+            return liveMeterLevels[meterIndex];
         }
 
         // frmYM2610.cs:239 screenChangeParams.
@@ -66,6 +103,18 @@ namespace MDPlayer.UI.Visualizer
             int[] ym2610Ch3SlotVol = chipRegister.GetYM2610Ch3SlotVolume(ChipID);
             int[][] ym2610Rhythm = chipRegister.GetYM2610RhythmVolume(ChipID);
             int[] ym2610AdpcmVol = chipRegister.GetYM2610AdpcmVolume(ChipID);
+            int[][] ym2610LiveVolume = chipRegister.GetYM2610VisVolume(ChipID);
+            byte adpcmAKeyMask = chipRegister.GetYM2610AdpcmAKeyMask(ChipID);
+
+            int fmMeterL = UpdateLiveMeter(0, ToMeterLevel(ym2610LiveVolume, 1, 0));
+            int fmMeterR = UpdateLiveMeter(1, ToMeterLevel(ym2610LiveVolume, 1, 1));
+            int ssgMeter = Math.Max(
+                UpdateLiveMeter(2, ToMeterLevel(ym2610LiveVolume, 2, 0)),
+                UpdateLiveMeter(3, ToMeterLevel(ym2610LiveVolume, 2, 1)));
+            int adpcmAMeterL = UpdateLiveMeter(4, ToMeterLevel(ym2610LiveVolume, 3, 0));
+            int adpcmAMeterR = UpdateLiveMeter(5, ToMeterLevel(ym2610LiveVolume, 3, 1));
+            int adpcmBMeterL = UpdateLiveMeter(6, ToMeterLevel(ym2610LiveVolume, 4, 0));
+            int adpcmBMeterR = UpdateLiveMeter(7, ToMeterLevel(ym2610LiveVolume, 4, 1));
 
             bool isFmEx = (ym2610Register[0][0x27] & 0x40) > 0;
             newParam.channels[2].ex = isFmEx;
@@ -145,6 +194,11 @@ namespace MDPlayer.UI.Visualizer
                     v = ((con & 0x80) != 0 && (m & 0x80) != 0 && v > (ym2610Register[p][0x4c + c] & 0x7f)) ? (ym2610Register[p][0x4c + c] & 0x7f) : v; // OP4
                     channel.volumeL = Math.Min(Math.Max((int)((127 - v) / 127.0 * ((ym2610Register[p][0xb4 + c] & 0x80) != 0 ? 1 : 0) * ym2610Vol[ch] / 80.0), 0), 19);
                     channel.volumeR = Math.Min(Math.Max((int)((127 - v) / 127.0 * ((ym2610Register[p][0xb4 + c] & 0x40) != 0 ? 1 : 0) * ym2610Vol[ch] / 80.0), 0), 19);
+                    if ((fmKeyYM2610[ch] & 1) != 0)
+                    {
+                        if ((ym2610Register[p][0xb4 + c] & 0x80) != 0) channel.volumeL = Math.Max(channel.volumeL, fmMeterL);
+                        if ((ym2610Register[p][0xb4 + c] & 0x40) != 0) channel.volumeR = Math.Max(channel.volumeR, fmMeterR);
+                    }
                 }
                 else
                 {
@@ -165,6 +219,11 @@ namespace MDPlayer.UI.Visualizer
                     int v = (m & 0x10) != 0 ? ym2610Register[p][0x40 + c] : 127;
                     newParam.channels[2].volumeL = Math.Min(Math.Max((int)((127 - v) / 127.0 * ((ym2610Register[0][0xb4 + 2] & 0x80) != 0 ? 1 : 0) * ym2610Ch3SlotVol[0] / 80.0), 0), 19);
                     newParam.channels[2].volumeR = Math.Min(Math.Max((int)((127 - v) / 127.0 * ((ym2610Register[0][0xb4 + 2] & 0x40) != 0 ? 1 : 0) * ym2610Ch3SlotVol[0] / 80.0), 0), 19);
+                    if ((fmKeyYM2610[2] & 0x10) != 0)
+                    {
+                        if ((ym2610Register[0][0xb4 + 2] & 0x80) != 0) newParam.channels[2].volumeL = Math.Max(newParam.channels[2].volumeL, fmMeterL);
+                        if ((ym2610Register[0][0xb4 + 2] & 0x40) != 0) newParam.channels[2].volumeR = Math.Max(newParam.channels[2].volumeR, fmMeterR);
+                    }
                 }
                 channel.note = n;
             }
@@ -197,6 +256,10 @@ namespace MDPlayer.UI.Visualizer
 
                     int v = (m & (0x10 << op)) != 0 ? ym2610Register[0][0x42 + op * 4] : 127;
                     channel.volumeL = Math.Min(Math.Max((int)((127 - v) / 127.0 * ym2610Ch3SlotVol[ch - 5] / 80.0), 0), 19);
+                    if ((fmKeyYM2610[2] & (0x10 << (ch - 5))) != 0)
+                    {
+                        channel.volumeL = Math.Max(channel.volumeL, fmMeterL);
+                    }
                 }
                 else
                 {
@@ -215,6 +278,7 @@ namespace MDPlayer.UI.Visualizer
 
                 channel.volumeL = ym2610Register[0][0x08 + ch] & 0xf;
                 channel.volume = (t || n) ? (ym2610Register[0][0x08 + ch] & 0xf) : 0;
+                if (channel.volume > 0) channel.volume = Math.Max(channel.volume, ssgMeter);
 
                 int ft = ym2610Register[0][0x00 + ch * 2];
                 int ct = ym2610Register[0][0x01 + ch * 2] & 0xf;
@@ -249,7 +313,7 @@ namespace MDPlayer.UI.Visualizer
             adpcmB.pan = (ym2610Register[0][0x11] & 0xc0) >> 6;
             if (ym2610AdpcmVol[0] != 0)
             {
-                adpcmB.volumeL = Math.Min(Math.Max(ym2610AdpcmVol[0] * ym2610Register[0][0x1b], 0), 19);
+                adpcmB.volumeL = Math.Min(Math.Max(ym2610AdpcmVol[0] / 80, 0), 19);
             }
             else if (adpcmB.volumeL > 0)
             {
@@ -257,7 +321,7 @@ namespace MDPlayer.UI.Visualizer
             }
             if (ym2610AdpcmVol[1] != 0)
             {
-                adpcmB.volumeR = Math.Min(Math.Max(ym2610AdpcmVol[1] * ym2610Register[0][0x1b], 0), 19);
+                adpcmB.volumeR = Math.Min(Math.Max(ym2610AdpcmVol[1] / 80, 0), 19);
             }
             else if (adpcmB.volumeR > 0)
             {
@@ -271,19 +335,25 @@ namespace MDPlayer.UI.Visualizer
             {
                 adpcmB.note = -1;
             }
+            // The live OPNB output is the authoritative playback signal.  Keep the
+            // register check for note text above, but do not let a momentarily cleared
+            // key register suppress an audibly active ADPCM-B meter.
+            if (adpcmBMeterL != 0 || adpcmBMeterR != 0)
+            {
+                adpcmB.volumeL = Math.Max(adpcmB.volumeL, adpcmBMeterL);
+                adpcmB.volumeR = Math.Max(adpcmB.volumeR, adpcmBMeterR);
+            }
 
             // ADPCM A (6-voice "rhythm" section, index 13-18).
-            int tl = ym2610Register[1][0x01] & 0x3f;
             for (int ch = 13; ch < 19; ch++)
             {
                 MDChipParams.Channel channel = newParam.channels[ch];
                 channel.pan = (ym2610Register[1][0x08 + ch - 13] & 0xc0) >> 6;
                 channel.volumeRL = ym2610Register[1][ch - 13 + 0x08] & 0x1f;
-                int il = ym2610Register[1][0x08 + ch - 13] & 0x1f;
-
+                int adpcmIndex = ch - 13;
                 if (ym2610Rhythm[ch - 13][0] != 0)
                 {
-                    channel.volumeL = Math.Min(Math.Max(ym2610Rhythm[ch - 13][0] * tl * il / 128, 0), 19);
+                    channel.volumeL = Math.Min(Math.Max(ym2610Rhythm[ch - 13][0] / 80, 0), 19);
                 }
                 else if (channel.volumeL > 0)
                 {
@@ -291,11 +361,20 @@ namespace MDPlayer.UI.Visualizer
                 }
                 if (ym2610Rhythm[ch - 13][1] != 0)
                 {
-                    channel.volumeR = Math.Min(Math.Max(ym2610Rhythm[ch - 13][1] * tl * il / 128, 0), 19);
+                    channel.volumeR = Math.Min(Math.Max(ym2610Rhythm[ch - 13][1] / 80, 0), 19);
                 }
                 else if (channel.volumeR > 0)
                 {
                     channel.volumeR--;
+                }
+
+                // ADPCM-A key commands can start or stop several voices at once.
+                // The OPNB core's live key mask is therefore the only reliable way
+                // to associate the mixed ADPCM-A meter with its six displayed rows.
+                if ((adpcmAKeyMask & (1 << adpcmIndex)) != 0)
+                {
+                    channel.volumeL = Math.Max(channel.volumeL, adpcmAMeterL);
+                    channel.volumeR = Math.Max(channel.volumeR, adpcmAMeterR);
                 }
             }
         }

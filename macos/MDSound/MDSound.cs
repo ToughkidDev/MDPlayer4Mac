@@ -677,6 +677,36 @@ namespace MDSound
             }
         }
 
+        // `visVolume` is a real-time meter latch owned by each instrument.  Playback can
+        // stop while a channel window remains visible, so no subsequent audio callback is
+        // available to overwrite its final sample.  Clear all registered latches together
+        // at a transport stop; visualizers that want a short falloff keep that purely in
+        // their UI-side display state.
+        public void ClearVisualizationVolumes()
+        {
+            lock (lockobj)
+            {
+                foreach (Instrument[] instruments in dicInst.Values)
+                {
+                    foreach (Instrument instrument in instruments)
+                    {
+                        int[][][] levels = instrument?.visVolume;
+                        if (levels == null) continue;
+
+                        for (int chip = 0; chip < levels.Length; chip++)
+                        {
+                            if (levels[chip] == null) continue;
+                            for (int source = 0; source < levels[chip].Length; source++)
+                            {
+                                if (levels[chip][source] != null)
+                                    Array.Clear(levels[chip][source], 0, levels[chip][source].Length);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
 
         //public int Update(short[] buf, int offset, int sampleCount, Action frame)
         //{
@@ -6937,16 +6967,34 @@ namespace MDSound
             return ((ym2608)dicInst[enmInstrumentType.YM2608][ChipIndex]).visVolume;
         }
 
+        public byte getYM2608RhythmKeyMask(int ChipIndex, byte ChipID)
+        {
+            if (!dicInst.ContainsKey(enmInstrumentType.YM2608)
+                || ChipIndex < 0 || ChipIndex >= dicInst[enmInstrumentType.YM2608].Length)
+            {
+                return 0;
+            }
+
+            return ((ym2608)dicInst[enmInstrumentType.YM2608][ChipIndex]).GetRhythmKeyMask(ChipID);
+        }
+
+        public bool isYM2608AdpcmBPlaying(int ChipIndex, byte ChipID)
+        {
+            return dicInst.ContainsKey(enmInstrumentType.YM2608)
+                && ChipIndex >= 0 && ChipIndex < dicInst[enmInstrumentType.YM2608].Length
+                && ((ym2608)dicInst[enmInstrumentType.YM2608][ChipIndex]).IsAdpcmBPlaying(ChipID);
+        }
+
         public int[][][] getYM2609VisVolume()
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2609)) return null;
-            return ((ym2608)dicInst[enmInstrumentType.YM2609][0]).visVolume;
+            return ((ym2609)dicInst[enmInstrumentType.YM2609][0]).visVolume;
         }
 
         public int[][][] getYM2609VisVolume(int ChipIndex)
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2609)) return null;
-            return ((ym2608)dicInst[enmInstrumentType.YM2609][ChipIndex]).visVolume;
+            return ((ym2609)dicInst[enmInstrumentType.YM2609][ChipIndex]).visVolume;
         }
 
         public int[][][] getYM2610VisVolume()
@@ -6959,6 +7007,17 @@ namespace MDSound
         {
             if (!dicInst.ContainsKey(enmInstrumentType.YM2610)) return null;
             return ((ym2610)dicInst[enmInstrumentType.YM2610][ChipIndex]).visVolume;
+        }
+
+        public byte getYM2610AdpcmAKeyMask(int ChipIndex, byte ChipID)
+        {
+            if (!dicInst.ContainsKey(enmInstrumentType.YM2610)
+                || ChipIndex < 0 || ChipIndex >= dicInst[enmInstrumentType.YM2610].Length)
+            {
+                return 0;
+            }
+
+            return ((ym2610)dicInst[enmInstrumentType.YM2610][ChipIndex]).GetAdpcmAKeyMask(ChipID);
         }
 
         public int[][][] getYM2612VisVolume()

@@ -14,6 +14,7 @@
 // Deliberate simplification: same ExAll hardcoded-false simplification as YM2203 (see that
 // file's header for the full rationale - this port never wired Setting through to the
 // visualizer layer).
+using System;
 using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
@@ -27,6 +28,7 @@ namespace MDPlayer.UI.Visualizer
 
         private readonly MDChipParams.YM2608 newParam = new();
         private readonly MDChipParams.YM2608 oldParam = new();
+        private readonly int[] liveMeterLevels = new int[4];
 
         public PixelScreen Screen => screen;
 
@@ -34,6 +36,26 @@ namespace MDPlayer.UI.Visualizer
         private static readonly byte[] Md = { 0x08 << 4, 0x08 << 4, 0x08 << 4, 0x08 << 4, 0x0c << 4, 0x0e << 4, 0x0e << 4, 0x0f << 4 };
         private static readonly float[] FmDivTbl = { 6, 3, 2 };
         private static readonly float[] SsgDivTbl = { 4, 2, 1 };
+
+        private static int ToMeterLevel(int[][]? levels, int source, int side, int unitsPerSegment = 1600, int maximum = 19)
+        {
+            if (levels == null || source < 0 || source >= levels.Length
+                || levels[source] == null || side < 0 || side >= levels[source].Length)
+            {
+                return 0;
+            }
+
+            return Math.Min((int)(Math.Abs((long)levels[source][side]) / unitsPerSegment), maximum);
+        }
+
+        private int UpdateLiveMeter(int meterIndex, int rawLevel)
+        {
+            int previous = liveMeterLevels[meterIndex];
+            liveMeterLevels[meterIndex] = rawLevel >= previous
+                ? rawLevel
+                : Math.Max(0, previous - 2);
+            return liveMeterLevels[meterIndex];
+        }
 
         public Ym2608Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
@@ -49,6 +71,14 @@ namespace MDPlayer.UI.Visualizer
             screen.DrawIntArray(0, 0, bg.Pixels, bg.Width, 0, 0, bg.Width, bg.Height);
             // FM 1-6 + FM-EX 1-3, then SSG 1-3, then ADPCM.
             screen.ReorderRowsFrom(bg, 8, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11, 6, 7, 8, 12);
+
+            // Force the first refresh to paint PCM meters empty rather than leaving
+            // the background sprite's bar pixels visible as a false full-scale level.
+            for (int channel = 12; channel < 19; channel++)
+            {
+                newParam.channels[channel].volumeL = 0;
+                newParam.channels[channel].volumeR = 0;
+            }
             screen.Present();
         }
 
@@ -63,6 +93,19 @@ namespace MDPlayer.UI.Visualizer
             int[] ym2608Ch3SlotVol = chipRegister.GetYM2608Ch3SlotVolume(ChipID);
             int[][] ym2608Rhythm = chipRegister.GetYM2608RhythmVolume(ChipID);
             int[] ym2608AdpcmVol = chipRegister.GetYM2608AdpcmVolume(ChipID);
+            int[][] ym2608LiveVolume = chipRegister.GetYM2608VisVolume(ChipID);
+            byte rhythmKeyMask = chipRegister.GetYM2608RhythmKeyMask(ChipID);
+            bool hasAdpcmLiveMeter = ym2608LiveVolume != null
+                && ym2608LiveVolume.Length > 4
+                && ym2608LiveVolume[4] != null
+                && ym2608LiveVolume[4].Length > 1;
+            int rhythmMeterL = UpdateLiveMeter(0, ToMeterLevel(ym2608LiveVolume, 3, 0));
+            int rhythmMeterR = UpdateLiveMeter(1, ToMeterLevel(ym2608LiveVolume, 3, 1));
+            // ADPCM-B uses a 15-segment short bar.  Its decoded source amplitude is
+            // naturally lower than the FM meter scale, so use a tighter scale to make
+            // active playback legible without ever overfilling that bar.
+            int adpcmMeterL = UpdateLiveMeter(2, ToMeterLevel(ym2608LiveVolume, 4, 0, unitsPerSegment: 450, maximum: 15));
+            int adpcmMeterR = UpdateLiveMeter(3, ToMeterLevel(ym2608LiveVolume, 4, 1, unitsPerSegment: 450, maximum: 15));
 
             newParam.timerA = ym2608Register[0][0x24] | ((ym2608Register[0][0x25] & 0x3) << 8);
             newParam.timerB = ym2608Register[0][0x26];
@@ -240,8 +283,15 @@ namespace MDPlayer.UI.Visualizer
             // ADPCM
             newParam.channels[12].pan = (ym2608Register[1][0x01] & 0xc0) >> 6;
             newParam.channels[12].volume = ym2608Register[1][0x0b];
-            newParam.channels[12].volumeL = System.Math.Min(System.Math.Max(ym2608AdpcmVol[0] / 90, 0), 15);
-            newParam.channels[12].volumeR = System.Math.Min(System.Math.Max(ym2608AdpcmVol[1] / 90, 0), 15);
+            // The register-derived value is only a key-on flash, not the live ADPCM
+            // amplitude.  When MDSound supplies its real output meter, draw that value
+            // directly; taking Max(register, live) pins sustained ADPCM at full scale.
+            newParam.channels[12].volumeL = hasAdpcmLiveMeter
+                ? adpcmMeterL
+                : System.Math.Min(System.Math.Max(ym2608AdpcmVol[0] / 90, 0), 15);
+            newParam.channels[12].volumeR = hasAdpcmLiveMeter
+                ? adpcmMeterR
+                : System.Math.Min(System.Math.Max(ym2608AdpcmVol[1] / 90, 0), 15);
             int delta = (ym2608Register[1][0x0a] << 8) | ym2608Register[1][0x09];
             newParam.channels[12].freq = delta;
             float frq = delta / 9447.0f;
@@ -250,13 +300,17 @@ namespace MDPlayer.UI.Visualizer
             {
                 newParam.channels[12].note = -1;
             }
-
             for (int ch = 13; ch < 19; ch++) // RHYTHM
             {
                 newParam.channels[ch].pan = (ym2608Register[0][0x18 + ch - 13] & 0xc0) >> 6;
                 newParam.channels[ch].volumeL = System.Math.Min(System.Math.Max(ym2608Rhythm[ch - 13][0] / 80, 0), 19);
                 newParam.channels[ch].volumeR = System.Math.Min(System.Math.Max(ym2608Rhythm[ch - 13][1] / 80, 0), 19);
                 newParam.channels[ch].volumeRL = ym2608Register[0][ch - 13 + 0x18] & 0x1f;
+                if ((rhythmKeyMask & (1 << (ch - 13))) != 0)
+                {
+                    newParam.channels[ch].volumeL = Math.Max(newParam.channels[ch].volumeL, rhythmMeterL);
+                    newParam.channels[ch].volumeR = Math.Max(newParam.channels[ch].volumeR, rhythmMeterR);
+                }
             }
         }
 

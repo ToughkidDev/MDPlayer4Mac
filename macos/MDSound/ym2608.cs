@@ -111,10 +111,10 @@ namespace MDSound
             visVolume[ChipID][1][1] = chip[ChipID].visVolume[1];
             visVolume[ChipID][2][0] = chip[ChipID].psg.visVolume;
             visVolume[ChipID][2][1] = chip[ChipID].psg.visVolume;
-            visVolume[ChipID][3][0] = chip[ChipID].visRtmVolume[0];
-            visVolume[ChipID][3][1] = chip[ChipID].visRtmVolume[1];
-            visVolume[ChipID][4][0] = chip[ChipID].visAPCMVolume[0];
-            visVolume[ChipID][4][1] = chip[ChipID].visAPCMVolume[1];
+            visVolume[ChipID][3][0] = chip[ChipID].visRtmSourceVolume[0];
+            visVolume[ChipID][3][1] = chip[ChipID].visRtmSourceVolume[1];
+            visVolume[ChipID][4][0] = chip[ChipID].visAPCMSourceVolume[0];
+            visVolume[ChipID][4][1] = chip[ChipID].visAPCMSourceVolume[1];
         }
 
         private int YM2608_Write(byte ChipID, uint adr, byte data)
@@ -166,6 +166,18 @@ namespace MDSound
         public uint ReadStatusEx(byte ChipID)
         {
             return chip[ChipID].ReadStatusEx();
+        }
+
+        // The monitor needs the emulation core's real playback state.  A YM2608
+        // rhythm key command can affect several of the six PCM voices at once.
+        public byte GetRhythmKeyMask(byte ChipID)
+        {
+            return chip[ChipID]?.GetRhythmKeyMask() ?? 0;
+        }
+
+        public bool IsAdpcmBPlaying(byte ChipID)
+        {
+            return chip[ChipID]?.IsADPCMBPlaying() ?? false;
         }
     }
 }

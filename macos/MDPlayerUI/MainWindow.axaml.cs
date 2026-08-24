@@ -64,8 +64,11 @@ namespace MDPlayer.UI
         private string? channelLayoutSignature;
         private ActiveViewMode activeViewMode = ActiveViewMode.Channel;
         // Channel screens are created at the Windows-compatible 2x display scale. The
-        // dashboard Zoom button toggles the complete channel stack to its native 1x size.
-        private bool channelViewHalfSize;
+        // dashboard Zoom button starts at 75% and changes size in a ping-pong sequence.
+        private static readonly double[] ChannelViewScalePercents = { 0.25, 0.50, 0.75, 1.00 };
+        private int channelViewScaleIndex = 2;
+        private int channelViewScaleDirection = 1;
+        private double ChannelViewScalePercent => ChannelViewScalePercents[channelViewScaleIndex];
         // The Windows dashboard's three timers use the same rFont_01 bitmap font as the
         // channel visualizers, rather than a system monospace font.
         private readonly DashboardTimerDisplay dashboardTimerDisplay = new();
@@ -596,6 +599,53 @@ namespace MDPlayer.UI
                 : 0);
         }
 
+        private static string GetDashboardChipName(MDSound.MDSound.enmInstrumentType type)
+        {
+            return type switch
+            {
+                MDSound.MDSound.enmInstrumentType.YM2413emu => "YM2413",
+                MDSound.MDSound.enmInstrumentType.YM2612mame => "YM2612",
+                MDSound.MDSound.enmInstrumentType.YM2151mame or MDSound.MDSound.enmInstrumentType.YM2151x68sound => "YM2151",
+                MDSound.MDSound.enmInstrumentType.YM2151x68soundPCM or MDSound.MDSound.enmInstrumentType.mpcmX68k
+                    or MDSound.MDSound.enmInstrumentType.mpcmpp or MDSound.MDSound.enmInstrumentType.PCM8PP => "PCM8",
+                MDSound.MDSound.enmInstrumentType.SN76489 or MDSound.MDSound.enmInstrumentType.SN76496 => "DCSG",
+                MDSound.MDSound.enmInstrumentType.Nes => "NES APU",
+                MDSound.MDSound.enmInstrumentType.N160 => "N106",
+                MDSound.MDSound.enmInstrumentType.FME7 => "S5B",
+                _ => type.ToString(),
+            };
+        }
+
+        private void UpdateActiveChipsLabel(MusicEngineSession? session)
+        {
+            if (session == null)
+            {
+                ActiveChipsLabel.Text = "—";
+                return;
+            }
+
+            // Keep a chip's physical ID while discarding only its separate FM/PCM/etc.
+            // volume components, then summarize physical duplicate chips as 2x/3x.
+            ChipVolumeKey[] physicalChips = session.ChipVolumeSlots
+                .Select(slot => new ChipVolumeKey(slot.Key.Type, slot.Key.ChipId))
+                .Concat(session.ChipClocks.Keys.Select(type => new ChipVolumeKey(type, 0)))
+                .Where(key => key.Type != MDSound.MDSound.enmInstrumentType.None)
+                .Distinct()
+                .ToArray();
+            string[] names = physicalChips
+                .Select(key => GetDashboardChipName(key.Type))
+                .GroupBy(name => name)
+                .Select(group => group.Count() > 1 ? $"{group.Count()}x{group.Key}" : group.Key)
+                .ToArray();
+
+            // A few custom-rendered formats (notably SID/NSF) have no MDSound mixer
+            // slots. Their stored summary is still the correct description to display.
+            string text = names.Length > 0
+                ? string.Join(" · ", names)
+                : session.DescribeActiveChips().Split(" (", StringSplitOptions.None)[0];
+            ActiveChipsLabel.Text = text;
+        }
+
         private void RestoreActiveView(bool refitChannelWindow = true)
         {
             switch (activeViewMode)
@@ -620,11 +670,15 @@ namespace MDPlayer.UI
 
         private void ToggleChannelViewSize()
         {
-            channelViewHalfSize = !channelViewHalfSize;
+            if (channelViewScaleIndex == 0 || channelViewScaleIndex == ChannelViewScalePercents.Length - 1)
+            {
+                channelViewScaleDirection = -channelViewScaleDirection;
+            }
+            channelViewScaleIndex += channelViewScaleDirection;
             ApplyChannelViewScale();
             ApplyDashboardTimelineScale();
-            zoomButton.IsSelected = channelViewHalfSize;
-            StatusLabel.Text = channelViewHalfSize ? "채널 뷰 50% 크기" : "채널 뷰 원래 크기";
+            zoomButton.IsSelected = channelViewScaleIndex != ChannelViewScalePercents.Length - 1;
+            StatusLabel.Text = $"채널 뷰 {(int)(ChannelViewScalePercent * 100)}% 크기";
 
             // Only the channel view's desired size changes. Mixer/playlist modes retain
             // their own layout until the user explicitly returns to the channel view.
@@ -636,7 +690,8 @@ namespace MDPlayer.UI
 
         private void ApplyChannelViewScale()
         {
-            double scale = channelViewHalfSize ? 1.0 : 2.0;
+            // PixelScreen's original 2x presentation is 100% channel-view size.
+            double scale = ChannelViewScalePercent * 2.0;
             foreach (PixelScreen screen in VisualizerHost.Children.OfType<PixelScreen>())
             {
                 screen.SetDisplayScale(scale);
@@ -646,16 +701,20 @@ namespace MDPlayer.UI
         private void ApplyDashboardTimelineScale()
         {
             // The normal dashboard is 1.5x so its original 8px Windows glyphs are as
-            // legible as the channel view. Compact channel mode uses 60% glyphs and a
-            // matching shorter timeline rather than leaving a wide bar.
-            double scale = channelViewHalfSize ? 0.6 : 1.5;
+            // legible as the channel view. Preserve the established 50% view's 60%
+            // timer size, then interpolate the new 25% and 75% presentations around it.
+            double channelScale = ChannelViewScalePercent;
+            double scale = channelScale <= 0.50
+                ? channelScale * 1.2
+                : 0.6 + (channelScale - 0.5) * 1.8;
             dashboardTimerDisplay.SetDisplayScale(scale);
             double width = dashboardTimerDisplay.Screen.NativeWidth * scale;
-            // In compact channel view the timeline is 40% of the normal channel view's
-            // own progress-bar width (which is 80% of the original 1.5x timer area).
-            double timelineWidth = channelViewHalfSize
-                ? dashboardTimerDisplay.Screen.NativeWidth * 1.5 * 0.8 * 0.4
-                : width * 0.8;
+            // 50% remains 40% of the full-size timeline, as requested previously.
+            // The 25%, 75%, and 100% widths become 20%, 80%, and 120% respectively.
+            double timelineFraction = channelScale <= 0.50
+                ? channelScale * 0.8
+                : channelScale * 1.6 - 0.4;
+            double timelineWidth = dashboardTimerDisplay.Screen.NativeWidth * 1.5 * 0.8 * timelineFraction;
             timelineTrackWidth = timelineWidth;
             TimelineProgressTrack.Width = timelineWidth;
             TimelineProgressTrack.MinWidth = timelineWidth;
@@ -838,7 +897,7 @@ namespace MDPlayer.UI
             informationViewButton = MakeTransportButton("Information", "곡 정보", () => ShowInformationView());
             volumeViewButton = MakeTransportButton("Mixer", "볼륨 뷰", () => ShowVolumeView());
             channelViewButton = MakeTransportButton("KBD", "채널 뷰", () => ShowChannelView());
-            zoomButton = MakeTransportButton("Zoom", "채널 뷰 50% 크기 / 원래 크기", ToggleChannelViewSize);
+            zoomButton = MakeTransportButton("Zoom", "채널 뷰 크기 전환 (75% → 100% → 75% → 50% → 25%)", ToggleChannelViewSize);
             loopButton = MakeTransportButton("Loop", "현재 곡 반복", OnLoopClick);
 
             TransportButtonsHost.Children.Add(stopButton.Screen);
@@ -885,7 +944,7 @@ namespace MDPlayer.UI
             playButton.IsSelected = playing;
             pauseButton.IsSelected = isPaused;
             zoomButton.IsEnabled = activeViewMode == ActiveViewMode.Channel && VisualizerHost.Children.Count > 0;
-            zoomButton.IsSelected = channelViewHalfSize;
+            zoomButton.IsSelected = channelViewScaleIndex != ChannelViewScalePercents.Length - 1;
             loopButton.IsEnabled = true;
             UpdateLoopButtonAppearance();
             loopButton.IsSelected = loopEnabled || randomPlaybackEnabled;
@@ -920,6 +979,7 @@ namespace MDPlayer.UI
         // it's served its purpose.
         private void ShowVisualizersFor(MusicEngineSession session)
         {
+            UpdateActiveChipsLabel(session);
             HideVisualizers();
 
             // VGM headers can flag a chip as present twice (e.g. two SN76489s) via a
@@ -1353,8 +1413,8 @@ namespace MDPlayer.UI
                 ArrangeVgmVisualizersByAudioFamily();
             }
 
-            // New visualizers are constructed at 2x. Reapply the user's current toggle
-            // before measuring the stack so track changes do not reset the compact view.
+            // New visualizers are constructed at 2x. Reapply the user's current scale
+            // before measuring the stack so track changes do not reset its size.
             ApplyChannelViewScale();
             visualizerTimer = new DispatcherTimer { Interval = VisualizerInterval };
             visualizerTimer.Tick += (_, _) =>
@@ -1447,6 +1507,12 @@ namespace MDPlayer.UI
                     secondary.ScreenChangeParams();
                     secondary.ScreenDrawParams();
                 }
+
+                // The channel visualizers consume peak-hold values maintained by
+                // ChipRegister (FM plus OPN rhythm/ADPCM sections). The Windows
+                // player advances those values once after each screen refresh;
+                // without this, every peak remains frozen on macOS.
+                loadedSession?.ChipRegister.updateVol();
             };
             visualizerTimer.Start();
         }
@@ -2103,6 +2169,7 @@ namespace MDPlayer.UI
                         {
                             if (!ReferenceEquals(queue, watchedQueue)) return;
                             playbackEnded = true;
+                            loadedSession?.ChipRegister.ClearVisualizationVolumes();
                             _ = ContinueAfterCompletionAsync();
                         });
                     }
@@ -2230,6 +2297,7 @@ namespace MDPlayer.UI
             loadedVgmBytes = entry.Bytes;
             loadedFileName = entry.SourcePath ?? entry.Name;
             loadedSession = null;
+            UpdateActiveChipsLabel(null);
             playbackEnded = true;
             isPaused = false;
             FileLabel.Text = playlist.Count > 1 ? $"{entry.Name}  ({index + 1}/{playlist.Count})" : entry.Name;
@@ -2341,9 +2409,16 @@ namespace MDPlayer.UI
             MusicEngineSession? session = loadedSession;
             if (session == null || mixerVisualizer == null) return;
 
-            session.ResetVolumesToDefaults();
+            // Reset adopts this file's own balance as the new user preference.  Store it
+            // both in Setting.Balance and in the in-memory cross-song overrides so a
+            // following track cannot restore an older slider position.
+            session.ResetVolumesToDefaults(persist: true);
             chipVolumeOverrides.Clear();
-            masterVolumeOverride = null;
+            foreach (ChipVolumeSlot slot in session.ChipVolumeSlots)
+            {
+                chipVolumeOverrides[slot.Key] = slot.Volume;
+            }
+            masterVolumeOverride = session.MasterVolume;
             dashboardMasterVolumeSlider.SetValue(session.MasterVolume);
             mixerVisualizer.Refresh();
             StatusLabel.Text = "곡의 기본 볼륨으로 복원했습니다";
@@ -2355,6 +2430,7 @@ namespace MDPlayer.UI
             queue?.Stop();
             queue?.Dispose();
             queue = null;
+            loadedSession?.ChipRegister.ClearVisualizationVolumes();
             isPaused = false;
             playbackEnded = true;
         }
