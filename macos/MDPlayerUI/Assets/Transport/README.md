@@ -14,3 +14,7 @@ pixel-art transport layout. Regenerate with `macos/tools/export_sprites.py`, or 
 `ccZoom`/`chZoom`/`ciZoom` are the Windows Zoom button sprites. In the macOS dashboard
 they toggle every channel screen between its regular 2× presentation and compact 1×
 presentation.
+
+`ccSetting`/`chSetting`/`ciSetting` are the original Windows Setting button sprites. They
+open the native macOS-port settings window, currently containing the Windows-compatible
+Output and About tabs.

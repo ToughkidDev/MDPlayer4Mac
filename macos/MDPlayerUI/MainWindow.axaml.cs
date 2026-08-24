@@ -35,8 +35,6 @@ namespace MDPlayer.UI
 {
     public partial class MainWindow : Window
     {
-        private const int FramesPerBuffer = 2048;
-        private const int BufferCount = 4;
         private const double CompactPlaylistRowHeight = 18;
         private const double EmbeddedPlaylistRows = 3.5;
         private const double PlaylistViewRows = 20;
@@ -60,6 +58,7 @@ namespace MDPlayer.UI
         private bool randomPlaybackEnabled;
         private bool loopButtonShowsRandom;
         private bool autoPlayEnabled;
+        private bool reloadSessionForOutputSettings;
         private long fileLoopCounter;
         private string? channelLayoutSignature;
         private ActiveViewMode activeViewMode = ActiveViewMode.Channel;
@@ -89,7 +88,8 @@ namespace MDPlayer.UI
         private int playlistIndex = -1;
         private bool synchronizingPlaylistSelection;
         private ListBox? focusedPlaylistList;
-        private KeyEventArgs? lastHandledPlaylistKeyEvent;
+        private KeyEventArgs? lastHandledKeyEvent;
+        private readonly System.Collections.Generic.Dictionary<Key, TransportSpriteButton> dashboardKeyBindings = new();
 
         // Built from the Windows frmMain cc/ch/ci sprite triplets after XAML has created
         // the two host rows. The transport row is Stop, Pause, Previous, Slow, Play, Fast,
@@ -108,6 +108,7 @@ namespace MDPlayer.UI
         private TransportSpriteButton channelViewButton = null!;
         private TransportSpriteButton zoomButton = null!;
         private TransportSpriteButton loopButton = null!;
+        private TransportSpriteButton settingButton = null!;
 
         // Kept independently of a playback session so a volume change made for one song is
         // immediately honoured when the user opens another song.  The current Setting is
@@ -899,6 +900,10 @@ namespace MDPlayer.UI
             channelViewButton = MakeTransportButton("KBD", "채널 뷰", () => ShowChannelView());
             zoomButton = MakeTransportButton("Zoom", "채널 뷰 크기 전환 (75% → 100% → 75% → 50% → 25%)", ToggleChannelViewSize);
             loopButton = MakeTransportButton("Loop", "현재 곡 반복", OnLoopClick);
+            settingButton = MakeTransportButton("Setting", "설정", () => _ = ShowSettingsAsync());
+            // Settings remains a compact corner utility while retaining the original
+            // Windows sprite's native 16×16 presentation.
+            settingButton.Screen.SetDisplayScale(1.0);
 
             TransportButtonsHost.Children.Add(stopButton.Screen);
             TransportButtonsHost.Children.Add(pauseButton.Screen);
@@ -914,7 +919,47 @@ namespace MDPlayer.UI
             UtilityButtonsHost.Children.Add(channelViewButton.Screen);
             UtilityButtonsHost.Children.Add(zoomButton.Screen);
             UtilityButtonsHost.Children.Add(loopButton.Screen);
+            DashboardSettingsHost.Content = settingButton.Screen;
+
+            // Dashboard rows, from left to right:
+            // Q W E R T Y U = Stop, Pause, Previous, Slow, Play, Fast, Next
+            // A S D F G H J = Open, Playlist, Information, Volume, Channel, Zoom, Loop
+            dashboardKeyBindings.Clear();
+            dashboardKeyBindings[Key.Q] = stopButton;
+            dashboardKeyBindings[Key.W] = pauseButton;
+            dashboardKeyBindings[Key.E] = previousButton;
+            dashboardKeyBindings[Key.R] = slowButton;
+            dashboardKeyBindings[Key.T] = playButton;
+            dashboardKeyBindings[Key.Y] = fastButton;
+            dashboardKeyBindings[Key.U] = nextButton;
+            dashboardKeyBindings[Key.A] = openButton;
+            dashboardKeyBindings[Key.S] = playlistViewButton;
+            dashboardKeyBindings[Key.D] = informationViewButton;
+            dashboardKeyBindings[Key.F] = volumeViewButton;
+            dashboardKeyBindings[Key.G] = channelViewButton;
+            dashboardKeyBindings[Key.H] = zoomButton;
+            dashboardKeyBindings[Key.J] = loopButton;
             UpdateTransportButtons();
+        }
+
+        private async Task ShowSettingsAsync()
+        {
+            var settingsWindow = new SettingsWindow();
+            bool saved = await settingsWindow.ShowDialog<bool>(this);
+            if (!saved || settingsWindow.SavedOutputSettings is not OutputSettings outputSettings) return;
+
+            // The currently playing AudioQueue was already allocated with its old buffer
+            // sizes/sample rate, so leave it uninterrupted.  Updating the retained session
+            // prevents its normal save-on-close path from restoring older Output values.
+            if (loadedSession != null)
+            {
+                loadedSession.Setting.outputDevice.Latency = outputSettings.LatencyMilliseconds;
+                loadedSession.Setting.outputDevice.WaitTime = outputSettings.WaitMilliseconds;
+                loadedSession.Setting.outputDevice.SampleRate = outputSettings.SampleRate;
+            }
+
+            reloadSessionForOutputSettings = true;
+            StatusLabel.Text = $"Output 설정 저장됨 — {outputSettings.LatencyMilliseconds} ms / {outputSettings.SampleRate} Hz; 다음 재생부터 적용";
         }
 
         private static TransportSpriteButton MakeTransportButton(string icon, string tooltip, Action click)
@@ -946,6 +991,7 @@ namespace MDPlayer.UI
             zoomButton.IsEnabled = activeViewMode == ActiveViewMode.Channel && VisualizerHost.Children.Count > 0;
             zoomButton.IsSelected = channelViewScaleIndex != ChannelViewScalePercents.Length - 1;
             loopButton.IsEnabled = true;
+            settingButton.IsEnabled = true;
             UpdateLoopButtonAppearance();
             loopButton.IsSelected = loopEnabled || randomPlaybackEnabled;
             playButton.IsRedAlert = autoPlayEnabled;
@@ -1854,15 +1900,31 @@ namespace MDPlayer.UI
         // this supplies the keyboard actions missing from the default Avalonia list.
         private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
         {
-            if (ReferenceEquals(lastHandledPlaylistKeyEvent, e)) return;
+            if (ReferenceEquals(lastHandledKeyEvent, e)) return;
 
             ListBox? list = GetPlaylistListFromKeySource(e.Source);
             list ??= focusedPlaylistList;
-            if (list == null) return;
-            if (!IsPlaylistEditorKey(e)) return;
+            if (list != null && IsPlaylistEditorKey(e))
+            {
+                lastHandledKeyEvent = e;
+                await HandlePlaylistKeyAsync(list, e);
+                return;
+            }
 
-            lastHandledPlaylistKeyEvent = e;
-            await HandlePlaylistKeyAsync(list, e);
+            // Modifiers are reserved for native editor commands such as Cmd+A. The
+            // dashboard mappings remain available while a playlist has focus, but never
+            // steal input from a text field.
+            if (e.KeyModifiers != KeyModifiers.None || IsTextInputSource(e.Source)) return;
+            if (!dashboardKeyBindings.TryGetValue(e.Key, out TransportSpriteButton? button)) return;
+
+            lastHandledKeyEvent = e;
+            if (button.InvokeClick()) e.Handled = true;
+        }
+
+        private static bool IsTextInputSource(object? source)
+        {
+            if (source is TextBox) return true;
+            return source is Visual visual && visual.GetVisualAncestors().OfType<TextBox>().Any();
         }
 
         private static bool IsPlaylistEditorKey(KeyEventArgs e)
@@ -2107,7 +2169,7 @@ namespace MDPlayer.UI
                 MusicEngineSession? session = loadedSession;
                 // A driver that naturally reached its end cannot be wound back. Reload it
                 // when Play is pressed again, while leaving the last channel view on screen.
-                if (session == null || session.Driver.Stopped)
+                if (session == null || session.Driver.Stopped || reloadSessionForOutputSettings)
                 {
                     session = await Task.Run(() => MusicEngine.Load(vgmBuf, fileName));
                     loadedSession = session;
@@ -2115,6 +2177,7 @@ namespace MDPlayer.UI
                     {
                         ApplyChipVolumeOverrides(session);
                         fileLoopCounter = session.Driver.LoopCounter;
+                        reloadSessionForOutputSettings = false;
                     }
                 }
                 if (session == null || stopRequested)
@@ -2127,10 +2190,23 @@ namespace MDPlayer.UI
 
                 session.Driver.LoopCounter = loopEnabled ? fileLoopCounter : 0;
 
+                // Output's Windows-compatible "Wait time before playing" is honoured here
+                // before the native queue is created.  It is useful for DACs/Bluetooth
+                // routes that need a short moment after a track switch; Stop cancels it.
+                Setting outputSetting = Setting.Load();
+                int waitBeforePlaying = Math.Clamp(outputSetting.outputDevice.WaitTime, 0, 5000);
+                if (waitBeforePlaying > 0)
+                {
+                    StatusLabel.Text = $"출력 준비 중... ({waitBeforePlaying} ms)";
+                    await Task.Delay(waitBeforePlaying);
+                    if (stopRequested) return;
+                }
+
+                AudioBufferConfiguration audioBuffer = MacAudioLatency.Resolve(outputSetting.outputDevice.Latency);
                 await Task.Run(() =>
                 {
                     CoreAudioQueue localQueue = new(
-                        session.SampleRate, FramesPerBuffer, BufferCount,
+                        session.SampleRate, audioBuffer.FramesPerBuffer, audioBuffer.BufferCount,
                         (buf, count) =>
                         {
                             if (stopRequested || session.Driver.Stopped) return 0;

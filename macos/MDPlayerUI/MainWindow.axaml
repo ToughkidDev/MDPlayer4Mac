@@ -42,6 +42,11 @@
                                Foreground="#BFC8FF" FontFamily="Consolas" FontSize="11"
                                TextTrimming="CharacterEllipsis" />
                 </Grid>
+                <!-- The original Settings sprite is deliberately kept as a tiny utility
+                     control, separate from the transport rows. It is overlaid at the
+                     dashboard's lower-right border so it never consumes timeline width. -->
+                <ContentControl x:Name="DashboardSettingsHost" Grid.ColumnSpan="2"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom" />
             </Grid>
         </Border>
         <!--

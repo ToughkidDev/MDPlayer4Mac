@@ -122,6 +122,15 @@ namespace MDPlayer.UI.Visualizer
             Redraw();
         }
 
+        // Keyboard shortcuts use the identical click path as a pointer release, while
+        // retaining the button's normal enabled/disabled state.
+        public bool InvokeClick()
+        {
+            if (!enabled) return false;
+            Click?.Invoke();
+            return true;
+        }
+
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             if (!enabled && !allowLongPressWhenDisabled) return;
