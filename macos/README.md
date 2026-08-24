@@ -4,7 +4,38 @@ Windows용 MDPlayer의 재생 엔진과 화면 구성을 macOS로 옮기는 작�
 Windows/WinForms 코드는 `MDPlayer/`에 보존하고, macOS 구현은 이 `macos/` 아래의
 `net8.0` 프로젝트로 분리한다.
 
-마지막 갱신: 2026-08-23
+마지막 갱신: 2026-08-24
+
+## 최근 포팅 작업 (v0.1.5)
+
+- Windows 원본의 `frmSetting` 구성을 기준으로 Avalonia 설정 창을 추가했다. `Output`,
+  `Sound`, 칩별 에뮬레이션, MIDI, 재생목록, 네트워크, 기타, About을 포함한 원본 탭을
+  확인할 수 있다. 현재 macOS에 실제로 연결된 항목은 Output이며, Windows 전용 기능은
+  오동작하지 않도록 비활성 상태로 표시한다.
+- Output에서는 Core Audio 시스템 기본 장치, 렌더링 버퍼 지연 시간(25~500 ms), 재생 전
+  대기 시간, 샘플 레이트를 설정한다. 저장한 출력 설정은 다음 재생에서 새 Audio Queue로
+  적용된다.
+- 설정 창은 긴 섹션 제목·옵션을 줄바꿈하고, 섹션 박스가 탭 내용 폭을 넘지 않도록
+  고정했다. 세로 스크롤바는 탭 오른쪽 경계에 배치한다.
+- Windows 원본의 Setting 스프라이트와 About 삽화를 가져왔다. 설정 아이콘은 대시보드
+  우측 하단의 16×16 유틸리티 버튼으로 분리해 타임라인 폭을 차지하지 않는다.
+- 대시보드 키보드 단축키를 추가했다. `Q W E R T Y U`는 Stop/Pause/Previous/Slow/
+  Play/Fast/Next, `A S D F G H J`는 Open/Playlist/Information/Volume/Channel/Zoom/
+  Loop 순서다. 비활성 버튼은 키보드로도 실행하지 않으며 Cmd/Ctrl+A, Delete,
+  Backspace 같은 재생목록 편집 키는 유지한다.
+
+## 최근 포팅 작업 (v0.1.4)
+
+- PCM·ADPCM 계열을 포함한 채널 뷰의 레벨 미터 경로를 전수 점검했다. 재생 전과 Stop 뒤의
+  미터 기본값은 0으로 초기화하고, YM2610/YM2608 등의 ADPCM-A·ADPCM-B 미터는 실제 채널
+  활동에 따라 변하도록 보정했다.
+- ADPCM 미터는 볼륨 뷰의 사용자가 설정한 게인과 독립적으로 원래 채널 신호를 표시한다.
+  작은 ADPCM-B 변화도 확인하기 쉽도록 표시 감도를 확대했다.
+- 채널 뷰 크기는 25%·50%·75%·100%를 지원하며, 기본 75%에서
+  `75 → 100 → 75 → 50 → 25 → 50 → 75` 순서로 왕복한다. 대시보드 시간 표시와 진행 막대도
+  이에 맞춰 축소·확대된다.
+- 진행 막대 아래에는 현재 곡의 사용 칩을 항상 표시한다. 같은 칩이 복수 인스턴스로
+  사용되면 `2xYM2610`, `3xDCSG`처럼 합쳐 표시한다.
 
 ## 최근 포팅 작업 (v0.1.3)
 
@@ -40,7 +71,9 @@ Windows/WinForms 코드는 `MDPlayer/`에 보존하고, macOS 구현은 이 `mac
 - 다음/이전 곡, 곡 종료 후 다음 곡 자동 재생, 반복 재생, 재생 속도 조절
 - Play 버튼 2초 롱프레스 또는 macOS Force Click으로 자동 재생 토글
 - Play 클릭 시 Fast/Slow로 바꾼 재생 속도를 1x로 복귀
-- 채널 뷰 50% 축소/복원
+- 채널 뷰 25% / 50% / 75% / 100% 크기 전환(기본 75%)
+- Windows 설정 창의 Output 및 호환성 탭, About 화면
+- 대시보드 버튼 단축키: `Q W E R T Y U` / `A S D F G H J`
 - 태그 푸시 기반 GitHub Release 자동 생성 (`osx-arm64`)
 
 ## 프로젝트 구성
@@ -94,6 +127,17 @@ UI에서 선택하거나 드롭할 수 있는 확장자는 다음과 같다.
 - Play를 2초 이상 누르거나 Force Click하면 자동 재생을 토글한다. 자동 재생 상태에서는
   Play 아이콘이 빨간색으로 표시된다. 재생목록이 비어 있어 Play가 흐리게 표시되는 경우에도
   이 롱프레스/Force Click 동작은 사용할 수 있다.
+- 키보드는 위쪽 버튼 줄을 `Q W E R T Y U`, 아래쪽 버튼 줄을 `A S D F G H J`에 각각
+  왼쪽부터 대응한다. 예를 들어 `T`는 Play, `F`는 볼륨 뷰, `J`는 반복/랜덤 버튼이다.
+
+### 설정
+
+- 대시보드 우측 하단의 Setting 아이콘으로 연다.
+- `Output`은 Core Audio 출력의 렌더링 지연 시간, 재생 전 대기 시간, 샘플 레이트를 저장한다.
+  저장값은 다음 재생에서 적용된다.
+- 나머지 탭은 Windows 원본 설정 구조와 항목명을 보존한 호환성 화면이다. SCCI/C86CTL,
+  ASIO/WASAPI, VST, MIDI 실시간 입출력처럼 macOS 포트에 아직 구현되지 않은 기능은 비활성
+  표시되어 설정값이 재생 엔진에 잘못 적용되지 않는다.
 
 ### 볼륨 뷰
 
@@ -162,8 +206,8 @@ UI 변경은 빌드 뒤 실제 macOS에서 다음을 확인한다.
 자체 포함 배포본을 만들고 GitHub Release에 ZIP을 첨부한다.
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`이며, 압축을 풀면 하나의
