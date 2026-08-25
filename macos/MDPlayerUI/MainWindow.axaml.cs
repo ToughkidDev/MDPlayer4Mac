@@ -455,7 +455,11 @@ namespace MDPlayer.UI
         {
             Grid row = new()
             {
-                ColumnDefinitions = new ColumnDefinitions("72,440"),
+                // Keep the Windows-style label column fixed, but let the value column use
+                // every extra pixel when the user widens the information view.  It used to
+                // be fixed at 440px, so making the outer window wider could not reveal a
+                // longer title, note, or composer name.
+                ColumnDefinitions = new ColumnDefinitions("72,*"),
                 MinHeight = 22,
             };
             TextBlock keyBlock = new()
@@ -478,7 +482,9 @@ namespace MDPlayer.UI
                 FontSize = 15,
                 FontWeight = FontWeight.Bold,
                 VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                // Information must remain verbatim.  A narrow window may clip at its edge,
+                // but widening it must reveal the complete GD3 value rather than an ellipsis.
+                TextTrimming = TextTrimming.None,
                 TextWrapping = TextWrapping.NoWrap,
             };
             Grid.SetColumn(valueBlock, 1);
@@ -600,7 +606,9 @@ namespace MDPlayer.UI
                 : 0);
         }
 
-        private static string GetDashboardChipName(MDSound.MDSound.enmInstrumentType type)
+        private static string GetDashboardChipName(
+            MDSound.MDSound.enmInstrumentType type,
+            bool usesK052539SccPlus = false)
         {
             return type switch
             {
@@ -613,6 +621,7 @@ namespace MDPlayer.UI
                 MDSound.MDSound.enmInstrumentType.Nes => "NES APU",
                 MDSound.MDSound.enmInstrumentType.N160 => "N106",
                 MDSound.MDSound.enmInstrumentType.FME7 => "S5B",
+                MDSound.MDSound.enmInstrumentType.K051649 => usesK052539SccPlus ? "SCC+" : "SCC",
                 _ => type.ToString(),
             };
         }
@@ -634,7 +643,7 @@ namespace MDPlayer.UI
                 .Distinct()
                 .ToArray();
             string[] names = physicalChips
-                .Select(key => GetDashboardChipName(key.Type))
+                .Select(key => GetDashboardChipName(key.Type, session.UsesK052539SccPlus))
                 .GroupBy(name => name)
                 .Select(group => group.Count() > 1 ? $"{group.Count()}x{group.Key}" : group.Key)
                 .ToArray();
@@ -797,6 +806,13 @@ namespace MDPlayer.UI
             MaxHeight = activeViewMode == ActiveViewMode.Playlist
                 ? activeMinimumHeight
                 : double.PositiveInfinity;
+
+            // SizeToContent is only a one-shot fitting tool.  Leaving it enabled lets a
+            // subsequent replacement of ViewHost's child resize the native macOS window
+            // behind the user's back, even when SelectPlaylistEntryAsync deliberately
+            // retained the same channel layout.  From this point onward the current
+            // geometry is user-owned until a mode/topology change explicitly calls Refit.
+            SizeToContent = Avalonia.Controls.SizeToContent.Manual;
         }
 
         public MainWindow()
@@ -1781,8 +1797,13 @@ namespace MDPlayer.UI
             if (replacePlaylist)
             {
                 StopPlayback();
-                HideMixer();
-                HideVisualizers();
+                // Keep the active view alive while the replacement entry is being parsed.
+                // SelectPlaylistEntryAsync compares the new channel topology with the view
+                // that is on screen; clearing it here made an otherwise identical channel
+                // layout look different on every dashboard drop and repeatedly queued a
+                // SizeToContent refit.  ShowVisualizersFor/ShowMixerFor replace these
+                // objects once the new session is ready, so leaving them visible briefly is
+                // both safe and keeps the outer window geometry stable.
                 playlist.Clear();
                 playlist.AddRange(droppedEntries);
                 playlistIndex = -1;
@@ -2406,8 +2427,12 @@ namespace MDPlayer.UI
             }
 
             string newLayoutSignature = GetChannelLayoutSignature(session);
-            bool keepChannelWindow = channelLayoutSignature == newLayoutSignature
-                && ReferenceEquals(ViewHost.Content, VisualizerHost);
+            // The active-mode value is the durable user choice.  The visualizer host can
+            // legitimately be detached while a dashboard drop is loading, so using the
+            // transient ViewHost.Content reference here falsely treated identical layouts
+            // as new ones and refit the main window on alternating drops.
+            bool keepChannelWindow = activeViewMode == ActiveViewMode.Channel
+                && channelLayoutSignature == newLayoutSignature;
             loadedSession = session;
             ApplyChipVolumeOverrides(session);
             fileLoopCounter = session.Driver.LoopCounter;

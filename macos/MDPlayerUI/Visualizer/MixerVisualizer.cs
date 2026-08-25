@@ -49,7 +49,7 @@ namespace MDPlayer.UI.Visualizer
                     .Select(slot => new Slot
                     {
                         ChipKey = slot.Key,
-                        Label = ChipLabel(slot.Key, session.ChipVolumeSlots),
+                        Label = ChipLabel(slot.Key, session.ChipVolumeSlots, session.UsesK052539SccPlus),
                     }));
             }
             else
@@ -58,7 +58,11 @@ namespace MDPlayer.UI.Visualizer
                 // records (for example renderers that only provide a master fader).
                 slots.AddRange(session.ChipVolumes.Keys
                     .OrderBy(type => type.ToString())
-                    .Select(type => new Slot { ChipKey = new ChipVolumeKey(type, 0), Label = ShortName(type) }));
+                    .Select(type => new Slot
+                    {
+                        ChipKey = new ChipVolumeKey(type, 0),
+                        Label = ShortName(type, session.UsesK052539SccPlus),
+                    }));
             }
 
             Screen = new PixelScreen();
@@ -269,7 +273,7 @@ namespace MDPlayer.UI.Visualizer
             Refresh();
         }
 
-        private static string ShortName(MDSound.MDSound.enmInstrumentType type) => type switch
+        private static string ShortName(MDSound.MDSound.enmInstrumentType type, bool usesK052539SccPlus = false) => type switch
         {
             MDSound.MDSound.enmInstrumentType.SN76489 => "DCSG",
             MDSound.MDSound.enmInstrumentType.YM2612 => "OPN2",
@@ -293,16 +297,19 @@ namespace MDPlayer.UI.Visualizer
             MDSound.MDSound.enmInstrumentType.OKIM6258 => "OKI6",
             MDSound.MDSound.enmInstrumentType.OKIM6295 => "OKI9",
             MDSound.MDSound.enmInstrumentType.MultiPCM => "MPCM",
-            MDSound.MDSound.enmInstrumentType.K051649 => "SCC",
+            MDSound.MDSound.enmInstrumentType.K051649 => usesK052539SccPlus ? "SCC+" : "SCC",
             MDSound.MDSound.enmInstrumentType.K053260 => "K053",
             MDSound.MDSound.enmInstrumentType.K054539 => "K054",
             MDSound.MDSound.enmInstrumentType.Nes => "NES",
             _ => type.ToString()[..Math.Min(4, type.ToString().Length)],
         };
 
-        private static string ChipLabel(ChipVolumeKey key, IReadOnlyCollection<ChipVolumeSlot> allSlots)
+        private static string ChipLabel(
+            ChipVolumeKey key,
+            IReadOnlyCollection<ChipVolumeSlot> allSlots,
+            bool usesK052539SccPlus)
         {
-            string label = ShortName(key.Type);
+            string label = ShortName(key.Type, usesK052539SccPlus);
             bool isDualChip = allSlots
                 .Where(slot => slot.Key.Type == key.Type)
                 .Select(slot => slot.Key.ChipId)

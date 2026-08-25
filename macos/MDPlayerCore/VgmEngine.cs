@@ -72,6 +72,12 @@ namespace MDPlayer
         public string ActiveChips = "(no supported chip)";
         public string DescribeActiveChips() => ActiveChips;
 
+        // K052539/SCC+ is encoded as a variant flag on VGM's K051649 header clock field.
+        // The underlying mixer identity intentionally remains K051649, because MDSound's
+        // K051649 implementation handles both the normal SCC page and SCC+'s page-4
+        // independent waveform RAM writes.
+        public bool UsesK052539SccPlus;
+
         // How a caller pulls rendered stereo samples out of this session. For every format
         // except drivers with custom PCM paths this is `mds.Update(buf, off, count,
         // driver.oneFrameProc)` (set by MusicEngine.Finish). SID/NSF render PCM directly;
@@ -457,7 +463,7 @@ namespace MDPlayer
             Add("YMF262", Vgm.YMF262ClockValue);
             Add("AY8910", Vgm.AY8910ClockValue);
             Add("YM2413", Vgm.YM2413ClockValue);
-            Add("K051649", Vgm.K051649ClockValue);
+            Add(Vgm.K052539SccPlusFlag ? "K052539 (SCC+)" : "K051649 (SCC)", Vgm.K051649ClockValue);
             Add("SEGAPCM", Vgm.SEGAPCMClockValue);
             Add("RF5C68", Vgm.RF5C68ClockValue);
             Add("RF5C164", Vgm.RF5C164ClockValue);
@@ -833,6 +839,9 @@ namespace MDPlayer
 
             if (vgm.K051649ClockValue != 0)
             {
+                // MDSound.K051649 also implements the SCC+ page-4 waveform writes.  Keep
+                // this shared instrument type so mixer gains and register inspection stay
+                // compatible while the VGM header flag preserves the visible chip identity.
                 MDSound.K051649 k051649 = new();
                 for (int i = 0; i < (vgm.K051649DualChipFlag ? 2 : 1); i++)
                 {
@@ -1517,6 +1526,7 @@ namespace MDPlayer
                 SampleRate = sampleRate,
                 Format = EnmFileFormat.VGM,
                 ActiveChips = MusicEngineSession.DescribeVgmActiveChips(vgm),
+                UsesK052539SccPlus = vgm.K052539SccPlusFlag,
                 RenderSamples = (b, off, count) => mds.Update(b, off, count, vgm.oneFrameProc),
                 ChipClocks = chipClocks,
                 ChipVolumes = chipVolumes,

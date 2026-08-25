@@ -484,8 +484,8 @@ namespace MDPlayer.UI
             new("YM2413(Primary)", "Emulation"),
             new("AY-3-8910(Primary)", "Emulation (fmgen)", "Emulation (mame)"),
             new("AY-3-8910(Secondary)", "Emulation (fmgen)", "Emulation (mame)"),
-            new("K051649(Secondary)", "Emulation"),
-            new("K051649(Primary)", "Emulation"),
+            new("K051649 / K052539 SCC+(Secondary)", "Emulation"),
+            new("K051649 / K052539 SCC+(Primary)", "Emulation"),
         };
 
         private static Control BuildSoundPage()

@@ -106,6 +106,10 @@
         public bool K053260DualChipFlag;
         public bool K054539DualChipFlag;
         public bool K051649DualChipFlag;
+        // VGM 1.61+ header offset 0x9c uses bit 31 to distinguish the SCC+ (K052539)
+        // from the original SCC (K051649).  Both variants share the same VGM command and
+        // MDSound mixer type, but SCC+ has an independent fifth waveform RAM page.
+        public bool K052539SccPlusFlag;
         public bool DMGDualChipFlag;
         public bool NESDualChipFlag;
         public bool MultiPCMDualChipFlag;
@@ -2422,8 +2426,10 @@
                         {
                             K051649ClockValue = K051649clock & 0x3fffffff;
                             K051649DualChipFlag = (K051649clock & 0x40000000) != 0;
-                            if (K051649DualChipFlag) chips.Add("K051649x2");
-                            else chips.Add("K051649");
+                            K052539SccPlusFlag = (K051649clock & 0x80000000) != 0;
+                            string sccName = K052539SccPlusFlag ? "K052539 (SCC+)" : "K051649 (SCC)";
+                            if (K051649DualChipFlag) chips.Add($"2x{sccName}");
+                            else chips.Add(sccName);
                         }
                     }
 
