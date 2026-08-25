@@ -192,8 +192,40 @@ git push origin v0.1.6
 생성물은 `MDPlayer4Mac-osx-arm64.zip`임. 압축을 풀면 하나의 `MDPlayer4Mac.app` 번들이
 나옴. .NET 런타임, Avalonia, Force Touch dylib, 앱 아이콘은 번들 안에 포함됨.
 
-현재 CI에서는 ad-hoc 서명만 적용함. Apple Developer ID 서명과 notarization은 아직 하지
-않았기 때문에, 다른 Mac에서 처음 실행할 때 Gatekeeper 확인이 나올 수 있음.
+## Gatekeeper 안내
+
+현재 배포본은 CI에서 ad-hoc 서명만 적용함. Apple Developer ID 서명과 notarization은 아직
+하지 않았기 때문에, 다른 Mac에서 처음 실행할 때 Gatekeeper가 개발자를 확인할 수 없다는
+경고를 표시할 수 있음. 이는 현재 배포 방식에서는 정상적인 동작임.
+
+앱은 반드시 이 저장소의 [GitHub Release](https://github.com/ToughkidDev/MDPlayer4Mac/releases)
+에서 받은 `MDPlayer4Mac-osx-arm64.zip`만 사용해야 함. 출처가 확실하지 않은 앱에는 아래
+방법을 적용하면 안 됨.
+
+가장 권장하는 실행 방법은 아래와 같음.
+
+1. ZIP을 풀어 `MDPlayer4Mac.app`을 `응용 프로그램` 폴더로 옮김.
+2. 앱을 한 번 열어 Gatekeeper 경고를 표시함.
+3. **시스템 설정 → 개인정보 보호 및 보안**으로 들어가서 화면 아래쪽의 **그래도 열기**를
+   누름.
+4. 다시 나타난 확인 창에서 **열기**를 누르고 macOS 로그인 암호를 입력함.
+
+이 승인은 해당 앱에만 저장되므로, 이후에는 일반 앱처럼 더블 클릭해서 실행할 수 있음.
+`그래도 열기` 버튼은 처음 실행을 막은 뒤 약 한 시간 동안 표시됨.
+
+시스템 설정에 버튼이 나오지 않는 경우에만, GitHub Release에서 받은 파일이 맞는지 확인한 뒤
+터미널에서 격리 속성을 제거할 수 있음.
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/MDPlayer4Mac.app"
+```
+
+이 명령은 앱 하나에만 적용되며 Gatekeeper 자체를 끄지는 않음. 다만 다운로드 파일의 보안
+표시를 직접 없애는 방식이므로, 출처를 확인할 수 없는 앱이나 `손상되었음`·악성 코드 경고가
+나오는 앱에는 사용하면 안 됨. 그런 경우에는 앱을 삭제하고 Release ZIP을 다시 받아야 함.
+
+Apple의 최신 안내도 처음 시도한 뒤 **개인정보 보호 및 보안 → 그래도 열기**로 해당 앱만
+허용하는 방식을 권장함. [Apple Gatekeeper 안내](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)
 
 ## 알려진 범위와 다음 작업
 
