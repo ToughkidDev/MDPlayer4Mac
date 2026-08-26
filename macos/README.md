@@ -6,6 +6,12 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
 
 마지막 갱신: 2026-08-26
 
+## v0.1.7
+
+- MSX-AUDIO(Y8950) ADPCM 채널 뷰가 레지스터의 고정 Total Level만 표시하던 문제를 수정했음.
+  이제 Delta-T ADPCM의 실제 디코딩 신호를 사용하므로 재생 중 게이지가 움직이며, 볼륨 뷰의
+  사용자 게인과 관계없이 원신호 기준으로 표시됨.
+
 ## v0.1.6
 
 - VGM의 K051649/K052539 플래그를 읽어 일반 SCC는 `SCC`, SCC+는 `SCC+`로 표시했음.
@@ -185,8 +191,8 @@ dotnet run --project macos/EngineSmokeTest/EngineSmokeTest.csproj -c Release -- 
 빌드해 Release에 첨부함.
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`임. 압축을 풀면 하나의 `MDPlayer4Mac.app` 번들이

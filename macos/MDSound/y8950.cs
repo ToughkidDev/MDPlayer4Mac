@@ -15,8 +15,8 @@ namespace MDSound
             device_reset_y8950(ChipID);
 
             visVolume = new int[2][][] {
-                new int[1][] { new int[2] { 0, 0 } }
-                , new int[1][] { new int[2] { 0, 0 } }
+                new int[2][] { new int[2] { 0, 0 }, new int[2] { 0, 0 } }
+                , new int[2][] { new int[2] { 0, 0 }, new int[2] { 0, 0 } }
             };
         }
 
@@ -41,6 +41,18 @@ namespace MDSound
 
             visVolume[ChipID][0][0] = outputs[0][0];
             visVolume[ChipID][0][1] = outputs[1][0];
+
+            // Keep the Delta-T stream separate from the mixed Y8950 output.  The
+            // channel view needs this raw level for the ADPCM row: using the mixed
+            // output would include FM/rhythm, and using register 0x12 only gives a
+            // fixed Total Level rather than live playback amplitude.  This value is
+            // deliberately captured before adpcmGain so the meter is independent of
+            // the user's mixer fader, like the OPN-family ADPCM meters.
+            int adpcmSample = Y8950Data[ChipID].chip == null
+                ? 0
+                : Y8950Data[ChipID].chip.output_deltat[0] >> 11;
+            visVolume[ChipID][1][0] = adpcmSample;
+            visVolume[ChipID][1][1] = adpcmSample;
         }
 
         public override Int32 Write(byte ChipID, Int32 port, Int32 adr, Int32 data)

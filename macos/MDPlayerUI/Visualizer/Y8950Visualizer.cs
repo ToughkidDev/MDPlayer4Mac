@@ -6,9 +6,9 @@
 // PCM samples, not FM). See DrawBuffY8950.cs's header for the row-layout quirk (ADPCM sits
 // visually above the rhythm section, reusing keyboard row 9).
 //
-// Data source: reads chipRegister.fmRegisterY8950 directly and calls
-// chipRegister.getY8950KeyInfo(chipID) once per frame - same pattern as every other OPL-
-// family visualizer in this port.
+// Data source: reads chipRegister.fmRegisterY8950 directly, calls
+// chipRegister.getY8950KeyInfo(chipID) once per frame, and reads the raw Delta-T output
+// exposed by GetY8950VisVolume for the ADPCM meter.
 using MDPlayer;
 
 namespace MDPlayer.UI.Visualizer
@@ -23,12 +23,32 @@ namespace MDPlayer.UI.Visualizer
         private readonly MDChipParams.Y8950 newParam = new();
         private readonly MDChipParams.Y8950 oldParam = new();
         private bool adpcmActive;
+        private int adpcmLiveMeter;
 
         public PixelScreen Screen => screen;
 
         private static readonly int[] Slot1Tbl = { 0, 1, 2, 6, 7, 8, 12, 13, 14 };
         private static readonly int[] Slot2Tbl = { 3, 4, 5, 9, 10, 11, 15, 16, 17 };
         private static readonly byte[] RhythmAdr = { 0x53, 0x54, 0x52, 0x55, 0x51 };
+
+        private static int ToMeterLevel(int[][]? levels)
+        {
+            // Delta-T is internally accumulated at a higher precision and shifted
+            // down to the normal output scale in MDSound.y8950.  A tighter scale than
+            // the FM rows makes actual ADPCM playback legible without pinning the bar.
+            if (levels == null || levels.Length <= 1 || levels[1] == null || levels[1].Length == 0)
+                return 0;
+
+            return System.Math.Min((int)(System.Math.Abs((long)levels[1][0]) / 220), 19);
+        }
+
+        private int UpdateAdpcmMeter(int rawLevel)
+        {
+            adpcmLiveMeter = rawLevel >= adpcmLiveMeter
+                ? rawLevel
+                : System.Math.Max(0, adpcmLiveMeter - 2);
+            return adpcmLiveMeter;
+        }
 
         public Y8950Visualizer(ChipRegister chipRegister, uint clockHz, int chipID = 0)
         {
@@ -52,6 +72,7 @@ namespace MDPlayer.UI.Visualizer
             if (y8950Register == null) return;
 
             ChipKeyInfo ki = chipRegister.getY8950KeyInfo(ChipID);
+            int[][] y8950LiveVolume = chipRegister.GetY8950VisVolume(ChipID);
             float masterClock = clockHz != 0 ? clockHz : 3579545f;
 
             for (int c = 0; c < 9; c++)
@@ -132,12 +153,15 @@ namespace MDPlayer.UI.Visualizer
                 double fSample = newParam.channels[14].inst[12] * 50000.0 / (1 << 16);
                 int pnt = Common.searchSegaPCMNote(fSample / 8000.0);
                 newParam.channels[14].note = pnt;
-                int tl = y8950Register[0x12];
-                newParam.channels[14].volume = pnt == -1 ? 0 : Common.Range(tl >> 3, 0, 19);
+                // Register 0x12 is a static Total Level control, not a live signal
+                // level.  Draw the emulated Delta-T output instead so this bar moves
+                // with the MSX-AUDIO sample playback and ignores the mixer fader.
+                newParam.channels[14].volume = pnt == -1 ? 0 : UpdateAdpcmMeter(ToMeterLevel(y8950LiveVolume));
             }
             else
             {
-                newParam.channels[14].volume--;
+                adpcmLiveMeter = System.Math.Max(0, adpcmLiveMeter - 2);
+                newParam.channels[14].volume = adpcmLiveMeter;
                 if (newParam.channels[14].volume <= 0)
                 {
                     newParam.channels[14].note = -1;

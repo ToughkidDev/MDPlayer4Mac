@@ -7096,6 +7096,15 @@ namespace MDPlayer
             return levels != null && chipID >= 0 && chipID < levels.Length ? levels[chipID] : null;
         }
 
+        // Y8950's second visualization source is the raw Delta-T ADPCM signal.  It
+        // is kept separate from the mixed OPL output so the MSX-AUDIO ADPCM meter
+        // keeps moving even while FM/rhythm channels are also active.
+        public int[][] GetY8950VisVolume(int chipID)
+        {
+            int[][][] levels = mds.getY8950VisVolume(chipID);
+            return levels != null && chipID >= 0 && chipID < levels.Length ? levels[chipID] : null;
+        }
+
         public byte GetYM2608RhythmKeyMask(int chipID)
         {
             return mds.getYM2608RhythmKeyMask(chipID, (byte)chipID);
