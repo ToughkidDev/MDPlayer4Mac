@@ -18,6 +18,10 @@ namespace MDPlayer
         private MidiOutInfo[] midiOutInfos = null;
         private List<NAudio.Midi.MidiOut> midiOuts = null;
         private List<int> midiOutsType = null;
+        // The Windows source sends MIDI through NAudio/winmm. macOS MIDI-file playback
+        // instead injects the exact same bytes into the system DLS synth (and later can
+        // fan them out to CoreMIDI) through this optional per-session sink.
+        private Action<int, byte[]> midiMessageSink = null;
         //private List<int> vstMidiOutsType = null;
         //private NX68Sound.X68Sound x68Sound = null;
         //private NX68Sound.sound_iocs sound_iocs = null;
@@ -1149,8 +1153,18 @@ namespace MDPlayer
             return midiOuts.Count;
         }
 
+        public void SetMidiMessageSink(Action<int, byte[]> sink)
+        {
+            midiMessageSink = sink;
+        }
+
         public void sendMIDIout(EnmModel model, int num, byte cmd, byte prm1, byte prm2, int deltaFrames = 0)
         {
+            if (midiMessageSink != null)
+            {
+                midiMessageSink(num, new byte[] { cmd, prm1, prm2 });
+                return;
+            }
             if (model == EnmModel.RealModel)
             {
                 if (midiOuts == null) return;
@@ -1167,6 +1181,11 @@ namespace MDPlayer
 
         public void sendMIDIout(EnmModel model, int num, byte cmd, byte prm1, int deltaFrames = 0)
         {
+            if (midiMessageSink != null)
+            {
+                midiMessageSink(num, new byte[] { cmd, prm1 });
+                return;
+            }
             if (model == EnmModel.RealModel)
             {
                 if (midiOuts == null) return;
@@ -1183,6 +1202,11 @@ namespace MDPlayer
 
         public void sendMIDIout(EnmModel model, int num, byte[] data, int deltaFrames = 0)
         {
+            if (midiMessageSink != null)
+            {
+                midiMessageSink(num, data);
+                return;
+            }
             if (model == EnmModel.RealModel)
             {
                 if (midiOuts == null) return;

@@ -4,7 +4,27 @@ Windows용 MDPlayer를 macOS에서 쓸 수 있도록 옮기는 개인 포팅 프
 WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코드는 `macos/` 아래의
 `.NET 8` 프로젝트로 따로 관리 중임.
 
-마지막 갱신: 2026-08-26
+마지막 갱신: 2026-08-28
+
+## 개발 중
+
+- MUCOM88의 컴파일된 `.mub`와 소스 `.muc`를 재생 경로에 추가했음. `.muc`는 재생 전에
+  메모리에서 MUB로 컴파일하며, macOS/Git의 LF 줄바꿈과 들여쓴 확장 트랙 선언도 MUCOM 컴파일러가
+  올바르게 해석하도록 보정함. 일반 MUB의 YM2608(음원·SSG·리듬·ADPCM)과 확장 `muPb` MUB의
+  2×YM2608, 2×YM2610, YM2151 구성을 파일에 실제로 들어 있는 파트만큼 초기화함. 볼륨 뷰와
+  채널 뷰는 기존 칩 레지스터 경로를 그대로 사용함.
+- 공식 `kuma4649/mucomDotNET` 소스를 Git 서브모듈로 연결했음. GitHub Release 빌드도 서브모듈을
+  함께 받아 드라이버 DLL을 앱 번들에 포함함.
+- Windows판이 사용하던 공식 `kuma4649` 드라이버 소스를 추가로 서브모듈로 연결했음. PMD의
+  `.mml`/`.m`/`.m2`/`.mz`, MoonDriver의 `.mdl`/`.mdr`, MUAP98의 `.mus`/`.o`/`.ox`/`.oy`를
+  재생 경로에 넣었음. 각각 원본과 같은 YM2608+PPZ8/PPSDRV/P86, YMF278B(또는 YMF262),
+  YM2608+YM2612+CS4231 구성을 사용함. 소스 형식은 임시 파일 없이 메모리에서 컴파일하고,
+  PMD의 PPC/PPS/PPZ/P86 및 MoonDriver의 같은 이름 `.pcm` 보조 데이터는 곡 파일과 같은
+  폴더에서 찾음.
+- MuSICA의 컴파일 데이터 `.bgm`, 소스 `.msd`, NRTDRV의 `.nrd` 재생을 추가했음. MuSICA는
+  원본 MSX 드라이버를 실행하므로 `.bgm`에는 사용자가 지정한 `KINROU5.DRV`가 필요하고,
+  `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
+  `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
 
 ## v0.1.7
 
@@ -93,14 +113,34 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 
 ```text
 .vgm  .vgz  .xgm  .xgz  .sid  .mnd  .zms  .zmd
-.mdx  .mdr  .nsf  .gbs  .hes  .s98  .ay  .zgm
+.mdx  .mdr  .mdl  .mub  .muc  .mml  .m  .m2  .mz
+.mus  .o  .ox  .oy  .mgs  .msd  .bgm  .nrd  .mid  .rcp  .rcs
+.nsf  .gbs  .hes  .s98  .ay  .zgm
+.m3u (재생목록)
 ```
 
 - `.vgz`, `.xgz`는 각각 gzip 압축 VGM/XGM으로 처리함.
 - 오래된 VGM 1.01 이하 파일은 명령 스트림을 확인해 YM2413/YM2612/YM2151 중 실제 사용 칩만
   초기화함.
-- MDX/MDR은 X68000 계열 포맷임. 같은 폴더의 PDX를 찾으면 PCM8/ADPCM 재생에 사용하며,
+- MDX는 X68000 계열 포맷임. 같은 폴더의 PDX를 찾으면 PCM8/ADPCM 재생에 사용하며,
   PDX가 없어도 OPM(YM2151) 파트는 계속 재생을 시도함.
+- `.mdr`/`.mdl`은 MoonDriver OPL4/OPL3 포맷임. 같은 이름의 `.pcm` 파일이 있으면 함께
+  사용함. `.mml`은 PMD 소스이며 `.m`/`.m2`/`.mz`는 PMD 컴파일 데이터임. `.mus`는 MUAP98
+  소스이고 `.o`/`.ox`/`.oy`는 MUAP98 컴파일 데이터임.
+- `.mgs`는 MGSDRV 형식임. 라이선스 문제로 `MGSDRV.COM`은 앱에 포함하지 않음. 사용자가
+  합법적으로 보유한 파일을 Setting → Other → MGSDRV에서 지정해야 재생할 수 있음.
+- `.bgm`은 MuSICA 컴파일 데이터이며 Setting → Other에서 `KINROU5.DRV`를 지정해야 함.
+  `.msd`는 MuSICA 소스라서 같은 이름의 `.vcd`가 있으면 함께 읽고, 즉석 컴파일을 위해
+  `KINROU4.COM`도 지정해야 함. 두 파일 모두 라이선스상 앱에 포함하거나 재배포하지 않음.
+- `.nrd`는 NRTDRV 형식이며 파일이 사용하는 YM2151(1/2개)·AY8910 조합을 자동으로 구성함.
+- `.mid`는 Standard MIDI File, `.rcp`는 RCP 시퀀스, `.rcs`는 RCP+PCM8 시퀀스 형식임.
+  macOS 내장 DLS General MIDI 신시사이저로 출력함. RCP/RCS가 참조하는 `.cm6`/`.gsd` 및
+  companion `.rcp`는 같은 폴더에서 자동으로 찾음. 외부 MIDI 장치와 VST 라우팅은 아직 없음.
+- `.m3u`는 오디오 파일이 아니라 재생목록 파일임. `#EXTINF` 제목과 상대/절대 로컬 경로를
+  읽으며, 네트워크 URL은 현재 지원하지 않아 건너뜀.
+- `.mub`는 MUCOM88의 컴파일 완료 데이터 포맷이며, `.muc`는 재생 시 메모리에서 같은 형식으로
+  컴파일함. `#voice`, `#pcm`, `#@pcm` 등 외부 데이터를 지정한 MUC는 해당 파일을 MUC와 같은
+  폴더에 두어야 함.
 - 지원 목록에 있는 형식이라도 모든 드라이버와 칩 조합이 완성된 것은 아님. 로드할 수 없는
   조합은 상태줄에 오류로 표시됨.
 
@@ -113,6 +153,7 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 - 재생목록 영역에 파일이나 폴더를 놓으면 현재 목록 뒤에 추가됨.
 - 상단 대시보드에 놓으면 현재 재생목록을 새 목록으로 교체함.
 - 폴더를 드롭하면 하위 폴더까지 찾아 지원하는 파일을 이름순으로 추가함.
+- `.m3u`를 열거나 드롭하면 목록 안의 지원 음악 파일을 펼쳐 추가함.
 - Cmd+A, Shift/Cmd 선택, Delete/Backspace, Escape로 일반적인 목록 편집이 가능함.
 - Stop을 눌러도 현재 채널 뷰는 닫히지 않음.
 - 곡이 끝나면 다음 곡을 재생함. 반복 버튼은 현재 곡 반복이고, 한 번 더 누르면 랜덤 재생으로
@@ -248,3 +289,11 @@ Apple의 최신 안내도 처음 시도한 뒤 **개인정보 보호 및 보안 
 
 원본 MDPlayer와 `MDSound/` 안에 포함된 외부 코드의 라이선스를 따름. 새 코드를 추가하거나
 배포할 때는 원본 파일의 저작권과 GPL 계열 조건을 함께 확인해야 함.
+
+MUB 재생에는 [mucomDotNET](https://github.com/kuma4649/mucomDotNET)을, PMD 재생에는
+[PMDDotNET](https://github.com/kuma4649/PMDDotNET)을 Git 서브모듈로 포함하며, 두 프로젝트의
+GPL-3.0 라이선스와 저작권 고지를 함께 따름. MoonDriver와 MUAP 재생에는 각각
+[MoonDriverDotNET](https://github.com/kuma4649/MoonDriverDotNET),
+[muapDotNET](https://github.com/kuma4649/muapDotNET)의 소스를 Git 서브모듈로 포함함. 이 두
+저장소는 GitHub에 별도 라이선스 파일이 표시되지 않으므로, 배포 전 원 저작자와 저장소의
+저작권·배포 조건을 반드시 다시 확인해야 함.

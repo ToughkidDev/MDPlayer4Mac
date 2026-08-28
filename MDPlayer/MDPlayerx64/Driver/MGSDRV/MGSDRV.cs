@@ -113,7 +113,12 @@ namespace MDPlayer.Driver.MGSDRV
 
         private void Run(byte[] vgmBuf)
         {
-            var fileName = "MGSDRV.COM";
+            // The Windows distribution keeps MGSDRV.COM beside the executable.  The
+            // macOS port never redistributes that binary; it supplies an explicit path
+            // selected by the user, while retaining this fallback for the Windows build.
+            var fileName = !string.IsNullOrWhiteSpace(DriverFilePath) && File.Exists(DriverFilePath)
+                ? DriverFilePath
+                : "MGSDRV.COM";
             DollarCode = Encoding.ASCII.GetBytes(new[] { '$' })[0];
 
             z80 = new Z80Processor();
@@ -194,6 +199,7 @@ namespace MDPlayer.Driver.MGSDRV
         }
 
         public string PlayingFileName { get; internal set; }
+        public string DriverFilePath { get; set; }
 
         private void Z80OnBeforeInstructionFetch(object sender, BeforeInstructionFetchEventArgs args)
         {

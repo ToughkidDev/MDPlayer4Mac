@@ -1718,6 +1718,13 @@ namespace MDPlayer
             public bool SaveCompiledFile { get; set; } = false;
             public bool TappyMode { get; set; } = true;
             public bool ToastMode { get; set; } = true;
+            // MGSDRV.COM is not redistributed with MDPlayer4Mac.  A user who owns an
+            // authorized copy can opt in by selecting its local path in Settings.
+            public string MgsDrvPath { get; set; } = string.Empty;
+            // MuSICA's player/compiler programs are also user supplied. They are
+            // intentionally not bundled in the macOS application.
+            public string MusicaDriverPath { get; set; } = string.Empty;
+            public string MusicaCompilerPath { get; set; } = string.Empty;
 
             public Other Copy()
             {
@@ -1752,6 +1759,9 @@ namespace MDPlayer
                     SaveCompiledFile = this.SaveCompiledFile,
                     TappyMode=this.TappyMode,
                     ToastMode=this.ToastMode,
+                    MgsDrvPath=this.MgsDrvPath,
+                    MusicaDriverPath=this.MusicaDriverPath,
+                    MusicaCompilerPath=this.MusicaCompilerPath,
                 };
 
                 return other;

@@ -1,4 +1,5 @@
-﻿using System.Xml.Serialization;
+﻿using System.Drawing;
+using System.Xml.Serialization;
 
 namespace MDPlayer
 {

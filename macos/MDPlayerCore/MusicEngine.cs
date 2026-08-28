@@ -56,10 +56,24 @@ namespace MDPlayer
                 ".xgm" or ".xgz" => EnmFileFormat.XGM,
                 ".sid" => EnmFileFormat.SID,
                 ".mnd" => EnmFileFormat.MND,
+                ".mgs" => EnmFileFormat.MGS,
+                ".msd" => EnmFileFormat.MuSICA_src,
+                ".bgm" => EnmFileFormat.MuSICA,
+                ".nrd" => EnmFileFormat.NRT,
+                ".mid" => EnmFileFormat.MID,
+                ".rcp" => EnmFileFormat.RCP,
+                ".rcs" => EnmFileFormat.RCS,
                 ".zms" => EnmFileFormat.ZMS,
                 ".zmd" => EnmFileFormat.ZMD,
                 ".mdx" => EnmFileFormat.MDX,
                 ".mdr" => EnmFileFormat.MDR,
+                ".mdl" => EnmFileFormat.MDL,
+                ".mub" => EnmFileFormat.MUB,
+                ".muc" => EnmFileFormat.MUC,
+                ".mml" => EnmFileFormat.MML,
+                ".m" or ".m2" or ".mz" => EnmFileFormat.M,
+                ".mus" => EnmFileFormat.MUAP_src,
+                ".o" or ".ox" or ".oy" => EnmFileFormat.MUAP,
                 ".nsf" => EnmFileFormat.NSF,
                 ".gbs" => EnmFileFormat.GBS,
                 ".hes" => EnmFileFormat.HES,
@@ -88,10 +102,24 @@ namespace MDPlayer
                 EnmFileFormat.XGM2 => LoadXgm2(buf, samplingBuffer),
                 EnmFileFormat.SID => LoadSid(buf, samplingBuffer),
                 EnmFileFormat.MND => LoadMnd(buf, samplingBuffer),
+                EnmFileFormat.MGS => LoadMgs(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.MuSICA_src => LoadMusica(buf, samplingBuffer, fileNameHint, compileSource: true),
+                EnmFileFormat.MuSICA => LoadMusica(buf, samplingBuffer, fileNameHint, compileSource: false),
+                EnmFileFormat.NRT => LoadNrt(buf, samplingBuffer),
+                EnmFileFormat.MID => LoadMidi(buf, samplingBuffer),
+                EnmFileFormat.RCP => LoadRcp(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.RCS => LoadRcs(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.ZMS => LoadZms(buf, EnmFileFormat.ZMS, samplingBuffer),
                 EnmFileFormat.ZMD => LoadZms(buf, EnmFileFormat.ZMD, samplingBuffer),
                 EnmFileFormat.MDX => LoadMdx(buf, EnmFileFormat.MDX, samplingBuffer, fileNameHint),
-                EnmFileFormat.MDR => LoadMdx(buf, EnmFileFormat.MDR, samplingBuffer, fileNameHint),
+                EnmFileFormat.MDR => LoadMoon(buf, samplingBuffer, fileNameHint, EnmFileFormat.MDR),
+                EnmFileFormat.MDL => LoadMoonMdl(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.MUB => LoadMub(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.MUC => LoadMuc(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.MML => LoadPmdMml(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.M => LoadPmd(buf, samplingBuffer, fileNameHint, EnmFileFormat.M),
+                EnmFileFormat.MUAP_src => LoadMuapMus(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.MUAP => LoadMuap(buf, samplingBuffer, fileNameHint, null, null, EnmFileFormat.MUAP),
                 EnmFileFormat.NSF => LoadNsf(buf, samplingBuffer),
                 EnmFileFormat.GBS => LoadGbs(buf, samplingBuffer),
                 EnmFileFormat.HES => LoadHes(buf, samplingBuffer),
@@ -150,6 +178,16 @@ namespace MDPlayer
             chipRegister.initChipRegister(lstChips.ToArray());
             mds.Init(sampleRate, samplingBuffer, lstChips.ToArray());
 
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, lstChips, format, activeChips);
+        }
+
+        // Used by the sequence loaders that must initialize MDSound before their driver
+        // uploads ADPCM data or emits its first register writes (MDX and MUB, for example).
+        private static MusicEngineSession CreateSession(
+            Setting setting, ChipRegister chipRegister, MDSound.MDSound mds, uint sampleRate,
+            baseDriver driver, System.Collections.Generic.List<MDSound.MDSound.Chip> lstChips,
+            EnmFileFormat format, string activeChips)
+        {
             System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, uint> chipClocks = new();
             foreach (MDSound.MDSound.Chip c in lstChips) chipClocks[c.type] = c.Clock;
             System.Collections.Generic.Dictionary<MDSound.MDSound.enmInstrumentType, int> chipVolumes = new();
@@ -221,6 +259,555 @@ namespace MDPlayer
                 Clock = clock,
                 Option = null,
             };
+        }
+
+        private static MDSound.MDSound.Chip MakeYM2608(Setting setting, MDSound.ym2608 instrument, int id)
+            => new()
+            {
+                type = MDSound.MDSound.enmInstrumentType.YM2608,
+                ID = (byte)id,
+                Instrument = instrument,
+                Update = instrument.Update,
+                Start = instrument.Start,
+                Stop = instrument.Stop,
+                Reset = instrument.Reset,
+                SamplingRate = 55467,
+                Volume = setting.balance.YM2608Volume,
+                Clock = Driver.MUCOM.MucomDotNET.OPNABaseClock,
+                Option = new object[] { (Func<string, Stream>)Common.GetOPNARyhthmStream },
+            };
+
+        private static MDSound.MDSound.Chip MakeYM2610(Setting setting, MDSound.ym2610 instrument, int id)
+            => new()
+            {
+                type = MDSound.MDSound.enmInstrumentType.YM2610,
+                ID = (byte)id,
+                Instrument = instrument,
+                Update = instrument.Update,
+                Start = instrument.Start,
+                Stop = instrument.Stop,
+                Reset = instrument.Reset,
+                SamplingRate = 55467,
+                Volume = setting.balance.YM2610Volume,
+                Clock = Driver.MUCOM.MucomDotNET.OPNBBaseClock,
+                Option = null,
+            };
+
+        // MUCOM88's compiled MUB format uses its own .NET driver to sequence register writes.
+        // The original player supports both standard one-OPNA MUBs and extended muPb MUBs;
+        // retain that five-target layout here, including the optional second OPNA/OPNB and OPM.
+        private static MusicEngineSession LoadMuc(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            byte[] compiledMub = Driver.MUCOM.MucomDotNET.CompileMuc(buf, sourcePath, out _);
+            return compiledMub == null
+                ? null
+                : LoadMub(compiledMub, samplingBuffer, sourcePath, EnmFileFormat.MUC);
+        }
+
+        private static MusicEngineSession LoadMub(byte[] buf, uint samplingBuffer, string sourcePath,
+            EnmFileFormat format = EnmFileFormat.MUB)
+        {
+            if (!Driver.MUCOM.MucomDotNET.IsMub(buf)) return null;
+
+            bool[] used = Driver.MUCOM.MucomDotNET.GetUsedChips(buf);
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            MDSound.ym2608 ym2608 = new();
+            MDSound.ym2610 ym2610 = new();
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
+            var names = new System.Collections.Generic.List<string>();
+
+            if (used[0]) { chips.Add(MakeYM2608(setting, ym2608, 0)); names.Add("YM2608"); }
+            if (used[1]) { chips.Add(MakeYM2608(setting, ym2608, 1)); names.Add("YM2608 #2"); }
+            if (used[2]) { chips.Add(MakeYM2610(setting, ym2610, 0)); names.Add("YM2610"); }
+            if (used[3]) { chips.Add(MakeYM2610(setting, ym2610, 1)); names.Add("YM2610 #2"); }
+            if (used[4]) { chips.Add(MakeYM2151(setting, Driver.MUCOM.MucomDotNET.GetOpmClock(buf))); names.Add("YM2151"); }
+            if (chips.Count == 0) return null;
+
+            // MUB Init can upload PCM and immediately write registers.  Its targets must
+            // therefore exist before the upstream driver starts, just like the Windows path.
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+
+            Driver.MUCOM.MucomDotNET driver = new() { setting = setting, SourcePath = sourcePath };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0))
+                return null;
+
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
+                format, string.Join(" + ", names));
+        }
+
+        // PMD's source MML and compiled M/M2/MZ streams share the same OPN/PCM playback
+        // path.  The Windows player always creates these four targets, because the source
+        // itself decides whether it uses PPZ8, PPSDRV, or P86 companion PCM data.
+        private static MusicEngineSession LoadPmdMml(byte[] source, uint samplingBuffer, string sourcePath)
+        {
+            byte[] compiled = Driver.PMD.PmdDotNET.CompileMml(source, sourcePath, out _);
+            return compiled == null ? null : LoadPmd(compiled, samplingBuffer, sourcePath, EnmFileFormat.MML);
+        }
+
+        private static MusicEngineSession LoadPmd(byte[] buf, uint samplingBuffer, string sourcePath,
+            EnmFileFormat format)
+        {
+            if (buf == null || buf.Length == 0) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            MDSound.ym2608 ym2608 = new();
+            MDSound.PPZ8 ppz8 = new();
+            MDSound.PPSDRV ppsdrv = new();
+            MDSound.P86 p86 = new();
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
+            {
+                MakeYM2608(setting, ym2608, 0),
+                MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.PPZ8, ppz8, sampleRate, setting.balance.PPZ8Volume),
+                MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.PPSDRV, ppsdrv, sampleRate, 0),
+                MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.P86, p86, sampleRate, 0),
+            };
+
+            // PMD may load companion PPC/PPS/PZI/P86 data during Init, so register all
+            // MDS targets before starting its sequence driver.
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            Driver.PMD.PmdDotNET driver = new() { setting = setting, SourcePath = sourcePath };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0))
+                return null;
+
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, format,
+                "YM2608 + PPZ8 + PPSDRV + P86");
+        }
+
+        private static MDSound.MDSound.Chip MakePmdPcmChip(MDSound.MDSound.enmInstrumentType type,
+            MDSound.Instrument instrument, uint sampleRate, int volume)
+            => new()
+            {
+                type = type,
+                ID = 0,
+                Instrument = instrument,
+                Update = instrument.Update,
+                Start = instrument.Start,
+                Stop = instrument.Stop,
+                Reset = instrument.Reset,
+                SamplingRate = sampleRate,
+                Volume = volume,
+                Clock = Driver.PMD.PmdDotNET.OPNABaseClock,
+                Option = null,
+            };
+
+        // MGSDRV uses its original Z80 driver program.  The user supplies that program's
+        // path in Settings; we only host it and route its AY/OPLL/SCC port writes to MDSound.
+        private static MusicEngineSession LoadMgs(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            int terminator = 0;
+            while (terminator + 1 < buf.Length && (buf[terminator] != 0x1a || buf[terminator + 1] != 0)) terminator++;
+            int tracks = terminator + 7;
+            if (tracks < 7 || tracks + 36 > buf.Length) return null;
+            int Offset(int index) => buf[tracks + index * 2] | buf[tracks + index * 2 + 1] << 8;
+            bool useAy = Offset(0) + Offset(1) + Offset(2) != 0;
+            bool useScc = Offset(3) + Offset(4) + Offset(5) + Offset(6) + Offset(7) != 0;
+            bool useOpll = Enumerable.Range(8, 10).Select(Offset).Any(value => value != 0);
+            if (!useAy && !useScc && !useOpll) return null;
+
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            if (string.IsNullOrWhiteSpace(setting.other.MgsDrvPath) || !File.Exists(setting.other.MgsDrvPath)) return null;
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
+            var names = new System.Collections.Generic.List<string>();
+            if (useAy)
+            {
+                MDSound.ay8910 ay = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.AY8910, ID = 0, Instrument = ay,
+                    Update = ay.Update, Start = ay.Start, Stop = ay.Stop, Reset = ay.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.AY8910Volume, Clock = Driver.MGSDRV.MGSDRV.baseclockAY8910 / 2, Option = null });
+                names.Add("AY8910");
+            }
+            if (useOpll)
+            {
+                MDSound.emu2413 opll = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.YM2413emu, ID = 0, Instrument = opll,
+                    Update = opll.Update, Start = opll.Start, Stop = opll.Stop, Reset = opll.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.YM2413Volume, Clock = Driver.MGSDRV.MGSDRV.baseclockYM2413, Option = null });
+                names.Add("YM2413");
+            }
+            if (useScc)
+            {
+                MDSound.K051649 scc = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.K051649, ID = 0, Instrument = scc,
+                    Update = scc.Update, Start = scc.Start, Stop = scc.Stop, Reset = scc.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.K051649Volume, Clock = Driver.MGSDRV.MGSDRV.baseclockK051649, Option = null });
+                names.Add("SCC");
+            }
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray()); chipRegister.initChipRegister(chips.ToArray());
+            Driver.MGSDRV.MGSDRV driver = new()
+            {
+                setting = setting,
+                PlayingFileName = sourcePath,
+                DriverFilePath = setting.other.MgsDrvPath,
+            };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, EnmFileFormat.MGS, string.Join(" + ", names));
+        }
+
+        // MuSICA uses an MSX-resident player program.  Its compiled BGM data has a fixed
+        // 17-entry track table: OPLL 0..8, AY 9..11, SCC 12..16.  .msd is compiled first
+        // with the user's KINROU4.COM; .bgm is already compiled and only needs KINROU5.DRV.
+        private static MusicEngineSession LoadMusica(byte[] source, uint samplingBuffer, string sourcePath, bool compileSource)
+        {
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            byte[] buf = source;
+            if (compileSource)
+            {
+                if (string.IsNullOrWhiteSpace(setting.other.MusicaCompilerPath) || !File.Exists(setting.other.MusicaCompilerPath)) return null;
+                byte[] vcd = null;
+                if (!string.IsNullOrWhiteSpace(sourcePath))
+                {
+                    string vcdPath = Path.ChangeExtension(sourcePath, ".vcd");
+                    if (File.Exists(vcdPath)) vcd = File.ReadAllBytes(vcdPath);
+                }
+                Driver.MuSICA.MuSICA_K4 compiler = new() { CompilerFilePath = setting.other.MusicaCompilerPath };
+                if (!compiler.Compile(source, vcd)) return null;
+                buf = compiler.GetBgmBin();
+                if (buf == null) return null;
+            }
+
+            if (buf.Length < 42 || string.IsNullOrWhiteSpace(setting.other.MusicaDriverPath) || !File.Exists(setting.other.MusicaDriverPath)) return null;
+            int Offset(int index) => buf[8 + index * 2] | buf[9 + index * 2] << 8;
+            bool useOpll = Enumerable.Range(0, 9).Select(Offset).Any(value => value != 0);
+            bool useAy = Enumerable.Range(9, 3).Select(Offset).Any(value => value != 0);
+            bool useScc = Enumerable.Range(12, 5).Select(Offset).Any(value => value != 0);
+            if (!useOpll && !useAy && !useScc) return null;
+
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
+            var names = new System.Collections.Generic.List<string>();
+            if (useAy)
+            {
+                MDSound.ay8910 ay = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.AY8910, ID = 0, Instrument = ay,
+                    Update = ay.Update, Start = ay.Start, Stop = ay.Stop, Reset = ay.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.AY8910Volume, Clock = Driver.MuSICA.MuSICA.baseclockAY8910 / 2, Option = null });
+                names.Add("AY8910");
+            }
+            if (useOpll)
+            {
+                MDSound.emu2413 opll = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.YM2413emu, ID = 0, Instrument = opll,
+                    Update = opll.Update, Start = opll.Start, Stop = opll.Stop, Reset = opll.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.YM2413Volume, Clock = Driver.MuSICA.MuSICA.baseclockYM2413, Option = null });
+                names.Add("YM2413");
+            }
+            if (useScc)
+            {
+                MDSound.K051649 scc = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.K051649, ID = 0, Instrument = scc,
+                    Update = scc.Update, Start = scc.Start, Stop = scc.Stop, Reset = scc.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.K051649Volume, Clock = Driver.MuSICA.MuSICA.baseclockK051649, Option = null });
+                names.Add("SCC");
+            }
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            if (useOpll) chipRegister.setYM2413Register(0, 14, 32, EnmModel.VirtualModel, 0);
+            Driver.MuSICA.MuSICA driver = new() { setting = setting, PlayingFileName = sourcePath, DriverFilePath = setting.other.MusicaDriverPath };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel,
+                new[] { EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649 }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
+                compileSource ? EnmFileFormat.MuSICA_src : EnmFileFormat.MuSICA, string.Join(" + ", names));
+        }
+
+        // NRTDRV is fully managed and embeds its player logic in the data driver.  It can use
+        // one/two YM2151 chips and AY8910; its own parser reports exactly which combination
+        // the current NRD file needs before we create the MDSound graph.
+        private static MusicEngineSession LoadNrt(byte[] buf, uint samplingBuffer)
+        {
+            if (buf.Length < 42) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            NRTDRV driver = new(setting) { setting = setting };
+            int use = driver.checkUseChip(buf);
+            bool useOpm0 = (use & 3) != 0;
+            bool useOpm1 = (use & 2) != 0;
+            bool useAy = (use & 4) != 0;
+            if (!useOpm0 && !useAy) return null;
+
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
+            var names = new System.Collections.Generic.List<string>();
+            MDSound.ym2151 opm = null;
+            for (int id = 0; id < 2; id++)
+            {
+                if ((id == 0 && !useOpm0) || (id == 1 && !useOpm1)) continue;
+                opm ??= new MDSound.ym2151();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.YM2151, ID = (byte)id, Instrument = opm,
+                    Update = opm.Update, Start = opm.Start, Stop = opm.Stop, Reset = opm.Reset, SamplingRate = 4_000_000 / 64,
+                    Volume = setting.balance.YM2151Volume, Clock = 4_000_000, Option = null });
+                names.Add("YM2151");
+            }
+            if (useAy)
+            {
+                MDSound.ay8910 ay = new();
+                chips.Add(new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.AY8910, ID = 0, Instrument = ay,
+                    Update = ay.Update, Start = ay.Start, Stop = ay.Stop, Reset = ay.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.AY8910Volume, Clock = 2_000_000 / 2, Option = null });
+                names.Add("AY8910");
+            }
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.YM2151, EnmChip.AY8910 }, 0, 0)) return null;
+            driver.Call(0);
+            driver.Call(1);
+            string active = string.Join(" + ", names.GroupBy(name => name).Select(group => group.Count() > 1 ? $"{group.Count()}x{group.Key}" : group.Key));
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, EnmFileFormat.NRT, active);
+        }
+
+        // Standard MIDI and Recomposer output is not a register-dump chip stream. Their
+        // original sequence drivers still provide parsing, timing, loops and SysEx; this
+        // adapter routes emitted bytes to macOS's built-in multitimbral DLS GM synth and
+        // renders the synth's PCM through the normal Audio Queue path.
+        private static MusicEngineSession CreateMidiSession(Setting setting, ChipRegister chipRegister,
+            MDSound.MDSound mds, uint sampleRate, baseDriver driver, EnmFileFormat format, string activeChips)
+        {
+            MacMidiSynth synth;
+            try
+            {
+                synth = new MacMidiSynth(sampleRate);
+            }
+            catch
+            {
+                return null;
+            }
+            chipRegister.SetMidiMessageSink((_, data) => synth.Send(data));
+
+            return new MusicEngineSession
+            {
+                Setting = setting,
+                ChipRegister = chipRegister,
+                Mds = mds,
+                Driver = driver,
+                SampleRate = sampleRate,
+                Format = format,
+                ActiveChips = activeChips,
+                RenderSamples = (b, off, count) =>
+                {
+                    int frames = count / 2;
+                    for (int frame = 0; frame < frames; frame++)
+                    {
+                        synth.SetFrameOffset(frame);
+                        driver.oneFrameProc();
+                    }
+                    return synth.Render(b, off, frames * 2);
+                },
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
+            };
+        }
+
+        private static MusicEngineSession LoadMidi(byte[] buf, uint samplingBuffer)
+        {
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            MID driver = new() { setting = setting };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+            return CreateMidiSession(setting, chipRegister, mds, sampleRate, driver, EnmFileFormat.MID,
+                "General MIDI (macOS DLS Synth)");
+        }
+
+        private static MusicEngineSession LoadRcp(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            RCP driver = new() { setting = setting, ExtendFile = LoadRcpControlFiles(buf, sourcePath) };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+            return CreateMidiSession(setting, chipRegister, mds, sampleRate, driver, EnmFileFormat.RCP,
+                "Recomposer MIDI (macOS DLS Synth)");
+        }
+
+        // RCP files optionally name CM6/GSD setup data in their headers. The original driver
+        // expands those into SysEx before the sequence starts, so preserve that behavior when
+        // the companion files are located beside the selected RCP file.
+        private static System.Collections.Generic.List<Tuple<string, byte[]>> LoadRcpControlFiles(byte[] rcp, string sourcePath)
+        {
+            var files = new System.Collections.Generic.List<Tuple<string, byte[]>>();
+            if (string.IsNullOrWhiteSpace(sourcePath)) return files;
+            string directory = Path.GetDirectoryName(sourcePath);
+            if (string.IsNullOrWhiteSpace(directory)) return files;
+            RCP.getControlFileName(rcp, out string cm6, out string gsd, out string gsd2);
+            AddMidiCompanionFiles(files, directory, new[] { cm6, gsd, gsd2 });
+            return files;
+        }
+
+        private static System.Collections.Generic.List<Tuple<string, byte[]>> LoadRcsCompanionFiles(byte[] rcs, string sourcePath)
+        {
+            var files = new System.Collections.Generic.List<Tuple<string, byte[]>>();
+            if (string.IsNullOrWhiteSpace(sourcePath)) return files;
+            string directory = Path.GetDirectoryName(sourcePath);
+            if (string.IsNullOrWhiteSpace(directory)) return files;
+
+            // RCS contains PCM8 data itself but names an RCP sequence beside it; that RCP
+            // can in turn name CM6/GSD tone-module setup files. Give the driver all of them
+            // as in-memory companions, so it neither depends on the current working folder
+            // nor loses the original setup SysEx stream.
+            RCS.getControlFileName(sourcePath, null, rcs, out string rcp, out string cm6, out string gsd, out string gsd2);
+            AddMidiCompanionFiles(files, directory, new[] { rcp, cm6, gsd, gsd2 });
+            return files;
+        }
+
+        private static void AddMidiCompanionFiles(System.Collections.Generic.List<Tuple<string, byte[]>> files,
+            string directory, IEnumerable<string> names)
+        {
+            foreach (string name in names)
+            {
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                // Companion fields are stored inside music data. Resolve only a sibling of
+                // the file the user explicitly opened; never let a path in the sequence walk
+                // outside that directory.
+                string siblingName = Path.GetFileName(name.Trim().Replace('\\', '/'));
+                if (string.IsNullOrWhiteSpace(siblingName)) continue;
+                string path = Path.Combine(directory, siblingName);
+                if (!File.Exists(path)) continue;
+                string extension = Path.GetExtension(path).ToUpperInvariant();
+                files.Add(Tuple.Create(extension, File.ReadAllBytes(path)));
+            }
+        }
+
+        // RCS is a Recomposer sequence accompanied by embedded X68000 PCM8 samples. Its
+        // MIDI tracks go to DLS while its PCM8 stream remains in MDSound, then the two PCM
+        // buffers are mixed before handing audio to CoreAudio.
+        private static MusicEngineSession LoadRcs(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath)) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            MDSound.PCM8PP pcm8 = new();
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
+            {
+                new()
+                {
+                    type = MDSound.MDSound.enmInstrumentType.PCM8PP,
+                    ID = 0,
+                    Instrument = pcm8,
+                    Update = pcm8.Update,
+                    Start = pcm8.Start,
+                    Stop = pcm8.Stop,
+                    Reset = pcm8.Reset,
+                    SamplingRate = sampleRate,
+                    Volume = setting.balance.PCM8Volume,
+                    Clock = 4_000_000,
+                    Option = null,
+                },
+            };
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+
+            MacMidiSynth synth;
+            try
+            {
+                synth = new MacMidiSynth(sampleRate);
+            }
+            catch
+            {
+                return null;
+            }
+            chipRegister.SetMidiMessageSink((_, data) => synth.Send(data));
+            RCS driver = new()
+            {
+                setting = setting,
+                filename = sourcePath,
+                ExtendFile = LoadRcsCompanionFiles(buf, sourcePath),
+                pcm8type = 1,
+                pcm8pp = pcm8,
+            };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+
+            MusicEngineSession session = CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
+                EnmFileFormat.RCS, "PCM8 + Recomposer MIDI (macOS DLS Synth)");
+            short[] synthBuffer = Array.Empty<short>();
+            session.RenderSamples = (b, off, count) =>
+            {
+                int frame = 0;
+                int written = mds.Update(b, off, count, () =>
+                {
+                    synth.SetFrameOffset(frame++);
+                    driver.oneFrameProc();
+                });
+                if (written <= 0) return written;
+                if (synthBuffer.Length < written) synthBuffer = new short[written];
+                Array.Clear(synthBuffer, 0, written);
+                synth.Render(synthBuffer, 0, written);
+                for (int i = 0; i < written; i++)
+                {
+                    b[off + i] = (short)Math.Clamp(b[off + i] + synthBuffer[i], short.MinValue, short.MaxValue);
+                }
+                return written;
+            };
+            return session;
+        }
+
+        private static MusicEngineSession LoadMoonMdl(byte[] source, uint samplingBuffer, string sourcePath)
+        {
+            byte[] compiled = Driver.Moon.MoonDotNET.CompileMdl(source, sourcePath, out _);
+            return compiled == null ? null : LoadMoon(compiled, samplingBuffer, sourcePath, EnmFileFormat.MDL);
+        }
+
+        // MoonDriver's compiled MDR header selects either OPL4 (YMF278B) or OPL3 (YMF262).
+        // Unlike the old placeholder path, MDR is not an MDX/YM2151 sequence.
+        private static MusicEngineSession LoadMoon(byte[] buf, uint samplingBuffer, string sourcePath,
+            EnmFileFormat format)
+        {
+            if (buf == null || buf.Length < 8) return null;
+            bool useOpl3 = (buf[7] & 2) != 0 && (buf[7] & 1) != 0;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
+            string chipName;
+            if (useOpl3)
+            {
+                MDSound.ymf262 opl3 = new();
+                chips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.YMF262, ID = 0, Instrument = opl3,
+                    Update = opl3.Update, Start = opl3.Start, Stop = opl3.Stop, Reset = opl3.Reset,
+                    SamplingRate = sampleRate, Volume = setting.balance.YMF262Volume, Clock = 14_318_180,
+                    Option = new object[] { Common.GetApplicationFolder() },
+                });
+                chipName = "YMF262 (OPL3)";
+            }
+            else
+            {
+                MDSound.ymf278b opl4 = new();
+                chips.Add(new MDSound.MDSound.Chip
+                {
+                    type = MDSound.MDSound.enmInstrumentType.YMF278B, ID = 0, Instrument = opl4,
+                    Update = opl4.Update, Start = opl4.Start, Stop = opl4.Stop, Reset = opl4.Reset,
+                    SamplingRate = sampleRate, Volume = setting.balance.YMF278BVolume, Clock = 33_868_800,
+                    Option = new object[] { Common.GetApplicationFolder() },
+                });
+                chipName = "YMF278B (OPL4)";
+            }
+
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            Driver.Moon.MoonDotNET driver = new() { setting = setting, SourcePath = sourcePath, UseOpl3 = useOpl3 };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, format, chipName);
+        }
+
+        private static MusicEngineSession LoadMuapMus(byte[] source, uint samplingBuffer, string sourcePath)
+        {
+            byte[] compiled = Driver.MUAP.MuapDotNET.CompileMus(source, sourcePath, out byte[] tone, out ushort[] labels, out _);
+            return compiled == null ? null : LoadMuap(compiled, samplingBuffer, sourcePath, tone, labels, EnmFileFormat.MUAP_src);
+        }
+
+        // MUAP98 uses an OPNA, an OPN2-compatible YM2612 target, and CS4231 PCM.  The
+        // driver exchanges CS4231 FIFO/EMS state through ChipRegister, as in the Windows path.
+        private static MusicEngineSession LoadMuap(byte[] buf, uint samplingBuffer, string sourcePath,
+            byte[] tone, ushort[] labels, EnmFileFormat format)
+        {
+            if (buf == null || buf.Length == 0) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            MDSound.ym2608 opna = new(); MDSound.ym2612 opn2 = new(); MDSound.CS4231 cs4231 = new();
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
+            {
+                MakeYM2608(setting, opna, 0),
+                new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.YM2612, ID = 0, Instrument = opn2,
+                    Update = opn2.Update, Start = opn2.Start, Stop = opn2.Stop, Reset = opn2.Reset,
+                    SamplingRate = sampleRate, Volume = setting.balance.YM2612Volume, Clock = 7_987_200, Option = null },
+                new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.CS4231, ID = 0, Instrument = cs4231,
+                    Update = cs4231.Update, Start = cs4231.Start, Stop = cs4231.Stop, Reset = cs4231.Reset,
+                    SamplingRate = 55_467, Volume = setting.balance.CS4231Volume, Clock = 0, Option = null },
+            };
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray()); chipRegister.initChipRegister(chips.ToArray());
+            Driver.MUAP.MuapDotNET driver = new() { setting = setting, SourcePath = sourcePath, ToneBuffer = tone, LabelAddresses = labels };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, format, "YM2608 + YM2612 + CS4231");
         }
 
         // Sega Genesis/Mega Drive's fixed chip set - same clocks Audio.cs's XgmPlay/Xgm2Play

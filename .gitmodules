@@ -1,0 +1,12 @@
+[submodule "macos/ThirdParty/mucomDotNET"]
+	path = macos/ThirdParty/mucomDotNET
+	url = https://github.com/kuma4649/mucomDotNET.git
+[submodule "macos/ThirdParty/PMDDotNET"]
+	path = macos/ThirdParty/PMDDotNET
+	url = https://github.com/kuma4649/PMDDotNET.git
+[submodule "macos/ThirdParty/MoonDriverDotNET"]
+	path = macos/ThirdParty/MoonDriverDotNET
+	url = https://github.com/kuma4649/MoonDriverDotNET.git
+[submodule "macos/ThirdParty/muapDotNET"]
+	path = macos/ThirdParty/muapDotNET
+	url = https://github.com/kuma4649/muapDotNET.git

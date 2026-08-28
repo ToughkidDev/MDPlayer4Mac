@@ -110,9 +110,14 @@ namespace MDPlayer.Driver.MuSICA
         }
 
         private static byte[] program = null;
+        private static string programPath = null;
         private static byte DollarCode;
         private Z80Processor z80;
         private Mapper mapper;
+        // KINROU5.DRV is distributed separately from MDPlayer4Mac.  Leave the
+        // original application-directory lookup as a fallback for Windows, while
+        // allowing the macOS front end to use a user-selected copy.
+        public string DriverFilePath { get; set; }
         internal static uint baseclockAY8910 = 1789773;
         internal static uint baseclockYM2413 = 3579545;
         internal static uint baseclockK051649 = 1789773;
@@ -120,7 +125,9 @@ namespace MDPlayer.Driver.MuSICA
         private void Run(byte[] vgmBuf)
         {
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string fileName = Path.Combine(crntDir, "KINROU5.DRV");
+            string fileName = !string.IsNullOrWhiteSpace(DriverFilePath) && File.Exists(DriverFilePath)
+                ? DriverFilePath
+                : Path.Combine(crntDir, "KINROU5.DRV");
             DollarCode = Encoding.ASCII.GetBytes(new[] { '$' })[0];
 
             z80 = new Z80Processor
@@ -141,7 +148,11 @@ namespace MDPlayer.Driver.MuSICA
 
 
             //プログラムの読み込みとメモリへのセット
-            program ??= File.ReadAllBytes(fileName);
+            if (program == null || !string.Equals(programPath, fileName, StringComparison.Ordinal))
+            {
+                program = File.ReadAllBytes(fileName);
+                programPath = fileName;
+            }
             z80.Memory.SetContents(0x6000 - 7, program);
             z80.Registers.PC = 0x6000;
 

@@ -9,6 +9,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <UseSystemDrawing>true</UseSystemDrawing>
     <AssemblyName>MDPlayerCore</AssemblyName>
     <RootNamespace>MDPlayer</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -18,6 +19,50 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MDSound\MDSound.csproj" />
+    <!-- MUCOM88 MUB driver.  The upstream project is GPL-3.0, as is MDPlayer. -->
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Common_NET5\Common_NET6.csproj" />
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Compiler_NET5\Compiler_NET6.csproj" />
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Driver_NET5\Driver_NET6.csproj" />
+    <!-- PC-98 PMD compiler/driver.  These projects are netstandard and have no
+         Windows audio-device dependency. -->
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCommon\PMDDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCompiler\PMDDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETDriver\PMDDotNETDriver.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETCommon\MoonDriverDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETCompiler\MoonDriverDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETDriver\MoonDriverDotNETDriver.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Common\muapDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Compiler\muapDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Driver\muapDotNETDriver.csproj" />
+  </ItemGroup>
+
+  <!-- MGSDRV's MSX/Z80 host is already part of the Windows source tree and has no
+       WinForms/NAudio dependency.  Keep one shared source of truth rather than forking
+       its 12 emulator files into the macOS project.  The proprietary MGSDRV.COM program
+       itself is deliberately not included; the user selects their own copy at runtime. -->
+  <ItemGroup>
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\MGSDRV\**\*.cs"
+             Link="Driver\MGSDRV\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- MuSICA and NRTDRV are likewise pure managed source in the original tree.
+         MuSICA's KINROU driver binaries are selected by the user at runtime. -->
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\MuSICA\**\*.cs"
+             Link="Driver\MuSICA\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\NRTDRV\**\*.cs"
+             Link="Driver\NRTDRV\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Standard MIDI and Recomposer sequence parsers are portable C#; their Windows
+         winmm output is intercepted by ChipRegister and rendered via MacMidiSynth. -->
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\MID\MID.cs"
+             Link="Driver\MID\MID.cs" />
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\RCP\**\*.cs"
+             Link="Driver\RCP\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- The upstream Driver/Common projects expose these public contracts through this
+       managed compatibility assembly; ProjectReference does not re-export it to consumers. -->
+  <ItemGroup>
+    <Reference Include="musicDriverInterface">
+      <HintPath>..\ThirdParty\mucomDotNET\Common_NET5\musicDriverInterface.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

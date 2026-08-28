@@ -30,6 +30,21 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Common_NET5\Common_NET6.csproj" />
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Compiler_NET5\Compiler_NET6.csproj" />
+    <ProjectReference Include="..\ThirdParty\mucomDotNET\Driver_NET5\Driver_NET6.csproj" />
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCommon\PMDDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCompiler\PMDDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETDriver\PMDDotNETDriver.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETCommon\MoonDriverDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETCompiler\MoonDriverDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\MoonDriverDotNET\MoonDriverDotNETDriver\MoonDriverDotNETDriver.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Common\muapDotNETCommon.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Compiler\muapDotNETCompiler.csproj" />
+    <ProjectReference Include="..\ThirdParty\muapDotNET\muapDotNET\Driver\muapDotNETDriver.csproj" />
+    <Reference Include="musicDriverInterface">
+      <HintPath>..\ThirdParty\mucomDotNET\Common_NET5\musicDriverInterface.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

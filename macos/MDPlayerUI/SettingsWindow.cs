@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using MDPlayer;
 
 namespace MDPlayer.UI
@@ -63,6 +64,9 @@ namespace MDPlayer.UI
         private readonly ComboBox latencyPicker = new() { MinWidth = 120 };
         private readonly ComboBox waitTimePicker = new() { MinWidth = 120 };
         private readonly ComboBox sampleRatePicker = new() { MinWidth = 120 };
+        private readonly TextBox mgsDriverPath = new() { MinWidth = 310, HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox musicaDriverPath = new() { MinWidth = 310, HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox musicaCompilerPath = new() { MinWidth = 310, HorizontalAlignment = HorizontalAlignment.Stretch };
         private readonly TextBlock saveError = new()
         {
             Foreground = Brushes.IndianRed,
@@ -91,6 +95,9 @@ namespace MDPlayer.UI
             waitTimePicker.SelectedItem = ClosestOption(WaitTimeOptions, setting.outputDevice.WaitTime);
             sampleRatePicker.ItemsSource = SampleRateOptions;
             sampleRatePicker.SelectedItem = ClosestOption(SampleRateOptions, setting.outputDevice.SampleRate);
+            mgsDriverPath.Text = setting.other.MgsDrvPath ?? string.Empty;
+            musicaDriverPath.Text = setting.other.MusicaDriverPath ?? string.Empty;
+            musicaCompilerPath.Text = setting.other.MusicaCompilerPath ?? string.Empty;
 
             var tabs = new TabControl
             {
@@ -319,7 +326,7 @@ namespace MDPlayer.UI
         }
 
         private static Control BuildMidiOutPage() => BuildUnavailableSettingsPage(
-            "Windows MIDI output and VST routing are not available in this macOS port.",
+            "MID/RCP/RCS 재생은 macOS 내장 DLS General MIDI 신시사이저로 출력함. 외부 MIDI 장치와 VST 라우팅은 아직 지원하지 않음.",
             new("MIDI Out List", ActionButton("↓ +"), ActionButton("-"), ActionButton("Add VST"), Note("Lists A through J")),
             new("MIDI Out Device Palette", Note("Device palette and ordering controls")));
 
@@ -358,14 +365,73 @@ namespace MDPlayer.UI
             "MDServer network playback is not implemented in this macOS port.",
             new WindowsSettingGroup("MDServer", Toggle("Use MDServer"), Field("Port")));
 
-        private static Control BuildOtherPage() => BuildUnavailableSettingsPage(
-            "These Windows-wide preferences are listed for parity. The currently implemented macOS controls remain available directly in the player UI.",
-            new("Playback", Toggle("Use loop times"), Field("Loop times"), Toggle("Initialize always"), Toggle("Auto open"), Toggle("Non-rendering for pause")),
-            new("Screen", Field("Screen frame rate"), Toggle("ExALL"), Toggle("Toast"), Toggle("Tappy mode")),
-            new("WAV", Toggle("Output WAV file"), Field("WAV output path"), ActionButton("...")),
-            new("Register dump", Toggle("Dump switch"), Field("Dump output path"), ActionButton("...")),
-            new("Paths", Field("Data path"), ActionButton("..."), Field("Search path"), ActionButton("..."), Field("Image resource file"), ActionButton("...")),
-            new("Other", Toggle("Use GetInst"), Toggle("Save compiled file"), ActionButton("Reset window positions"), ActionButton("Open setting folder")));
+        private Control BuildOtherPage()
+        {
+            var chooseMgsDriver = new Button { Content = "Choose…", MinWidth = 84 };
+            chooseMgsDriver.Click += async (_, _) => await ChooseMgsDriverAsync();
+            var mgsGroup = new GroupBox
+            {
+                Header = SettingGroupHeader("MGSDRV (.mgs playback)"),
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(8, 5), Spacing = 5,
+                    Children =
+                    {
+                        SettingText("Choose your own authorized MGSDRV.COM. MDPlayer4Mac does not include or redistribute this driver."),
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { mgsDriverPath, chooseMgsDriver } },
+                    },
+                },
+            };
+            var chooseMusicaDriver = new Button { Content = "Choose…", MinWidth = 84 };
+            chooseMusicaDriver.Click += async (_, _) => await ChooseMusicaFileAsync(musicaDriverPath, "KINROU5.DRV 선택", "KINROU5.DRV", "*.DRV");
+            var chooseMusicaCompiler = new Button { Content = "Choose…", MinWidth = 84 };
+            chooseMusicaCompiler.Click += async (_, _) => await ChooseMusicaFileAsync(musicaCompilerPath, "KINROU4.COM 선택", "KINROU4.COM", "*.COM");
+            var musicaGroup = new GroupBox
+            {
+                Header = SettingGroupHeader("MuSICA (.msd / .bgm playback)"),
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(8, 5), Spacing = 5,
+                    Children =
+                    {
+                        SettingText("Choose your own authorized MuSICA programs. .bgm uses KINROU5.DRV; compiling .msd also needs KINROU4.COM. Neither file is bundled or redistributed."),
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { musicaDriverPath, chooseMusicaDriver } },
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { musicaCompilerPath, chooseMusicaCompiler } },
+                    },
+                },
+            };
+            var unavailable = BuildUnavailableSettingsPage(
+                "These Windows-wide preferences are listed for parity. The currently implemented macOS controls remain available directly in the player UI.",
+                new("Playback", Toggle("Use loop times"), Field("Loop times"), Toggle("Initialize always"), Toggle("Auto open"), Toggle("Non-rendering for pause")),
+                new("Screen", Field("Screen frame rate"), Toggle("ExALL"), Toggle("Toast"), Toggle("Tappy mode")),
+                new("WAV", Toggle("Output WAV file"), Field("WAV output path"), ActionButton("...")),
+                new("Register dump", Toggle("Dump switch"), Field("Dump output path"), ActionButton("...")),
+                new("Paths", Field("Data path"), ActionButton("..."), Field("Search path"), ActionButton("..."), Field("Image resource file"), ActionButton("...")),
+                new("Other", Toggle("Use GetInst"), Toggle("Save compiled file"), ActionButton("Reset window positions"), ActionButton("Open setting folder")));
+            return new StackPanel { Margin = new Thickness(10), Spacing = 8, Children = { mgsGroup, musicaGroup, unavailable } };
+        }
+
+        private async Task ChooseMgsDriverAsync()
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "MGSDRV.COM 선택",
+                AllowMultiple = false,
+                FileTypeFilter = new[] { new FilePickerFileType("MGSDRV.COM") { Patterns = new[] { "MGSDRV.COM", "*.COM" } } },
+            });
+            if (files.Count > 0 && files[0].Path.IsFile) mgsDriverPath.Text = files[0].Path.LocalPath;
+        }
+
+        private async Task ChooseMusicaFileAsync(TextBox target, string title, string expectedName, string pattern)
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = title,
+                AllowMultiple = false,
+                FileTypeFilter = new[] { new FilePickerFileType(expectedName) { Patterns = new[] { expectedName, pattern } } },
+            });
+            if (files.Count > 0 && files[0].Path.IsFile) target.Text = files[0].Path.LocalPath;
+        }
 
         private static Control BuildOmakePage() => BuildUnavailableSettingsPage(
             "Windows diagnostic and VST options are not implemented in the macOS port.",
@@ -728,6 +794,9 @@ namespace MDPlayer.UI
                 setting.outputDevice.Latency = latency;
                 setting.outputDevice.WaitTime = waitTime;
                 setting.outputDevice.SampleRate = sampleRate;
+                setting.other.MgsDrvPath = mgsDriverPath.Text?.Trim() ?? string.Empty;
+                setting.other.MusicaDriverPath = musicaDriverPath.Text?.Trim() ?? string.Empty;
+                setting.other.MusicaCompilerPath = musicaCompilerPath.Text?.Trim() ?? string.Empty;
                 setting.Save();
                 SavedOutputSettings = new OutputSettings(latency, waitTime, sampleRate);
                 Close(true);

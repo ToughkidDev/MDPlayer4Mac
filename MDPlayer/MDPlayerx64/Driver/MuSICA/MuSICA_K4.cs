@@ -61,9 +61,13 @@ namespace MDPlayer.Driver.MuSICA
         }
 
         private static byte[] kinrou4 = null;
+        private static string kinrou4Path = null;
         private static byte DollarCode;
         private Z80Processor z80;
         private Mapper mapper;
+        // KINROU4.COM is the original MuSICA compiler program.  macOS obtains
+        // it from the user's selected local path instead of shipping a copy.
+        public string CompilerFilePath { get; set; }
         private MSXVDP vdp;
         private static ushort DTAAddress = 0x0080;
         private static ushort FCBAddress = 0x0080;
@@ -79,7 +83,9 @@ namespace MDPlayer.Driver.MuSICA
             this.bgmBin = null;
 
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string fileName = Path.Combine(crntDir, "KINROU4.COM");
+            string fileName = !string.IsNullOrWhiteSpace(CompilerFilePath) && File.Exists(CompilerFilePath)
+                ? CompilerFilePath
+                : Path.Combine(crntDir, "KINROU4.COM");
             DollarCode = Encoding.ASCII.GetBytes(new[] { '$' })[0];
 
             vdp = new MSXVDP();
@@ -96,7 +102,11 @@ namespace MDPlayer.Driver.MuSICA
 
 
             //プログラムの読み込みとメモリへのセット
-            kinrou4 ??= File.ReadAllBytes(fileName);
+            if (kinrou4 == null || !string.Equals(kinrou4Path, fileName, StringComparison.Ordinal))
+            {
+                kinrou4 = File.ReadAllBytes(fileName);
+                kinrou4Path = fileName;
+            }
             z80.Memory.SetContents(0x100, kinrou4);
             z80.Registers.PC = 0x100;
             z80.Registers.SP = unchecked((short)0xf380);

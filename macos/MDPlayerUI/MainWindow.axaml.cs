@@ -1629,12 +1629,18 @@ namespace MDPlayer.UI
 
         private static readonly string[] SupportedMusicExtensions =
         {
-            ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".zms", ".zmd", ".mdx",
-            ".mdr", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
+            ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".mgs", ".zms", ".zmd", ".mdx",
+            ".mdr", ".mdl", ".mub", ".muc", ".mml", ".m", ".m2", ".mz", ".mus", ".o", ".ox", ".oy", ".msd", ".bgm", ".nrd", ".mid", ".rcp", ".rcs", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
         };
 
         private static bool IsSupportedMusicFile(IStorageFile file)
             => SupportedMusicExtensions.Contains(Path.GetExtension(file.Name), StringComparer.OrdinalIgnoreCase);
+
+        private static bool IsM3uPlaylistFile(IStorageFile file)
+            => string.Equals(Path.GetExtension(file.Name), ".m3u", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsSupportedInputFile(IStorageFile file)
+            => IsSupportedMusicFile(file) || IsM3uPlaylistFile(file);
 
         // Use Avalonia's storage abstraction rather than Directory.EnumerateFiles so the
         // macOS sandbox/security scope granted by a Finder drop remains valid.  Folder
@@ -1650,7 +1656,7 @@ namespace MDPlayer.UI
             {
                 if (item is IStorageFile file)
                 {
-                    if (!IsSupportedMusicFile(file)) return;
+                    if (!IsSupportedInputFile(file)) return;
 
                     string key = file.Path.ToString();
                     if (seenFiles.Add(key)) files.Add(file);
@@ -1840,12 +1846,65 @@ namespace MDPlayer.UI
         private static async Task<System.Collections.Generic.List<PlaylistEntry>> ReadPlaylistEntriesAsync(System.Collections.Generic.IEnumerable<IStorageFile> files)
         {
             var entries = new System.Collections.Generic.List<PlaylistEntry>();
+            var seenSourcePaths = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (IStorageFile file in files)
             {
+                if (IsM3uPlaylistFile(file))
+                {
+                    if (!file.Path.IsFile) continue;
+                    string playlistPath = file.Path.LocalPath;
+                    string? playlistDirectory = Path.GetDirectoryName(playlistPath);
+                    if (string.IsNullOrWhiteSpace(playlistDirectory) || !File.Exists(playlistPath)) continue;
+                    string? extendedTitle = null;
+                    foreach (string rawLine in await File.ReadAllLinesAsync(playlistPath))
+                    {
+                        string line = rawLine.Trim().TrimStart('\ufeff');
+                        if (line.StartsWith("#EXTINF", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int separator = line.IndexOf(',');
+                            extendedTitle = separator >= 0 ? line[(separator + 1)..].Trim() : null;
+                            continue;
+                        }
+                        if (line.Length == 0 || line.StartsWith('#')) continue;
+                        // This player currently has no network-stream backend. Keep URL entries
+                        // out of the local queue rather than presenting an unplayable track.
+                        if (Uri.TryCreate(line, UriKind.Absolute, out Uri? uri) && !uri.IsFile)
+                        {
+                            extendedTitle = null;
+                            continue;
+                        }
+                        string resolvedPath;
+                        try
+                        {
+                            resolvedPath = Path.GetFullPath(Path.IsPathRooted(line)
+                                ? line
+                                : Path.Combine(playlistDirectory, line));
+                        }
+                        catch (Exception)
+                        {
+                            extendedTitle = null;
+                            continue;
+                        }
+                        if (!File.Exists(resolvedPath)
+                            || !SupportedMusicExtensions.Contains(Path.GetExtension(resolvedPath), StringComparer.OrdinalIgnoreCase)
+                            || !seenSourcePaths.Add(resolvedPath))
+                        {
+                            extendedTitle = null;
+                            continue;
+                        }
+                        entries.Add(new PlaylistEntry(await File.ReadAllBytesAsync(resolvedPath),
+                            string.IsNullOrWhiteSpace(extendedTitle) ? Path.GetFileName(resolvedPath) : extendedTitle,
+                            resolvedPath));
+                        extendedTitle = null;
+                    }
+                    continue;
+                }
+
                 await using var stream = await file.OpenReadAsync();
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);
                 string? sourcePath = file.Path.IsFile ? file.Path.LocalPath : null;
+                if (sourcePath != null && !seenSourcePaths.Add(sourcePath)) continue;
                 entries.Add(new PlaylistEntry(ms.ToArray(), file.Name, sourcePath));
             }
             return entries;
@@ -2108,8 +2167,8 @@ namespace MDPlayer.UI
                     {
                         Patterns = new[]
                         {
-                            "*.vgm", "*.vgz", "*.xgm", "*.xgz", "*.sid", "*.mnd", "*.zms", "*.zmd",
-                            "*.mdx", "*.mdr", "*.nsf", "*.gbs", "*.hes", "*.s98", "*.ay", "*.zgm",
+                            "*.vgm", "*.vgz", "*.xgm", "*.xgz", "*.sid", "*.mnd", "*.mgs", "*.zms", "*.zmd",
+                            "*.mdx", "*.mdr", "*.mdl", "*.mub", "*.muc", "*.mml", "*.m", "*.m2", "*.mz", "*.mus", "*.o", "*.ox", "*.oy", "*.msd", "*.bgm", "*.nrd", "*.mid", "*.rcp", "*.rcs", "*.nsf", "*.gbs", "*.hes", "*.s98", "*.ay", "*.zgm", "*.m3u",
                         },
                     },
                     FilePickerFileTypes.All,
@@ -2123,7 +2182,7 @@ namespace MDPlayer.UI
             HideMixer();
 
             playlist.Clear();
-            await AppendFilesAsync(files.Where(IsSupportedMusicFile));
+            await AppendFilesAsync(files.Where(IsSupportedInputFile));
             if (playlist.Count == 0)
             {
                 StatusLabel.Text = "지원하는 음악 파일을 선택하세요";
