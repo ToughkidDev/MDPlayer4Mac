@@ -59,8 +59,15 @@ case "${ARCH_LIST[0]}" in
 esac
 
 case "${CONFIGURATION:-Debug}" in
-    Release) DOTNET_CONFIGURATION="Release" ;;
-    *)       DOTNET_CONFIGURATION="Debug" ;;
+    Release)
+        DOTNET_CONFIGURATION="Release"
+        # Same as the release workflow: no .pdb files in the bundle.
+        EXTRA_PROPERTIES=("--property:DebugType=None")
+        ;;
+    *)
+        DOTNET_CONFIGURATION="Debug"
+        EXTRA_PROPERTIES=()
+        ;;
 esac
 
 # --- Publish ---------------------------------------------------------------------
@@ -83,12 +90,23 @@ for name in USER LOGNAME DEVELOPER_DIR DOTNET_ROOT NUGET_PACKAGES DOTNET_CLI_TEL
     fi
 done
 
-echo "Publishing $CSPROJ ($DOTNET_CONFIGURATION, $RID) with $DOTNET_BIN"
+# Avalonia 12's XAML source generator needs Roslyn 4.14, which first shipped in
+# .NET SDK 9.0.300. With an older SDK the generator is skipped silently and the
+# build fails with dozens of CS0103 errors for named XAML controls.
+SDK_VERSION="$(cd "$SRCROOT" && env -i "${CLEAN_ENV[@]}" "$DOTNET_BIN" --version)"
+IFS=. read -r SDK_MAJOR SDK_MINOR SDK_PATCH <<< "${SDK_VERSION%%-*}"
+if [ "$SDK_MAJOR" -lt 9 ] || { [ "$SDK_MAJOR" -eq 9 ] && [ "$SDK_MINOR" -eq 0 ] && [ "$SDK_PATCH" -lt 300 ]; }; then
+    echo "error: .NET SDK $SDK_VERSION is too old for Avalonia 12. Install .NET SDK 9.0.300 or later (10 recommended)." >&2
+    exit 1
+fi
+
+echo "Publishing $CSPROJ ($DOTNET_CONFIGURATION, $RID) with .NET SDK $SDK_VERSION ($DOTNET_BIN)"
 env -i "${CLEAN_ENV[@]}" "$DOTNET_BIN" publish "$CSPROJ" \
     --configuration "$DOTNET_CONFIGURATION" \
     --runtime "$RID" \
     --self-contained true \
     --property:PublishSingleFile=true \
+    ${EXTRA_PROPERTIES[@]+"${EXTRA_PROPERTIES[@]}"} \
     --output "$PUBLISH_DIR"
 
 # --- Copy into the bundle -------------------------------------------------------

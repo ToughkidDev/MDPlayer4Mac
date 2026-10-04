@@ -197,7 +197,8 @@ FM, SSG, ADPCM, PCM 등 성격이 다른 출력을 나눠 보여 줌.
 
 - macOS
 - Xcode Command Line Tools (`xcrun clang` 포함)
-- .NET SDK 8 이상
+- .NET SDK 9.0.300 이상(10 권장). Avalonia 12의 XAML 소스 생성기가 Roslyn 4.14를 요구하므로
+  SDK 8로는 빌드되지 않음(타깃 프레임워크는 그대로 `net8.0`)
 - 최초 NuGet 복원 시 인터넷 연결
 
 `MDPlayerUI`는 Avalonia를 사용함. Force Click은 Avalonia의 일반 포인터 이벤트로 들어오지
@@ -234,7 +235,7 @@ dotnet run --project macos/EngineSmokeTest/EngineSmokeTest.csproj -c Release -- 
 실행하고, 결과물을 `MDPlayer4Mac.app/Contents/MacOS`에 넣음. `Info.plist`와 아이콘, 서명은
 Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
 
-- 사전 준비: .NET SDK 8 이상, 서브모듈(`git submodule update --init --recursive`)
+- 사전 준비: .NET SDK 9.0.300 이상(10 권장), 서브모듈(`git submodule update --init --recursive`)
 - Xcode의 Debug/Release 구성이 그대로 `dotnet publish -c Debug/Release`로 전달됨
 - `dotnet`은 `PATH`, `/usr/local/share/dotnet`, `/opt/homebrew/bin`, `~/.dotnet` 순서로
   찾음. 다른 위치라면 스킴의 환경 변수에 `DOTNET=/path/to/dotnet`을 지정하면 됨
@@ -243,6 +244,8 @@ Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
 - LLDB는 .NET 관리 코드를 디버깅할 수 없으므로 스킴은 디버거 없이 앱을 실행함. 디버깅이
   필요하면 VS Code나 Rider의 .NET 디버거를 실행 중인 프로세스에 연결하면 됨
 - 앱 버전은 타깃의 General 탭(`MARKETING_VERSION`)에서 바꿈
+- `macos/` 아래를 바꿔 브랜치에 푸시하면 `.github/workflows/xcode-build.yml`이 macOS 러너에서
+  Debug/Release를 `xcodebuild`로 빌드하고, 번들 구성·서명 검증과 15초 실행 확인까지 함
 
 ## 릴리즈
 

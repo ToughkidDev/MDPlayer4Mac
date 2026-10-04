@@ -1,0 +1,67 @@
+name: Xcode build
+
+# Builds macos/MDPlayer4Mac.xcodeproj with xcodebuild on branch pushes that touch the
+# macOS port. Tag pushes are not matched (only `branches` is filtered), so this never
+# overlaps with release-macos.yml.
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "macos/**"
+      - ".github/workflows/xcode-build.yml"
+  workflow_dispatch:
+
+jobs:
+  xcodebuild:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build with xcodebuild
+        run: >-
+          xcodebuild
+          -project macos/MDPlayer4Mac.xcodeproj
+          -scheme MDPlayer4Mac
+          -configuration ${{ matrix.configuration }}
+          -derivedDataPath build/DerivedData
+          build
+
+      - name: Verify app bundle
+        run: |
+          APP="build/DerivedData/Build/Products/${{ matrix.configuration }}/MDPlayer4Mac.app"
+          ls -la "$APP/Contents" "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          plutil -p "$APP/Contents/Info.plist"
+          file "$APP/Contents/MacOS/MDPlayer4Mac"
+          test -x "$APP/Contents/MacOS/MDPlayer4Mac"
+          test -f "$APP/Contents/MacOS/libMDPlayerForceTouch.dylib"
+          test -f "$APP/Contents/Resources/MDPlayer4Mac.icns"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Launch smoke test
+        run: |
+          APP="build/DerivedData/Build/Products/${{ matrix.configuration }}/MDPlayer4Mac.app"
+          "$APP/Contents/MacOS/MDPlayer4Mac" > launch.log 2>&1 &
+          PID=$!
+          sleep 15
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "MDPlayer4Mac is still running after 15 seconds."
+            kill "$PID"
+          else
+            wait "$PID" || echo "exit status: $?"
+            cat launch.log
+            exit 1
+          fi
