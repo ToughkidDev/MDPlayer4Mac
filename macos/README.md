@@ -226,6 +226,24 @@ VGM을 WAV로 렌더링하는 스모크 테스트는 아래와 같음.
 dotnet run --project macos/EngineSmokeTest/EngineSmokeTest.csproj -c Release -- /path/to/song.vgm /path/to/output.wav
 ```
 
+### Xcode에서 빌드
+
+`macos/MDPlayer4Mac.xcodeproj`를 열고 `MDPlayer4Mac` 스킴을 실행(⌘R)하면 됨. 앱 자체는
+.NET/Avalonia 코드라 Xcode가 직접 컴파일하지 않음. 앱 타깃의 `Build .NET App` 빌드 단계가
+`macos/Xcode/build-app.sh`를 호출해 `dotnet publish`(자체 포함, 단일 파일, `osx-arm64`)를
+실행하고, 결과물을 `MDPlayer4Mac.app/Contents/MacOS`에 넣음. `Info.plist`와 아이콘, 서명은
+Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
+
+- 사전 준비: .NET SDK 8 이상, 서브모듈(`git submodule update --init --recursive`)
+- Xcode의 Debug/Release 구성이 그대로 `dotnet publish -c Debug/Release`로 전달됨
+- `dotnet`은 `PATH`, `/usr/local/share/dotnet`, `/opt/homebrew/bin`, `~/.dotnet` 순서로
+  찾음. 다른 위치라면 스킴의 환경 변수에 `DOTNET=/path/to/dotnet`을 지정하면 됨
+- 서명은 기본적으로 "Sign to Run Locally"(ad-hoc)임. Developer ID로 서명하려면 타깃의
+  Signing 설정만 바꾸면 되고, 번들 안의 dylib도 같은 인증서로 서명됨
+- LLDB는 .NET 관리 코드를 디버깅할 수 없으므로 스킴은 디버거 없이 앱을 실행함. 디버깅이
+  필요하면 VS Code나 Rider의 .NET 디버거를 실행 중인 프로세스에 연결하면 됨
+- 앱 버전은 타깃의 General 탭(`MARKETING_VERSION`)에서 바꿈
+
 ## 릴리즈
 
 `v*` 태그를 푸시하면 `.github/workflows/release-macos.yml`이 Apple Silicon용 자체 포함 앱을

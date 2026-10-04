@@ -239,3 +239,7 @@ output
 lib
 plugin
 /MDPlayer/MDPlayer_InstKit/mdplayer
+
+# Xcode per-user state
+xcuserdata/
+*.xcuserstate
