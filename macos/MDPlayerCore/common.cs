@@ -1,4 +1,4 @@
-﻿using Konamiman.Z80dotNet;
+using Konamiman.Z80dotNet;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text;
@@ -506,12 +506,10 @@ namespace MDPlayer
 
         public static string GetApplicationFolder()
         {
-            string path = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (!string.IsNullOrEmpty(path))
-            {
-                path += path[path.Length - 1] == '\\' ? "" : "\\";
-            }
-            return path;
+            // Assembly.Location is empty in a published single-file app.
+            // BaseDirectory is the executable directory on macOS and Windows;
+            // do not append a Windows-only backslash on Unix.
+            return AppContext.BaseDirectory;
         }
 
         public static string GetApplicationDataFolder(bool make = false)
@@ -611,6 +609,29 @@ namespace MDPlayer
         }
 
 
+
+        // Resolve per-album rhythm samples without changing process cwd or
+        // the shared playingFilePath (another session may load concurrently).
+        public static Stream GetOPNARhythmStream(string fn, string sourcePath)
+        {
+            if (!string.IsNullOrWhiteSpace(sourcePath))
+            {
+                try
+                {
+                    string directory = Path.GetDirectoryName(Path.GetFullPath(sourcePath));
+                    string candidate = Path.Combine(directory, fn);
+                    if (!File.Exists(candidate) && Directory.Exists(directory))
+                        candidate = Directory.EnumerateFiles(directory).FirstOrDefault(path =>
+                            string.Equals(Path.GetFileName(path), fn, StringComparison.OrdinalIgnoreCase));
+                    if (candidate != null && File.Exists(candidate))
+                        return File.OpenRead(candidate);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                catch (ArgumentException) { }
+            }
+            return GetOPNARyhthmStream(fn);
+        }
 
         public static Stream GetOPNARyhthmStream(string fn)
         {

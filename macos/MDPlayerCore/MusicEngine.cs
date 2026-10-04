@@ -97,7 +97,7 @@ namespace MDPlayer
             EnmFileFormat format = DetectFormat(buf, fileNameHint);
             return format switch
             {
-                EnmFileFormat.VGM => VgmEngine.Load(buf, samplingBuffer),
+                EnmFileFormat.VGM => VgmEngine.Load(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.XGM => LoadXgm(buf, samplingBuffer),
                 EnmFileFormat.XGM2 => LoadXgm2(buf, samplingBuffer),
                 EnmFileFormat.SID => LoadSid(buf, samplingBuffer),
@@ -261,7 +261,7 @@ namespace MDPlayer
             };
         }
 
-        private static MDSound.MDSound.Chip MakeYM2608(Setting setting, MDSound.ym2608 instrument, int id)
+        private static MDSound.MDSound.Chip MakeYM2608(Setting setting, MDSound.ym2608 instrument, int id, string sourcePath = null)
             => new()
             {
                 type = MDSound.MDSound.enmInstrumentType.YM2608,
@@ -274,7 +274,7 @@ namespace MDPlayer
                 SamplingRate = 55467,
                 Volume = setting.balance.YM2608Volume,
                 Clock = Driver.MUCOM.MucomDotNET.OPNABaseClock,
-                Option = new object[] { (Func<string, Stream>)Common.GetOPNARyhthmStream },
+                Option = new object[] { (Func<string, Stream>)(name => Common.GetOPNARhythmStream(name, sourcePath)) },
             };
 
         private static MDSound.MDSound.Chip MakeYM2610(Setting setting, MDSound.ym2610 instrument, int id)
@@ -316,8 +316,8 @@ namespace MDPlayer
             var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
             var names = new System.Collections.Generic.List<string>();
 
-            if (used[0]) { chips.Add(MakeYM2608(setting, ym2608, 0)); names.Add("YM2608"); }
-            if (used[1]) { chips.Add(MakeYM2608(setting, ym2608, 1)); names.Add("YM2608 #2"); }
+            if (used[0]) { chips.Add(MakeYM2608(setting, ym2608, 0, sourcePath)); names.Add("YM2608"); }
+            if (used[1]) { chips.Add(MakeYM2608(setting, ym2608, 1, sourcePath)); names.Add("YM2608 #2"); }
             if (used[2]) { chips.Add(MakeYM2610(setting, ym2610, 0)); names.Add("YM2610"); }
             if (used[3]) { chips.Add(MakeYM2610(setting, ym2610, 1)); names.Add("YM2610 #2"); }
             if (used[4]) { chips.Add(MakeYM2151(setting, Driver.MUCOM.MucomDotNET.GetOpmClock(buf))); names.Add("YM2151"); }
@@ -356,7 +356,7 @@ namespace MDPlayer
             MDSound.P86 p86 = new();
             var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
             {
-                MakeYM2608(setting, ym2608, 0),
+                MakeYM2608(setting, ym2608, 0, sourcePath),
                 MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.PPZ8, ppz8, sampleRate, setting.balance.PPZ8Volume),
                 MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.PPSDRV, ppsdrv, sampleRate, 0),
                 MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.P86, p86, sampleRate, 0),

@@ -77,6 +77,17 @@
     <ProjectReference Include="..\CoreAudioOutput\CoreAudioOutput.csproj" />
   </ItemGroup>
 
+  <!-- Player-owned rhythm samples must be physical files for FMGen, including
+       single-file releases. Keep them beside the executable, independently of
+       song folders or the converter's Instrument Assets. -->
+  <ItemGroup>
+    <None Update="Assets/Rhythm/*.WAV"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="%(Filename)%(Extension)"
+          ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
   <!--
     Chip channel visualizer sprite sheets (see Visualizer/SpriteAtlas.cs's header comment
     for why these are a custom raw ".rgba32" format rather than PNGs decoded at runtime).

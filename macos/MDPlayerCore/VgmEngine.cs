@@ -518,7 +518,7 @@ namespace MDPlayer
 
         // samplingBuffer is MDSound's internal resample buffer size (in frames), not the
         // caller's per-Update() chunk size - unrelated to how many samples you pull per call.
-        public static MusicEngineSession Load(byte[] vgmBuf, uint samplingBuffer = 2048)
+        public static MusicEngineSession Load(byte[] vgmBuf, uint samplingBuffer = 2048, string sourcePath = null)
         {
             vgmBuf = DecompressIfGzip(vgmBuf);
 
@@ -698,7 +698,7 @@ namespace MDPlayer
                         // Rhythm ADPCM sample loader - gracefully returns null (silent rhythm
                         // channel) if the sample file isn't found on disk, so this is safe even
                         // without the original PC-98/OPNA rhythm sample files present.
-                        Option = new object[] { (Func<string, System.IO.Stream>)Common.GetOPNARyhthmStream },
+                        Option = new object[] { (Func<string, System.IO.Stream>)(name => Common.GetOPNARhythmStream(name, sourcePath)) },
                     });
                 }
             }
