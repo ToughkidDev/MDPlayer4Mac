@@ -127,8 +127,13 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 - `.mdr`/`.mdl`은 MoonDriver OPL4/OPL3 포맷임. 같은 이름의 `.pcm` 파일이 있으면 함께
   사용함. `.mml`은 PMD 소스이며 `.m`/`.m2`/`.mz`는 PMD 컴파일 데이터임. `.mus`는 MUAP98
   소스이고 `.o`/`.ox`/`.oy`는 MUAP98 컴파일 데이터임.
-- `.mgs`는 MGSDRV 형식임. 라이선스 문제로 `MGSDRV.COM`은 앱에 포함하지 않음. 사용자가
-  합법적으로 보유한 파일을 Setting → Other → MGSDRV에서 지정해야 재생할 수 있음.
+- `.mgs`는 MGSDRV 형식임. MGSDRV는 수정하지 않은 재배포를 허용하므로(`licenses/MGSDRV/`)
+  `macos/MDPlayerUI/Assets/Drivers/`에 `MGSDRV.COM`을 넣으면 앱 번들에 함께 포함됨. 번들에
+  없으면 사용자 Drivers 폴더나 Setting → Other → MGSDRV에서 지정한 파일을 씀.
+- 원본 드라이버나 ROM이 필요한 포맷(MuSICA, NDP, FMP, ZMUSIC, OPL4의 `yrw801.rom`)은
+  `~/Library/Application Support/MDPlayer4Mac/Drivers/`에 파일을 넣으면 됨. Windows판은 exe
+  옆에서 찾지만 macOS에서는 그 위치가 서명된 앱 번들 안이라 따로 폴더를 둠. 설정 창 Other
+  탭의 Driver files에서 폴더를 열고 각 파일을 찾았는지 확인할 수 있음.
 - `.bgm`은 MuSICA 컴파일 데이터이며 Setting → Other에서 `KINROU5.DRV`를 지정해야 함.
   `.msd`는 MuSICA 소스라서 같은 이름의 `.vcd`가 있으면 함께 읽고, 즉석 컴파일을 위해
   `KINROU4.COM`도 지정해야 함. 두 파일 모두 라이선스상 앱에 포함하거나 재배포하지 않음.

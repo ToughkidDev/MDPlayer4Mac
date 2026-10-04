@@ -391,8 +391,8 @@ namespace MDPlayer
                 Option = null,
             };
 
-        // MGSDRV uses its original Z80 driver program.  The user supplies that program's
-        // path in Settings; we only host it and route its AY/OPLL/SCC port writes to MDSound.
+        // MGSDRV uses its original Z80 driver program (see DriverFiles for where it is
+        // looked up); we only host it and route its AY/OPLL/SCC port writes to MDSound.
         private static MusicEngineSession LoadMgs(byte[] buf, uint samplingBuffer, string sourcePath)
         {
             int terminator = 0;
@@ -406,7 +406,10 @@ namespace MDPlayer
             if (!useAy && !useScc && !useOpll) return null;
 
             var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
-            if (string.IsNullOrWhiteSpace(setting.other.MgsDrvPath) || !File.Exists(setting.other.MgsDrvPath)) return null;
+            // A copy chosen in Settings wins; otherwise use the user's Drivers folder or the
+            // MGSDRV.COM shipped in the bundle (MGSDRV allows unmodified redistribution).
+            string mgsDrvPath = DriverFiles.Find("MGSDRV.COM", setting.other.MgsDrvPath);
+            if (mgsDrvPath == null) return null;
             var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>();
             var names = new System.Collections.Generic.List<string>();
             if (useAy)
@@ -438,7 +441,7 @@ namespace MDPlayer
             {
                 setting = setting,
                 PlayingFileName = sourcePath,
-                DriverFilePath = setting.other.MgsDrvPath,
+                DriverFilePath = mgsDrvPath,
             };
             if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0)) return null;
             return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, EnmFileFormat.MGS, string.Join(" + ", names));
@@ -453,20 +456,22 @@ namespace MDPlayer
             byte[] buf = source;
             if (compileSource)
             {
-                if (string.IsNullOrWhiteSpace(setting.other.MusicaCompilerPath) || !File.Exists(setting.other.MusicaCompilerPath)) return null;
+                string compilerPath = DriverFiles.Find("KINROU4.COM", setting.other.MusicaCompilerPath);
+                if (compilerPath == null) return null;
                 byte[] vcd = null;
                 if (!string.IsNullOrWhiteSpace(sourcePath))
                 {
                     string vcdPath = Path.ChangeExtension(sourcePath, ".vcd");
                     if (File.Exists(vcdPath)) vcd = File.ReadAllBytes(vcdPath);
                 }
-                Driver.MuSICA.MuSICA_K4 compiler = new() { CompilerFilePath = setting.other.MusicaCompilerPath };
+                Driver.MuSICA.MuSICA_K4 compiler = new() { CompilerFilePath = compilerPath };
                 if (!compiler.Compile(source, vcd)) return null;
                 buf = compiler.GetBgmBin();
                 if (buf == null) return null;
             }
 
-            if (buf.Length < 42 || string.IsNullOrWhiteSpace(setting.other.MusicaDriverPath) || !File.Exists(setting.other.MusicaDriverPath)) return null;
+            string musicaDriverPath = DriverFiles.Find("KINROU5.DRV", setting.other.MusicaDriverPath);
+            if (buf.Length < 42 || musicaDriverPath == null) return null;
             int Offset(int index) => buf[8 + index * 2] | buf[9 + index * 2] << 8;
             bool useOpll = Enumerable.Range(0, 9).Select(Offset).Any(value => value != 0);
             bool useAy = Enumerable.Range(9, 3).Select(Offset).Any(value => value != 0);
@@ -502,7 +507,7 @@ namespace MDPlayer
             mds.Init(sampleRate, samplingBuffer, chips.ToArray());
             chipRegister.initChipRegister(chips.ToArray());
             if (useOpll) chipRegister.setYM2413Register(0, 14, 32, EnmModel.VirtualModel, 0);
-            Driver.MuSICA.MuSICA driver = new() { setting = setting, PlayingFileName = sourcePath, DriverFilePath = setting.other.MusicaDriverPath };
+            Driver.MuSICA.MuSICA driver = new() { setting = setting, PlayingFileName = sourcePath, DriverFilePath = musicaDriverPath };
             if (!driver.init(buf, chipRegister, EnmModel.VirtualModel,
                 new[] { EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649 }, 0, 0)) return null;
             return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
@@ -768,7 +773,7 @@ namespace MDPlayer
                     type = MDSound.MDSound.enmInstrumentType.YMF278B, ID = 0, Instrument = opl4,
                     Update = opl4.Update, Start = opl4.Start, Stop = opl4.Stop, Reset = opl4.Reset,
                     SamplingRate = sampleRate, Volume = setting.balance.YMF278BVolume, Clock = 33_868_800,
-                    Option = new object[] { Common.GetApplicationFolder() },
+                    Option = new object[] { DriverFiles.FindFolder("yrw801.rom") },
                 });
                 chipName = "YMF278B (OPL4)";
             }

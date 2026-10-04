@@ -94,8 +94,21 @@
     AvaloniaResource embeds arbitrary files for avares:// lookup, not just recognized image
     formats, so the non-standard extension here is fine.
   -->
+  <!-- Original driver programs shipped with the app (currently MGSDRV.COM and its
+       documentation; MGSDRV permits unmodified redistribution). They are published to
+       Contents/MacOS/Drivers, which MDPlayerCore/DriverFiles.cs searches after the
+       user's own Drivers folder. -->
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
+    <None Include="Assets\Drivers\*"
+          Exclude="Assets\Drivers\README.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Link="Drivers\%(Filename)%(Extension)"
+          ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" Exclude="Assets\Drivers\**" />
     <!-- Also keep the macOS icon as a physical file: AppKit needs a file path
          to update the Dock icon for a `dotnet run` launch outside a .app bundle. -->
     <None Update="Assets\MDPlayer4Mac.icns"

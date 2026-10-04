@@ -377,7 +377,7 @@ namespace MDPlayer.UI
                     Margin = new Thickness(8, 5), Spacing = 5,
                     Children =
                     {
-                        SettingText("Choose your own authorized MGSDRV.COM. MDPlayer4Mac does not include or redistribute this driver."),
+                        SettingText("Leave empty to use MGSDRV.COM from the Drivers folder below, or the copy bundled with the app. Choose a file only to override it."),
                         new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { mgsDriverPath, chooseMgsDriver } },
                     },
                 },
@@ -394,7 +394,7 @@ namespace MDPlayer.UI
                     Margin = new Thickness(8, 5), Spacing = 5,
                     Children =
                     {
-                        SettingText("Choose your own authorized MuSICA programs. .bgm uses KINROU5.DRV; compiling .msd also needs KINROU4.COM. Neither file is bundled or redistributed."),
+                        SettingText("Choose your own authorized MuSICA programs, or put them in the Drivers folder below. .bgm uses KINROU5.DRV; compiling .msd also needs KINROU4.COM. Neither file is bundled or redistributed."),
                         new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { musicaDriverPath, chooseMusicaDriver } },
                         new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { musicaCompilerPath, chooseMusicaCompiler } },
                     },
@@ -408,7 +408,75 @@ namespace MDPlayer.UI
                 new("Register dump", Toggle("Dump switch"), Field("Dump output path"), ActionButton("...")),
                 new("Paths", Field("Data path"), ActionButton("..."), Field("Search path"), ActionButton("..."), Field("Image resource file"), ActionButton("...")),
                 new("Other", Toggle("Use GetInst"), Toggle("Save compiled file"), ActionButton("Reset window positions"), ActionButton("Open setting folder")));
-            return new StackPanel { Margin = new Thickness(10), Spacing = 8, Children = { mgsGroup, musicaGroup, unavailable } };
+            return new StackPanel { Margin = new Thickness(10), Spacing = 8, Children = { mgsGroup, musicaGroup, BuildDriverFilesGroup(), unavailable } };
+        }
+
+        // Driver programs and ROM images that some formats need. The Windows build looks
+        // for them beside the executable; on macOS that is inside the signed app bundle, so
+        // they live in a per-user Drivers folder instead (see MDPlayerCore/DriverFiles.cs).
+        private static readonly (string File, string Usage)[] DriverFileList =
+        {
+            ("MGSDRV.COM", ".mgs"),
+            ("KINROU5.DRV", ".bgm / .msd"),
+            ("KINROU4.COM", ".msd (compile)"),
+            ("NDP.BIN", ".ndp"),
+            ("FMP.COM", "FMP .opi / .ovi / .ozi"),
+            ("FMC.EXE", "FMP .mpi / .mvi / .mzi (compile)"),
+            ("PPZ8.COM", "FMP PPZ8 PCM"),
+            ("ZMUSIC.X", "ZMUSIC v2 .zms / .zmd"),
+            ("ZMC.X", "ZMUSIC v3 .zms (compile)"),
+            ("ZMSC3.X", "ZMUSIC v3 .zmd"),
+            ("yrw801.rom", "YMF278B (OPL4) wavetable"),
+        };
+
+        private Control BuildDriverFilesGroup()
+        {
+            string folder = DriverFiles.UserDriversFolder ?? string.Empty;
+            var status = new StackPanel { Spacing = 2 };
+            void Refresh()
+            {
+                status.Children.Clear();
+                foreach (var (file, usage) in DriverFileList)
+                {
+                    string found = DriverFiles.Find(file);
+                    string where = found == null ? "not found"
+                        : found.StartsWith(DriverFiles.BundledDriversFolder, StringComparison.Ordinal) ? "bundled" : "found";
+                    status.Children.Add(new TextBlock { Text = $"{file,-12} {usage,-34} {where}", FontFamily = new FontFamily("Menlo, monospace"), FontSize = 11 });
+                }
+            }
+            Refresh();
+
+            var openFolder = new Button { Content = "Open Drivers Folder", MinWidth = 84 };
+            openFolder.Click += (_, _) =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("open") { ArgumentList = { folder }, UseShellExecute = false });
+                }
+                catch (Exception ex)
+                {
+                    log.ForcedWrite(ex);
+                }
+            };
+            var refresh = new Button { Content = "Refresh", MinWidth = 84 };
+            refresh.Click += (_, _) => Refresh();
+
+            return new GroupBox
+            {
+                Header = SettingGroupHeader("Driver files"),
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(8, 5), Spacing = 5,
+                    Children =
+                    {
+                        SettingText("Original driver programs and ROM images are looked up in this folder (file names are not case sensitive):"),
+                        new SelectableTextBlock { Text = folder, FontSize = 12 },
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, Children = { openFolder, refresh } },
+                        status,
+                    },
+                },
+            };
         }
 
         private async Task ChooseMgsDriverAsync()

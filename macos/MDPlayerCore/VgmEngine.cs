@@ -1055,10 +1055,10 @@ namespace MDPlayer
                         SamplingRate = sampleRate,
                         Volume = setting.balance.YMF278BVolume,
                         Clock = vgm.YMF278BClockValue & 0x7fffffff,
-                        // Looks for a yrw801.rom sample ROM next to the app; gracefully plays
+                        // Looks for a yrw801.rom sample ROM via DriverFiles; gracefully plays
                         // without wavetable samples (FM part still works) if it's not found -
                         // see ymf278b.cs's ymf278b_load_rom, which File.Exists-guards this.
-                        Option = new object[] { Common.GetApplicationFolder() },
+                        Option = new object[] { DriverFiles.FindFolder("yrw801.rom") },
                     });
                 }
             }

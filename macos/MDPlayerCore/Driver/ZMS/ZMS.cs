@@ -350,7 +350,7 @@ namespace MDPlayer.Driver.ZMS
             fnZMD = Path.GetFileName(withoutExtFn + ".ZMD");
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
 
-            string zmsc3 = Path.Combine(crntDir, "ZMSC3.X");
+            string zmsc3 = (DriverFiles.Find("ZMSC3.X") ?? Path.Combine(crntDir, "ZMSC3.X"));
             if (!File.Exists(zmsc3))
             {
                 log.Write(LogLevel.Information, "File not found : {0}", zmsc3);
@@ -359,7 +359,7 @@ namespace MDPlayer.Driver.ZMS
             fileMng.SetVFile(zmsc3);
             zmsc3 = Path.GetFileName(zmsc3);
 
-            string zmusic = Path.Combine(crntDir, "ZMUSIC.X");//ver2
+            string zmusic = (DriverFiles.Find("ZMUSIC.X") ?? Path.Combine(crntDir, "ZMUSIC.X"));//ver2
             if (!File.Exists(zmusic))
             {
                 log.Write(LogLevel.Information, "File not found : {0}", zmusic);
@@ -551,7 +551,7 @@ namespace MDPlayer.Driver.ZMS
             string fnZMD = Path.GetFileName(withoutExtFn + ".ZMD");
             string fnZMS = Path.GetFileName(withoutExtFn + ".ZMS");
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string zmc = Path.Combine(crntDir, "ZMC.X");
+            string zmc = (DriverFiles.Find("ZMC.X") ?? Path.Combine(crntDir, "ZMC.X"));
             if (!File.Exists(zmc))
             {
                 log.Write(LogLevel.Information, "File not found : {0}", zmc);
@@ -597,7 +597,7 @@ namespace MDPlayer.Driver.ZMS
             string fnZMD = Path.GetFileName(withoutExtFn + ".ZMD");
             string fnZMS = Path.GetFileName(withoutExtFn + ".ZMS");
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string zmusic = Path.Combine(crntDir, "ZMUSIC.X");
+            string zmusic = (DriverFiles.Find("ZMUSIC.X") ?? Path.Combine(crntDir, "ZMUSIC.X"));
             if (!File.Exists(zmusic))
             {
                 log.Write(LogLevel.Information, "File not found : {0}", zmusic);
