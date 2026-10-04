@@ -120,6 +120,12 @@ against the VGM spec if you want to sanity-check them yourself.
   dead code (see macos/README.md) - any NSF (or S98/MXDRV/MNDRV) file would
   have thrown `NotSupportedException` before this was fixed.
 
+- `tone-440.mp3` (16 KB) / `tone-440.ogg` (10 KB) - a 2 s, 440 Hz stereo sine
+  generated with ffmpeg (`sine=frequency=440:sample_rate=48000:duration=2`,
+  MP3 64 kbps / Vorbis q2). `macos/tools/audio-file-smoke.sh` uses them when ffmpeg
+  is not installed (e.g. on the GitHub macOS runner), since macOS cannot encode
+  either format; the other audio formats are generated on the fly with afconvert.
+
 Run any of these with:
 
 ```

@@ -35,9 +35,15 @@ if command -v afconvert >/dev/null 2>&1; then
     afconvert -f adts -d aac tone.wav tone.aac && INPUTS+=(tone.aac)
     afconvert -f flac -d flac tone.wav tone.flac && INPUTS+=(tone.flac)
 fi
+# Neither macOS nor the GitHub macOS runner can encode MP3/Ogg Vorbis; fall back to
+# the pre-generated 440 Hz tones in testdata when ffmpeg is not installed.
+TESTDATA="$ROOT/macos/EngineSmokeTest/testdata"
 if command -v ffmpeg >/dev/null 2>&1; then
     ffmpeg -loglevel error -y -i tone.wav -c:a libmp3lame tone.mp3 && INPUTS+=(tone.mp3) || true
     ffmpeg -loglevel error -y -i tone.wav -c:a libvorbis tone.ogg && INPUTS+=(tone.ogg) || true
+else
+    cp "$TESTDATA/tone-440.mp3" tone.mp3 && INPUTS+=(tone.mp3)
+    cp "$TESTDATA/tone-440.ogg" tone.ogg && INPUTS+=(tone.ogg)
 fi
 
 SMOKE=(dotnet run --project "$ROOT/macos/EngineSmokeTest/EngineSmokeTest.csproj" -c Release --no-build --)
