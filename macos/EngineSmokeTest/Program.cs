@@ -62,6 +62,10 @@ namespace MDPlayer.EngineSmokeTest
             WaveWriter waveWriter = new(setting);
             waveWriter.Open(vgmPath);
             string derivedWavPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(vgmPath) + ".wav");
+            // Mirror WaveWriter.Open's collision guard: when the input itself is a .wav in
+            // the output folder it writes "<stem>_0.wav" instead of overwriting the input.
+            if (derivedWavPath == vgmPath)
+                derivedWavPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(vgmPath) + "_0.wav");
 
             const int chunkSamples = 4096; // stereo interleaved shorts, must be even
             short[] buffer = new short[chunkSamples];
@@ -89,7 +93,8 @@ namespace MDPlayer.EngineSmokeTest
                 string requestedPath = Path.Combine(outDir, outName);
                 string fullRequested = Path.GetFullPath(requestedPath);
                 string fullDerived = Path.GetFullPath(derivedWavPath);
-                if (!string.Equals(fullRequested, fullDerived, StringComparison.Ordinal) && File.Exists(derivedWavPath))
+                bool derivedIsInput = string.Equals(fullDerived, Path.GetFullPath(vgmPath), StringComparison.Ordinal);
+                if (!derivedIsInput && !string.Equals(fullRequested, fullDerived, StringComparison.Ordinal) && File.Exists(derivedWavPath))
                 {
                     File.Move(derivedWavPath, requestedPath, overwrite: true);
                     finalPath = requestedPath;

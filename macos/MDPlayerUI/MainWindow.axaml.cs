@@ -1631,6 +1631,7 @@ namespace MDPlayer.UI
         {
             ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".mgs", ".zms", ".zmd", ".mdx",
             ".mdr", ".mdl", ".mub", ".muc", ".mml", ".m", ".m2", ".mz", ".mus", ".o", ".ox", ".oy", ".msd", ".bgm", ".nrd", ".ndp", ".mid", ".rcp", ".rcs", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
+            ".wav", ".aif", ".aiff", ".mp3", ".m4a", ".aac", ".flac", ".ogg",
         };
 
         private static bool IsSupportedMusicFile(IStorageFile file)

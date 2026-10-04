@@ -116,6 +116,7 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 .mdx  .mdr  .mdl  .mub  .muc  .mml  .m  .m2  .mz
 .mus  .o  .ox  .oy  .mgs  .msd  .bgm  .nrd  .ndp  .mid  .rcp  .rcs
 .nsf  .gbs  .hes  .s98  .ay  .zgm
+.wav  .aif  .aiff  .mp3  .m4a  .aac  .flac  .ogg
 .m3u (재생목록)
 ```
 
@@ -143,6 +144,11 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 - `.mid`는 Standard MIDI File, `.rcp`는 RCP 시퀀스, `.rcs`는 RCP+PCM8 시퀀스 형식임.
   macOS 내장 DLS General MIDI 신시사이저로 출력함. RCP/RCS가 참조하는 `.cm6`/`.gsd` 및
   companion `.rcp`는 같은 폴더에서 자동으로 찾음. 외부 MIDI 장치와 VST 라우팅은 아직 없음.
+- `.wav`/`.aif`/`.aiff`/`.mp3`/`.m4a`/`.aac`/`.flac`는 macOS AudioToolbox(ExtAudioFile)로
+  디코딩하며 출력 샘플레이트 변환도 시스템이 처리함. `.ogg`는 macOS가 디코딩하지 않으므로
+  NVorbis로 읽음. Windows판의 `.wma`는 macOS에서 지원하지 않음. macOS 외 환경에서 돌리는
+  EngineSmokeTest는 WAV와 OGG만 읽음. `macos/tools/audio-file-smoke.sh`로 생성한 테스트 톤을
+  각 형식으로 디코딩해 길이와 음높이를 검사할 수 있음(CI의 audio-files 작업).
 - `.m3u`는 오디오 파일이 아니라 재생목록 파일임. `#EXTINF` 제목과 상대/절대 로컬 경로를
   읽으며, 네트워크 URL은 현재 지원하지 않아 건너뜀.
 - `.mub`는 MUCOM88의 컴파일 완료 데이터 포맷이며, `.muc`는 재생 시 메모리에서 같은 형식으로

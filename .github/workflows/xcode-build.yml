@@ -65,3 +65,25 @@ jobs:
             cat launch.log
             exit 1
           fi
+
+  audio-files:
+    # AudioToolbox decoding (WAV/AIFF/M4A/AAC/FLAC/MP3) only exists on macOS, so the
+    # audio-file decoders are checked here with generated test tones.
+    runs-on: macos-15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build EngineSmokeTest
+        run: dotnet build macos/EngineSmokeTest/EngineSmokeTest.csproj -c Release
+
+      - name: Decode generated audio files
+        run: macos/tools/audio-file-smoke.sh "$RUNNER_TEMP/audio-files"

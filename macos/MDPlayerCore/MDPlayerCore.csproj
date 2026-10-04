@@ -77,6 +77,8 @@
       restore/build this on a machine with normal internet access to verify.
     -->
     <PackageReference Include="Z80dotNet" Version="1.0.6" />
+    <!-- Ogg Vorbis decoder for .ogg playback (MIT licensed, pure managed). -->
+    <PackageReference Include="NVorbis" Version="0.10.5" />
   </ItemGroup>
 
 </Project>

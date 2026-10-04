@@ -81,6 +81,13 @@ namespace MDPlayer
                 ".s98" => EnmFileFormat.S98,
                 ".ay" => EnmFileFormat.AY,
                 ".zgm" => EnmFileFormat.ZGM,
+                ".wav" => EnmFileFormat.WAV,
+                ".aif" or ".aiff" => EnmFileFormat.AIFF,
+                ".mp3" => EnmFileFormat.MP3,
+                ".m4a" => EnmFileFormat.M4A,
+                ".aac" => EnmFileFormat.AAC,
+                ".flac" => EnmFileFormat.FLAC,
+                ".ogg" => EnmFileFormat.OGG,
                 _ => EnmFileFormat.unknown,
             };
         }
@@ -128,6 +135,9 @@ namespace MDPlayer
                 EnmFileFormat.S98 => LoadS98(buf, samplingBuffer),
                 EnmFileFormat.AY => LoadAy(buf, samplingBuffer),
                 EnmFileFormat.ZGM => LoadZgm(buf, samplingBuffer),
+                EnmFileFormat.WAV or EnmFileFormat.AIFF or EnmFileFormat.MP3 or EnmFileFormat.M4A
+                    or EnmFileFormat.AAC or EnmFileFormat.FLAC or EnmFileFormat.OGG
+                    => LoadAudioFile(buf, samplingBuffer, fileNameHint, format),
                 _ => null,
             };
         }
@@ -514,6 +524,30 @@ namespace MDPlayer
                 new[] { EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649 }, 0, 0)) return null;
             return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 compileSource ? EnmFileFormat.MuSICA_src : EnmFileFormat.MuSICA, string.Join(" + ", names));
+        }
+
+        // Ordinary audio files. No chip is emulated: the decoder's PCM is written straight
+        // into the output buffer (see AudioFile/AudioFileDriver.cs for the decoders used).
+        private static MusicEngineSession LoadAudioFile(byte[] buf, uint samplingBuffer, string sourcePath, EnmFileFormat format)
+        {
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            AudioFile.IPcmDecoder decoder = AudioFile.AudioFileDriver.OpenDecoder(buf, sourcePath, (int)sampleRate, out string title, out string artist);
+            if (decoder == null) return null;
+            AudioFile.AudioFileDriver driver = new(setting, decoder, (int)sampleRate, title, artist);
+
+            return new MusicEngineSession
+            {
+                Setting = setting,
+                ChipRegister = chipRegister,
+                Mds = mds,
+                Driver = driver,
+                SampleRate = sampleRate,
+                Format = format,
+                ActiveChips = $"PCM ({format}, {decoder.Channels}ch)",
+                RenderSamples = driver.Render,
+                MasterVolume = setting.balance.MasterVolume,
+                DefaultMasterVolume = setting.balance.MasterVolume,
+            };
         }
 
         // NDP is an MSX PSG driver: the user's NDP.BIN runs on the same Z80/MSX host as
