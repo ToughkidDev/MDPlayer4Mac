@@ -1630,7 +1630,7 @@ namespace MDPlayer.UI
         private static readonly string[] SupportedMusicExtensions =
         {
             ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".mgs", ".zms", ".zmd", ".mdx",
-            ".mdr", ".mdl", ".mub", ".muc", ".mml", ".m", ".m2", ".mz", ".mus", ".o", ".ox", ".oy", ".msd", ".bgm", ".nrd", ".mid", ".rcp", ".rcs", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
+            ".mdr", ".mdl", ".mub", ".muc", ".mml", ".m", ".m2", ".mz", ".mus", ".o", ".ox", ".oy", ".msd", ".bgm", ".nrd", ".ndp", ".mid", ".rcp", ".rcs", ".nsf", ".gbs", ".hes", ".s98", ".ay", ".zgm",
         };
 
         private static bool IsSupportedMusicFile(IStorageFile file)

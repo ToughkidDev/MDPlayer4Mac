@@ -60,6 +60,7 @@ namespace MDPlayer
                 ".msd" => EnmFileFormat.MuSICA_src,
                 ".bgm" => EnmFileFormat.MuSICA,
                 ".nrd" => EnmFileFormat.NRT,
+                ".ndp" => EnmFileFormat.NDP,
                 ".mid" => EnmFileFormat.MID,
                 ".rcp" => EnmFileFormat.RCP,
                 ".rcs" => EnmFileFormat.RCS,
@@ -106,6 +107,7 @@ namespace MDPlayer
                 EnmFileFormat.MuSICA_src => LoadMusica(buf, samplingBuffer, fileNameHint, compileSource: true),
                 EnmFileFormat.MuSICA => LoadMusica(buf, samplingBuffer, fileNameHint, compileSource: false),
                 EnmFileFormat.NRT => LoadNrt(buf, samplingBuffer),
+                EnmFileFormat.NDP => LoadNdp(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.MID => LoadMidi(buf, samplingBuffer),
                 EnmFileFormat.RCP => LoadRcp(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.RCS => LoadRcs(buf, samplingBuffer, fileNameHint),
@@ -512,6 +514,29 @@ namespace MDPlayer
                 new[] { EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649 }, 0, 0)) return null;
             return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 compileSource ? EnmFileFormat.MuSICA_src : EnmFileFormat.MuSICA, string.Join(" + ", names));
+        }
+
+        // NDP is an MSX PSG driver: the user's NDP.BIN runs on the same Z80/MSX host as
+        // MGSDRV and only drives the AY8910 (as in the Windows build's NdpPlay_ndp).
+        private static MusicEngineSession LoadNdp(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            if (buf.Length < 8) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            string ndpPath = DriverFiles.Find("NDP.BIN");
+            if (ndpPath == null) return null;
+
+            MDSound.ay8910 ay = new();
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
+            {
+                new MDSound.MDSound.Chip { type = MDSound.MDSound.enmInstrumentType.AY8910, ID = 0, Instrument = ay,
+                    Update = ay.Update, Start = ay.Start, Stop = ay.Stop, Reset = ay.Reset, SamplingRate = sampleRate,
+                    Volume = setting.balance.AY8910Volume, Clock = Driver.NDP.NDP.baseclockAY8910 / 2, Option = null },
+            };
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            Driver.NDP.NDP driver = new() { setting = setting, PlayingFileName = sourcePath, DriverFilePath = ndpPath };
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.AY8910 }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, EnmFileFormat.NDP, "AY8910");
         }
 
         // NRTDRV is fully managed and embeds its player logic in the data driver.  It can use

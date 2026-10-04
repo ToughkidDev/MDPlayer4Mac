@@ -49,6 +49,9 @@
              Link="Driver\MuSICA\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\NRTDRV\**\*.cs"
              Link="Driver\NRTDRV\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- NDP runs the user's NDP.BIN on the MGSDRV MSX/Z80 host above. -->
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\NDP\NDP.cs"
+             Link="Driver\NDP\NDP.cs" />
     <!-- Standard MIDI and Recomposer sequence parsers are portable C#; their Windows
          winmm output is intercepted by ChipRegister and rendered via MacMidiSynth. -->
     <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\MID\MID.cs"

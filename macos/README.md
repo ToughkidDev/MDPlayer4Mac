@@ -114,7 +114,7 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 ```text
 .vgm  .vgz  .xgm  .xgz  .sid  .mnd  .zms  .zmd
 .mdx  .mdr  .mdl  .mub  .muc  .mml  .m  .m2  .mz
-.mus  .o  .ox  .oy  .mgs  .msd  .bgm  .nrd  .mid  .rcp  .rcs
+.mus  .o  .ox  .oy  .mgs  .msd  .bgm  .nrd  .ndp  .mid  .rcp  .rcs
 .nsf  .gbs  .hes  .s98  .ay  .zgm
 .m3u (재생목록)
 ```
@@ -137,6 +137,8 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 - `.bgm`은 MuSICA 컴파일 데이터이며 Setting → Other에서 `KINROU5.DRV`를 지정해야 함.
   `.msd`는 MuSICA 소스라서 같은 이름의 `.vcd`가 있으면 함께 읽고, 즉석 컴파일을 위해
   `KINROU4.COM`도 지정해야 함. 두 파일 모두 라이선스상 앱에 포함하거나 재배포하지 않음.
+- `.ndp`는 MSX PSG 드라이버 NDP 형식임. 원본 `NDP.BIN`을 사용자 Drivers 폴더에 넣어야 하며,
+  MGSDRV와 같은 Z80/MSX 호스트에서 실행해 AY8910으로 출력함.
 - `.nrd`는 NRTDRV 형식이며 파일이 사용하는 YM2151(1/2개)·AY8910 조합을 자동으로 구성함.
 - `.mid`는 Standard MIDI File, `.rcp`는 RCP 시퀀스, `.rcs`는 RCP+PCM8 시퀀스 형식임.
   macOS 내장 DLS General MIDI 신시사이저로 출력함. RCP/RCS가 참조하는 `.cm6`/`.gsd` 및

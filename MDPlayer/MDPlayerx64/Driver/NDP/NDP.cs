@@ -150,6 +150,7 @@ namespace MDPlayer.Driver.NDP
         }
 
         private static byte[] program = null;
+        private static string programPath = null;
         private static byte DollarCode;
         private Z80Processor z80;
         private Mapper mapper;
@@ -159,8 +160,12 @@ namespace MDPlayer.Driver.NDP
 
         private void Run(byte[] vgmBuf)
         {
+            // The Windows distribution keeps NDP.BIN beside the executable. The macOS
+            // port passes an explicit path (see macos/MDPlayerCore/DriverFiles.cs).
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string fileName = Path.Combine(crntDir, "NDP.BIN");
+            string fileName = !string.IsNullOrWhiteSpace(DriverFilePath) && File.Exists(DriverFilePath)
+                ? DriverFilePath
+                : Path.Combine(crntDir, "NDP.BIN");
             DollarCode = Encoding.ASCII.GetBytes(new[] { '$' })[0];
 
             z80 = new Z80Processor
@@ -181,7 +186,11 @@ namespace MDPlayer.Driver.NDP
 
 
             //プログラムの読み込みとメモリへのセット
-            program ??= File.ReadAllBytes(fileName);
+            if (program == null || programPath != fileName)
+            {
+                program = File.ReadAllBytes(fileName);
+                programPath = fileName;
+            }
             z80.Memory.SetContents(0xc000-7, program);//-7 バイナリファイルのヘッダ情報
             z80.Memory.SetContents(0x4000 - 7, vgmBuf);
 
@@ -236,6 +245,7 @@ namespace MDPlayer.Driver.NDP
         }
 
         public string PlayingFileName { get; internal set; }
+        public string DriverFilePath { get; set; }
 
         private void Z80OnBeforeInstructionFetch(object sender, BeforeInstructionFetchEventArgs args)
         {
