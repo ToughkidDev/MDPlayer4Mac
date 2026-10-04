@@ -1,5 +1,4 @@
-﻿using MDPlayerx64;
-using MDPlayer.Driver.FMP.Nise98;
+﻿using MDPlayer.Driver.FMP.Nise98;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,6 +27,13 @@ namespace MDPlayer.Driver.FMP
 
         public string PlayingFileName { get; set; }
         public string PlayingArcFileName { get; set; }
+        // The Windows distribution keeps FMP.COM/FMC.EXE beside the executable. The macOS
+        // port passes explicit paths (see macos/MDPlayerCore/DriverFiles.cs).
+        public string DriverFilePath { get; set; }
+        public string CompilerFilePath { get; set; }
+
+        private static string ResolveProgram(string explicitPath, string fallback)
+            => !string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath) ? explicitPath : fallback;
 
         public FMP(fileTemp ft)
         {
@@ -179,7 +185,7 @@ namespace MDPlayer.Driver.FMP
             //var fileNameFMP = "FMP.COM";
             //var fileNamePPZ8 = "PPZ8.COM";
             string crntDir = Path.GetDirectoryName(Application.ExecutablePath);
-            string fileNameFMP = Path.Combine(crntDir, "FMP.COM");
+            string fileNameFMP = ResolveProgram(DriverFilePath, Path.Combine(crntDir, "FMP.COM"));
             log.ForcedWrite(fileNameFMP);
             nise98.Init(null, OPNAWrite, ft, Nise98.Nise98.enmOngenBoardType.SpeakBoard);//.PC9801_86B);//.SpeakBoard);//.PC9801_26K);
             nise98.GetDos().SetArcFile(PlayingArcFileName);
@@ -265,8 +271,8 @@ namespace MDPlayer.Driver.FMP
 
         public bool Compile(string playingFileName)
         {
-            var fileNameFMP = "FMP.COM";
-            var fileNameFMC = "FMC.EXE";
+            var fileNameFMP = ResolveProgram(DriverFilePath, "FMP.COM");
+            var fileNameFMC = ResolveProgram(CompilerFilePath, "FMC.EXE");
             int rc = 0;
 
             nise98.Init(null, OPNAWrite, ft, Nise98.Nise98.enmOngenBoardType.SpeakBoard);//.PC9801_86B);//.SpeakBoard);//.PC9801_26K);

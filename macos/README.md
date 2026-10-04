@@ -115,6 +115,7 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
 .vgm  .vgz  .xgm  .xgz  .sid  .mnd  .zms  .zmd
 .mdx  .mdr  .mdl  .mub  .muc  .mml  .m  .m2  .mz
 .mus  .o  .ox  .oy  .mgs  .msd  .bgm  .nrd  .ndp  .mid  .rcp  .rcs
+.opi  .ovi  .ozi  .mpi  .mvi  .mzi
 .nsf  .gbs  .hes  .s98  .ay  .zgm
 .wav  .aif  .aiff  .mp3  .m4a  .aac  .flac  .ogg
 .m3u (재생목록)
@@ -140,6 +141,11 @@ UI에서 열거나 드롭할 수 있는 확장자는 아래와 같음.
   `KINROU4.COM`도 지정해야 함. 두 파일 모두 라이선스상 앱에 포함하거나 재배포하지 않음.
 - `.ndp`는 MSX PSG 드라이버 NDP 형식임. 원본 `NDP.BIN`을 사용자 Drivers 폴더에 넣어야 하며,
   MGSDRV와 같은 Z80/MSX 호스트에서 실행해 AY8910으로 출력함.
+- `.opi`/`.ovi`/`.ozi`는 PC-98 FMP 컴파일 데이터이고 `.mpi`/`.mvi`/`.mzi`는 FMP 소스임.
+  원본 `FMP.COM`을 PC-98(80286) 에뮬레이터 Nise98에서 실행해 YM2608+PPZ8로 출력함. 소스
+  형식은 재생 전에 `FMC.EXE`로 메모리에서 컴파일함. 두 파일 모두 사용자 Drivers 폴더에 넣어야
+  하며, PPZ8은 Nise98이 직접 에뮬레이션하므로 `PPZ8.COM`은 필요 없음. PVI/PZI PCM 파일은
+  곡 파일과 같은 폴더에서 찾음.
 - `.nrd`는 NRTDRV 형식이며 파일이 사용하는 YM2151(1/2개)·AY8910 조합을 자동으로 구성함.
 - `.mid`는 Standard MIDI File, `.rcp`는 RCP 시퀀스, `.rcs`는 RCP+PCM8 시퀀스 형식임.
   macOS 내장 DLS General MIDI 신시사이저로 출력함. RCP/RCS가 참조하는 `.cm6`/`.gsd` 및

@@ -52,6 +52,10 @@
     <!-- NDP runs the user's NDP.BIN on the MGSDRV MSX/Z80 host above. -->
     <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\NDP\NDP.cs"
              Link="Driver\NDP\NDP.cs" />
+    <!-- FMP runs the user's FMP.COM (and FMC.EXE for .mpi/.mvi/.mzi sources) on the
+         Nise98 PC-98/80286 emulator; PPZ8 is emulated by NisePPZ8 itself. -->
+    <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\FMP\**\*.cs"
+             Link="Driver\FMP\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- Standard MIDI and Recomposer sequence parsers are portable C#; their Windows
          winmm output is intercepted by ChipRegister and rendered via MacMidiSynth. -->
     <Compile Include="..\..\MDPlayer\MDPlayerx64\Driver\MID\MID.cs"

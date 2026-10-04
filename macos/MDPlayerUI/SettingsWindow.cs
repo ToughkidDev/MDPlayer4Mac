@@ -422,7 +422,6 @@ namespace MDPlayer.UI
             ("NDP.BIN", ".ndp"),
             ("FMP.COM", "FMP .opi / .ovi / .ozi"),
             ("FMC.EXE", "FMP .mpi / .mvi / .mzi (compile)"),
-            ("PPZ8.COM", "FMP PPZ8 PCM"),
             ("ZMUSIC.X", "ZMUSIC v2 .zms / .zmd"),
             ("ZMC.X", "ZMUSIC v3 .zms (compile)"),
             ("ZMSC3.X", "ZMUSIC v3 .zmd"),

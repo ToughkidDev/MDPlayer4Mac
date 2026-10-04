@@ -61,6 +61,7 @@ namespace MDPlayer
                 ".bgm" => EnmFileFormat.MuSICA,
                 ".nrd" => EnmFileFormat.NRT,
                 ".ndp" => EnmFileFormat.NDP,
+                ".opi" or ".ovi" or ".ozi" or ".mpi" or ".mvi" or ".mzi" => EnmFileFormat.FMP,
                 ".mid" => EnmFileFormat.MID,
                 ".rcp" => EnmFileFormat.RCP,
                 ".rcs" => EnmFileFormat.RCS,
@@ -115,6 +116,7 @@ namespace MDPlayer
                 EnmFileFormat.MuSICA => LoadMusica(buf, samplingBuffer, fileNameHint, compileSource: false),
                 EnmFileFormat.NRT => LoadNrt(buf, samplingBuffer),
                 EnmFileFormat.NDP => LoadNdp(buf, samplingBuffer, fileNameHint),
+                EnmFileFormat.FMP => LoadFmp(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.MID => LoadMidi(buf, samplingBuffer),
                 EnmFileFormat.RCP => LoadRcp(buf, samplingBuffer, fileNameHint),
                 EnmFileFormat.RCS => LoadRcs(buf, samplingBuffer, fileNameHint),
@@ -524,6 +526,60 @@ namespace MDPlayer
                 new[] { EnmChip.AY8910, EnmChip.YM2413, EnmChip.K051649 }, 0, 0)) return null;
             return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 compileSource ? EnmFileFormat.MuSICA_src : EnmFileFormat.MuSICA, string.Join(" + ", names));
+        }
+
+        // FMP (PC-98). The user's FMP.COM runs on the Nise98 80286/PC-98 emulator and drives
+        // a YM2608 plus PPZ8 (emulated by NisePPZ8), matching the Windows OxiPlay_FMP.
+        // Source files (.mpi/.mvi/.mzi) are compiled first with the user's FMC.EXE.
+        private static MusicEngineSession LoadFmp(byte[] buf, uint samplingBuffer, string sourcePath)
+        {
+            // FMP opens the song (and its PVI/PZI PCM files) through emulated DOS calls,
+            // so it needs the real file location, not just the bytes.
+            if (buf == null || buf.Length < 4 || string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath)) return null;
+            var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
+            string fmpPath = DriverFiles.Find("FMP.COM");
+            if (fmpPath == null) return null;
+
+            Driver.FMP.Nise98.fileTemp ft = new(setting);
+            string playingFile = sourcePath;
+            string ext = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (ext.Length > 3 && ext[1] == 'm')
+            {
+                string fmcPath = DriverFiles.Find("FMC.EXE");
+                if (fmcPath == null) return null;
+                Driver.FMP.FMP compiler = new(ft) { setting = setting, DriverFilePath = fmpPath, CompilerFilePath = fmcPath };
+                if (!compiler.Compile(sourcePath)) return null;
+                playingFile = Path.ChangeExtension(sourcePath, ext == ".mpi" ? ".opi" : ext == ".mvi" ? ".ovi" : ".ozi");
+                buf = ft.ReadTemp(playingFile);
+                if (buf == null) return null;
+            }
+
+            MDSound.ym2608 ym2608 = new();
+            MDSound.PPZ8 ppz8 = new();
+            MDSound.MDSound.Chip opna = MakeYM2608(setting, ym2608, 0, sourcePath);
+            opna.Clock = Driver.FMP.FMP.baseclock;
+            var chips = new System.Collections.Generic.List<MDSound.MDSound.Chip>
+            {
+                opna,
+                MakePmdPcmChip(MDSound.MDSound.enmInstrumentType.PPZ8, ppz8, sampleRate, setting.balance.PPZ8Volume),
+            };
+            chips[1].Clock = Driver.FMP.FMP.baseclock;
+            mds.Init(sampleRate, samplingBuffer, chips.ToArray());
+            chipRegister.initChipRegister(chips.ToArray());
+            chipRegister.setYM2608Register(0, 0, 0x2d, 0x00, EnmModel.VirtualModel, 0);
+            chipRegister.setYM2608Register(0, 0, 0x29, 0x82, EnmModel.VirtualModel, 0);
+            chipRegister.setYM2608Register(0, 0, 0x07, 0x38, EnmModel.VirtualModel, 0);
+
+            Driver.FMP.FMP driver = new(ft)
+            {
+                setting = setting,
+                PlayingFileName = playingFile,
+                PlayingArcFileName = string.Empty,
+                DriverFilePath = fmpPath,
+            };
+            driver.SetSearchPath(setting.FileSearchPathList ?? string.Empty);
+            if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.YM2608 }, 0, 0)) return null;
+            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips, EnmFileFormat.FMP, "YM2608 + PPZ8");
         }
 
         // Ordinary audio files. No chip is emulated: the decoder's PCM is written straight
