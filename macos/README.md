@@ -4,7 +4,7 @@ Windows용 MDPlayer를 macOS에서 쓸 수 있도록 옮기는 개인 포팅 프
 WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코드는 `macos/` 아래의
 `.NET 8` 프로젝트로 따로 관리 중임.
 
-마지막 갱신: 2026-08-28
+마지막 갱신: 2026-10-11
 
 ## 개발 중
 
@@ -25,6 +25,17 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   원본 MSX 드라이버를 실행하므로 `.bgm`에는 사용자가 지정한 `KINROU5.DRV`가 필요하고,
   `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
   `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
+
+## v0.2.0
+
+- MUCOMSX의 `msPb0100`/`msPb0101` MUB와 네이티브 `MSX` 파트가 있는 MUC를 지원함.
+  MSX-MUSIC, 내부 PSG, SCC+ SSG 재생과 확장 파형·게인 명령을 처리함.
+- MUCOM 컴파일러·드라이버 수정본을 별도 프로젝트로 관리하며, OPNA FM3 모드 보존과
+  K 파트 레지스터 라우팅 수정, ADPCM에만 적용되는 `#PCMInvert` 수정을 포함함.
+- OPNA 리듬 WAV를 앱에 포함하고, MSX 재생 회귀 테스트와 Z80 드라이버의 레지스터
+  비교 데이터를 추가함.
+- 이전 릴리즈 이후 추가된 FMP, NDP 및 WAV/AIFF/MP3/M4A/AAC/FLAC/OGG 재생과
+  외부 드라이버 경로 설정, Xcode 빌드 지원을 포함함.
 
 ## v0.1.7
 
@@ -272,8 +283,8 @@ Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
 빌드해 Release에 첨부함.
 
 ```bash
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`임. 압축을 풀면 하나의 `MDPlayer4Mac.app` 번들이

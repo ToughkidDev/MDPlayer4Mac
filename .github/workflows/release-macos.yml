@@ -18,10 +18,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up .NET 8
+      - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
+
+      - name: Verify MSX playback
+        run: dotnet run --project macos/MsxPlaybackTests/MsxPlaybackTests.csproj -c Release
 
       - name: Publish self-contained Apple Silicon build
         run: >-
@@ -31,6 +34,7 @@ jobs:
           --self-contained true
           --property:PublishSingleFile=true
           --property:DebugType=None
+          --property:Version=${GITHUB_REF_NAME#v}
           --output release/publish
 
       - name: Create signed macOS app bundle
@@ -65,13 +69,35 @@ jobs:
           find "$MACOS_DIR" -type f \( -name "*.dylib" -o -perm -111 \) -exec codesign --force --sign - --timestamp=none {} \;
           codesign --force --deep --sign - --timestamp=none "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          test -f "$MACOS_DIR/libMDPlayerForceTouch.dylib"
+          for sample in BD SD TOP HH TOM RIM; do
+            test -s "$MACOS_DIR/2608_${sample}.WAV"
+          done
           ditto -c -k --sequesterRsrc --keepParent "$APP" release/MDPlayer4Mac-osx-arm64.zip
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
-        run: >-
-          gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip
-          --title "MDPlayer4Mac $TAG_NAME"
-          --generate-notes
+        run: |
+          cat > release/notes.md <<'EOF'
+          ## 변경 사항
+          - MUCOMSX `msPb0100`/`msPb0101` MUB 및 네이티브 MSX MUC 재생 지원.
+          - MSX-MUSIC, 내부 PSG, SCC+ SSG 파형·게인 명령 처리.
+          - OPNA FM3 모드 보존, K 파트 레지스터 라우팅 및 ADPCM 전용 `#PCMInvert` 수정.
+          - OPNA 리듬 샘플을 앱에 포함.
+          - FMP, NDP 및 WAV/AIFF/MP3/M4A/AAC/FLAC/OGG 재생, 외부 드라이버 경로 설정 및 Xcode 빌드 지원.
+
+          ## 다운로드
+          Apple Silicon용 `MDPlayer4Mac-osx-arm64.zip`을 내려받아 압축을 풀고 앱을 실행하세요.
+          macOS 13 이상에서 사용할 수 있으며 .NET 런타임이 포함되어 있습니다.
+
+          ## 검증
+          10개 MUB와 10개 MUC 재생 및 Z80 드라이버의 레지스터 비교를 포함한 MSX 회귀 테스트,
+          Release 빌드와 앱 번들 서명·리소스 검증을 통과했습니다.
+
+          현재 앱은 ad-hoc 서명을 사용하며 Apple Developer ID 서명 및 notarization은 적용되지 않았습니다.
+          최초 실행 안내는 저장소의 `macos/README.md`를 참고하세요.
+          EOF
+          gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip \
+            --title "MDPlayer4Mac $TAG_NAME" --notes-file release/notes.md --latest
