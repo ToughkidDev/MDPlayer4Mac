@@ -1,0 +1,3 @@
+#voice voice.dat
+#PCMInvert On
+D @0 v15 t180 o4 l8 cdef r4

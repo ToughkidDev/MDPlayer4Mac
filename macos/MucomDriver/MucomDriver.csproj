@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>mucomDotNETDriver</AssemblyName>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../ThirdParty/mucomDotNET/mucomDotNETDriver/*.cs"
+             Exclude="../ThirdParty/mucomDotNET/mucomDotNETDriver/driver.cs;../ThirdParty/mucomDotNET/mucomDotNETDriver/music2.cs" />
+    <ProjectReference Include="../ThirdParty/mucomDotNET/Common_NET5/Common_NET6.csproj" />
+    <Reference Include="musicDriverInterface"><HintPath>../ThirdParty/mucomDotNET/Common_NET5/musicDriverInterface.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

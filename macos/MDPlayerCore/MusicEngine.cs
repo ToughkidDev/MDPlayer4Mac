@@ -323,7 +323,11 @@ namespace MDPlayer
         {
             if (!Driver.MUCOM.MucomDotNET.IsMub(buf)) return null;
 
-            bool[] used = Driver.MUCOM.MucomDotNET.GetUsedChips(buf);
+            Driver.MUCOM.MsxMubProfile msx;
+            try { msx = Driver.MUCOM.MsxMubProfile.HasMagic(buf) ? Driver.MUCOM.MsxMubProfile.Parse(buf) : null; }
+            catch (FormatException) { return null; }
+            bool[] used = msx == null ? Driver.MUCOM.MucomDotNET.GetUsedChips(buf)
+                : new[] {msx.UsesOpna || msx.SccSsg, false, false, false, false};
             var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
             MDSound.ym2608 ym2608 = new();
             MDSound.ym2610 ym2610 = new();
@@ -335,6 +339,30 @@ namespace MDPlayer
             if (used[2]) { chips.Add(MakeYM2610(setting, ym2610, 0)); names.Add("YM2610"); }
             if (used[3]) { chips.Add(MakeYM2610(setting, ym2610, 1)); names.Add("YM2610 #2"); }
             if (used[4]) { chips.Add(MakeYM2151(setting, Driver.MUCOM.MucomDotNET.GetOpmClock(buf))); names.Add("YM2151"); }
+            if (msx != null)
+            {
+                if (msx.UsesOpll)
+                {
+                    MDSound.emu2413 opll = new();
+                    chips.Add(new() {type=MDSound.MDSound.enmInstrumentType.YM2413emu,ID=0,Instrument=opll,
+                        Update=opll.Update,Start=opll.Start,Stop=opll.Stop,Reset=opll.Reset,SamplingRate=sampleRate,
+                        Volume=setting.balance.YM2413Volume,Clock=3_579_545});names.Add("YM2413 (MSX-MUSIC)");
+                }
+                if (msx.UsesPsg)
+                {
+                    MDSound.ay8910 ay = new();
+                    chips.Add(new() {type=MDSound.MDSound.enmInstrumentType.AY8910,ID=0,Instrument=ay,
+                        Update=ay.Update,Start=ay.Start,Stop=ay.Stop,Reset=ay.Reset,SamplingRate=sampleRate,
+                        Volume=setting.balance.AY8910Volume,Clock=1_789_773});names.Add("AY8910 (MSX PSG)");
+                }
+                if (msx.SccSsg)
+                {
+                    MDSound.K051649 scc = new();
+                    chips.Add(new() {type=MDSound.MDSound.enmInstrumentType.K051649,ID=0,Instrument=scc,
+                        Update=scc.Update,Start=scc.Start,Stop=scc.Stop,Reset=scc.Reset,SamplingRate=sampleRate,
+                        Volume=setting.balance.K051649Volume,Clock=1_789_773});names.Add("K052539 (SCC+ SSG)");
+                }
+            }
             if (chips.Count == 0) return null;
 
             // MUB Init can upload PCM and immediately write registers.  Its targets must
@@ -346,8 +374,10 @@ namespace MDPlayer
             if (!driver.init(buf, chipRegister, EnmModel.VirtualModel, new[] { EnmChip.Unuse }, 0, 0))
                 return null;
 
-            return CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
+            var session = CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 format, string.Join(" + ", names));
+            session.UsesK052539SccPlus = msx?.SccSsg == true;
+            return session;
         }
 
         // PMD's source MML and compiled M/M2/MZ streams share the same OPN/PCM playback

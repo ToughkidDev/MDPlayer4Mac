@@ -1,0 +1,7 @@
+#voice voice.dat
+#SSGExtend On
+D0 @0 @I8 pe8,8 v15 t180 o4 l8 c r c r
+D1 @0 @I9 pe8,0 v15 o5 l8 r c r c
+E @0 @I3 v13 o3 l8 [c e g]2 r4
+MSXD @0 v13 o4 l8 g e c g r4
+MSXA @1 v15 o5 l8 c e g c r4

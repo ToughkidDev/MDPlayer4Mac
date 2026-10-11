@@ -21,8 +21,8 @@
     <ProjectReference Include="..\MDSound\MDSound.csproj" />
     <!-- MUCOM88 MUB driver.  The upstream project is GPL-3.0, as is MDPlayer. -->
     <ProjectReference Include="..\ThirdParty\mucomDotNET\Common_NET5\Common_NET6.csproj" />
-    <ProjectReference Include="..\ThirdParty\mucomDotNET\Compiler_NET5\Compiler_NET6.csproj" />
-    <ProjectReference Include="..\ThirdParty\mucomDotNET\Driver_NET5\Driver_NET6.csproj" />
+    <ProjectReference Include="..\MucomCompiler\MucomCompiler.csproj" />
+    <ProjectReference Include="..\MucomDriver\MucomDriver.csproj" />
     <!-- PC-98 PMD compiler/driver.  These projects are netstandard and have no
          Windows audio-device dependency. -->
     <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCommon\PMDDotNETCommon.csproj" />

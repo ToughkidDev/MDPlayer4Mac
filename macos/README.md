@@ -325,6 +325,12 @@ Apple의 최신 안내도 처음 시도한 뒤 **개인정보 보호 및 보안 
 `Z80dotNet 1.0.6`은 .NET Framework 대상 패키지라 `NU1701` 경고가 남음. 현재 빌드와
 재생은 가능하지만, 나중에는 net8.0/netstandard 호환 패키지로 바꾸는 편이 좋음.
 
+## MUCOMSX MSX 확장 재생
+
+`msPb0100`과 `msPb0101`을 별도로 판별하여 MSX-MUSIC, 내부 PSG, SCC+ SSG를 재생함.
+네이티브 `MSX` 파트가 포함된 MUC의 메모리 컴파일도 지원함. `@I`, `@W`, `pe`,
+`#PCMInvert`의 동작과 근사 한계, 회귀 테스트는 [MSX 재생 안내](docs/MSX-PLAYBACK.md)에 정리함.
+
 ## 라이선스
 
 원본 MDPlayer와 `MDSound/` 안에 포함된 외부 코드의 라이선스를 따름. 새 코드를 추가하거나

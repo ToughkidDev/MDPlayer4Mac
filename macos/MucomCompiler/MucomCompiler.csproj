@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><AssemblyName>mucomDotNETCompiler</AssemblyName><ProduceReferenceAssembly>false</ProduceReferenceAssembly></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../ThirdParty/mucomDotNET/mucomDotNETCompiler/*.cs" Exclude="../ThirdParty/mucomDotNET/mucomDotNETCompiler/muc88.cs" />
+    <Compile Include="../ThirdParty/mucomDotNET/mucomDotNETCompiler/PCMTool/*.cs" />
+    <Content Include="../ThirdParty/mucomDotNET/mucomDotNETCompiler/lang/*.txt" Link="lang/%(Filename)%(Extension)" CopyToOutputDirectory="Always" />
+    <ProjectReference Include="../ThirdParty/mucomDotNET/Common_NET5/Common_NET6.csproj" />
+    <Reference Include="musicDriverInterface"><HintPath>../ThirdParty/mucomDotNET/Common_NET5/musicDriverInterface.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

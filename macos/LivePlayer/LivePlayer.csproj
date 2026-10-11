@@ -26,8 +26,8 @@
   <ItemGroup>
     <ProjectReference Include="..\MDPlayerCore\MDPlayerCore.csproj" />
     <ProjectReference Include="..\ThirdParty\mucomDotNET\Common_NET5\Common_NET6.csproj" />
-    <ProjectReference Include="..\ThirdParty\mucomDotNET\Compiler_NET5\Compiler_NET6.csproj" />
-    <ProjectReference Include="..\ThirdParty\mucomDotNET\Driver_NET5\Driver_NET6.csproj" />
+    <ProjectReference Include="..\MucomCompiler\MucomCompiler.csproj" />
+    <ProjectReference Include="..\MucomDriver\MucomDriver.csproj" />
     <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCommon\PMDDotNETCommon.csproj" />
     <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETCompiler\PMDDotNETCompiler.csproj" />
     <ProjectReference Include="..\ThirdParty\PMDDotNET\PMDDotNETDriver\PMDDotNETDriver.csproj" />

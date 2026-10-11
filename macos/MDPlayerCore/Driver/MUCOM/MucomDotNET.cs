@@ -13,6 +13,9 @@ namespace MDPlayer.Driver.MUCOM
         public const uint OPMBaseClock = 3_579_545;
 
         private mucomDotNET.Driver.Driver driver;
+        private MsxMubProfile msxProfile;
+        private MsxSoundMapper msxMapper;
+        public string PlaybackError { get; private set; } = string.Empty;
         public string SourcePath { get; set; }
         public uint OpmClock { get; private set; } = OPMBaseClock;
 
@@ -21,6 +24,7 @@ namespace MDPlayer.Driver.MUCOM
             GD3 result = new();
             try
             {
+                if (MsxMubProfile.HasMagic(buf)) buf = MsxMubProfile.Parse(buf).SequencerData;
                 GD3Tag tag = new mucomDotNET.Driver.Driver().GetGD3TagInfo(buf);
                 if (tag?.dicItem == null) return result;
 
@@ -61,6 +65,16 @@ namespace MDPlayer.Driver.MUCOM
 
             try
             {
+                msxProfile = MsxMubProfile.HasMagic(data) ? MsxMubProfile.Parse(data) : null;
+                if (msxProfile != null)
+                {
+                    msxMapper = new MsxSoundMapper(
+                        (r,v) => chipRegister.setYM2413Register(0,r,v,model,vgmFrameCounter),
+                        (r,v) => chipRegister.setAY8910Register(0,r,v,model,vgmFrameCounter),
+                        (r,v) => chipRegister.setYM2608Register(0,0,r,v,model,vgmFrameCounter),
+                        WriteScc);
+                    data = msxProfile.SequencerData;
+                }
                 driver = new mucomDotNET.Driver.Driver();
                 List<ChipAction> actions = new()
                 {
@@ -80,11 +94,18 @@ namespace MDPlayer.Driver.MUCOM
                     Tuple.Create(string.Empty, (int)OPNBBaseClock),
                     Tuple.Create(string.Empty, (int)OpmClock),
                 });
+                if (msxProfile != null)
+                {
+                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload);
+                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg);
+                }
                 driver.MusicSTART(0);
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
+                PlaybackError = exception.Message;
+                SilenceMsx();
                 Stopped = true;
                 return false;
             }
@@ -109,10 +130,12 @@ namespace MDPlayer.Driver.MUCOM
                 }
 
                 vgmCurLoop = (uint)Math.Max(0, driver.GetNowLoopCounter());
-                if (driver.GetStatus() < 1) Stopped = true;
+                if (driver.GetStatus() < 1) { SilenceMsx(); Stopped = true; }
             }
-            catch
+            catch (Exception exception)
             {
+                PlaybackError = exception.Message;
+                SilenceMsx();
                 Stopped = true;
             }
         }
@@ -120,7 +143,7 @@ namespace MDPlayer.Driver.MUCOM
         public static bool IsMub(byte[] data)
             => data?.Length >= 4
                 && ((data[0] == 'M' && data[1] == 'U' && (data[2] == 'C' || data[2] == 'B') && data[3] == '8')
-                    || (data[0] == 'm' && data[1] == 'u' && data[2] == 'P' && data[3] == 'b'));
+                    || (data[0] == 'm' && (data[1] == 'u' || data[1] == 's') && data[2] == 'P' && data[3] == 'b'));
 
         // Matches the Windows player's MUC path: compile in memory, then feed the resulting
         // MUB bytes to this same driver.  The companion-file callback resolves relative
@@ -142,6 +165,8 @@ namespace MDPlayer.Driver.MUCOM
                 // one-OPNA MUB and silently discard those tracks.  Remove indentation only
                 // when the first non-space byte is a legal MUCOM track label; all ordinary
                 // MML, tags, comments, and Japanese Shift-JIS text remain byte-identical.
+                if (MsxMucCompiler.IsNativeSource(source))
+                    return MsxMucCompiler.Compile(source, sourcePath, name => OpenSiblingFile(sourcePath,name));
                 byte[] normalizedSource = NormalizeTrackDeclarationIndentation(source);
 
                 mucomDotNET.Compiler.Compiler compiler = new();
@@ -245,7 +270,7 @@ namespace MDPlayer.Driver.MUCOM
             catch { return null; }
         }
 
-        private static byte[] NormalizeTrackDeclarationIndentation(byte[] source)
+        internal static byte[] NormalizeTrackDeclarationIndentation(byte[] source)
         {
             const string trackCharacters = "ABCDEFGHIJKLMNOPQRSTUVabcdefghijklmnopqrstuvWXYZwxyz";
             using MemoryStream result = new(source.Length);
@@ -288,8 +313,41 @@ namespace MDPlayer.Driver.MUCOM
         }
 
         private bool CanWrite(ChipDatum value) => value != null && value.port >= 0 && value.address >= 0 && value.data >= 0;
-        private void WriteOpna1(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2608Register(0, value.port, value.address, value.data, model, vgmFrameCounter); }
-        private void WriteOpna2(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2608Register(1, value.port, value.address, value.data, model, vgmFrameCounter); }
+        private void WriteOpna1(ChipDatum value)
+        {
+            if (!CanWrite(value)) return;
+            if (msxProfile?.SccSsg == true && value.port == 0 && value.address < 14)
+                msxMapper.WriteSsg(value.address,value.data);
+            else chipRegister.setYM2608Register(0,value.port,value.address,value.data,model,vgmFrameCounter);
+        }
+        private void WriteOpna2(ChipDatum value)
+        {
+            if (!CanWrite(value)) return;
+            if (msxProfile != null)
+            {
+                if (msxProfile.NativeGroup) msxMapper.WriteNative(value.port,value.address,value.data);
+            }
+            else chipRegister.setYM2608Register(1,value.port,value.address,value.data,model,vgmFrameCounter);
+        }
+        private void WriteScc(int port,int address,int value)
+        {
+            chipRegister.writeK051649(0,(uint)(port*2),(byte)address,model,vgmFrameCounter);
+            chipRegister.writeK051649(0,(uint)(port*2+1),(byte)value,model,vgmFrameCounter);
+        }
+        private void SilenceMsx()
+        {
+            if (msxProfile == null || msxMapper == null) return;
+            // Mute ordinary OPNA output too if a malformed extended command ends playback.
+            for (int channel=0;channel<6;channel++)
+                chipRegister.setYM2608Register(0,0,0x28,channel<3?channel:channel+1,model,vgmFrameCounter);
+            chipRegister.setYM2608Register(0,1,0x00,0x01,model,vgmFrameCounter);
+            chipRegister.setYM2608Register(0,0,0x10,0xbf,model,vgmFrameCounter);
+            chipRegister.setYM2608Register(0,0,0x07,0x3f,model,vgmFrameCounter);
+            for(int channel=0;channel<3;channel++)
+                chipRegister.setYM2608Register(0,0,0x08+channel,0,model,vgmFrameCounter);
+            if (msxProfile.NativeGroup) msxMapper.StopNative();
+            if (msxProfile.SccSsg) msxMapper.StopScc();
+        }
         private void WriteOpnb1(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(0, value.port, value.address, value.data, model, vgmFrameCounter); }
         private void WriteOpnb2(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(1, value.port, value.address, value.data, model, vgmFrameCounter); }
         private void WriteOpm(ChipDatum value) { if (value != null && value.address >= 0 && value.data >= 0) chipRegister.setYM2151Register(0, value.port, value.address, value.data, model, 0, vgmFrameCounter); }

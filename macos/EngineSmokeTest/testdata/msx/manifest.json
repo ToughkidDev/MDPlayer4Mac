@@ -1,0 +1,52 @@
+[
+  {
+    "name": "native-psg",
+    "magic": "msPb0100",
+    "sha256": "01d215edfffcff7b64f9da5bf7d7a36859a9f96e2fc7012fa31d23f8879fa1b7"
+  },
+  {
+    "name": "native-fm",
+    "magic": "msPb0100",
+    "sha256": "35e2f75499c7aca2ca6200da70703b37bb50af3ba6d8489db6fa5e2c26346f84"
+  },
+  {
+    "name": "native-rhythm",
+    "magic": "msPb0100",
+    "sha256": "66c3f56bca987a8b0e2b909243859e6e9c05f384a367985c50b14a2b8676c531"
+  },
+  {
+    "name": "native-raw",
+    "magic": "msPb0100",
+    "sha256": "5c9dc4da2f9b57c281495857b58fe9814e9a47d2939c660b22d10af7c96313f7"
+  },
+  {
+    "name": "scc-presets",
+    "magic": "msPb0101",
+    "sha256": "e260902b8fd930e94eac4eea1a3bf659e428dfaefd5b755fe2ca835370df29ab"
+  },
+  {
+    "name": "scc-user-wave",
+    "magic": "msPb0101",
+    "sha256": "bd8db3f69e5c5c6956212a6231d2dcef1ded0db28d2ed9d8c113d4c7ee77a843"
+  },
+  {
+    "name": "mixed-pages",
+    "magic": "msPb0101",
+    "sha256": "52f511b257535620adbc12ba309803c7106ae90acc3f83fe53d6ee0efcdfc572"
+  },
+  {
+    "name": "legacy-psg",
+    "magic": "MUB8P\u0000\u0000\u0000",
+    "sha256": "ef5d61797a484c08e69347517104b328c5ca39df7b928e745d18802bfa1307df"
+  },
+  {
+    "name": "legacy-extended",
+    "magic": "muPb0100",
+    "sha256": "0bfd8dbf83185aeb48c0f4911482c242a9673776608291269248ab102eac52c8"
+  },
+  {
+    "name": "pcm-invert",
+    "magic": "MUB8P\u0000\u0000\u0000",
+    "sha256": "9ddd10409d5368401cc1abba3520d3626fc5da3207d97ab377938bce50b9adc7"
+  }
+]

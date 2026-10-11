@@ -1,0 +1,4 @@
+#voice voice.dat
+#driver mucomDotNET
+D0 @0 v15 t180 o4 l8 c r c r
+D1 @0 v15 o5 l8 r c r c
