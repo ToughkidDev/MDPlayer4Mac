@@ -6,10 +6,11 @@ namespace mucomDotNET.Driver
     public partial class Driver
     {
         // Called after Init and before MusicSTART. The five sequencing groups stay intact;
-        // only the sound sinks and versioned SSG commands change.
-        public void ConfigureMsx(byte capabilities, Action<int, byte[], int> uploadWave)
+        // sound sinks, versioned SSG commands and declared raw timing follow Work.
+        public void ConfigureMsx(byte capabilities, Action<int, byte[], int> uploadWave, bool rawTiming = false)
         {
             music2.MsxProfileConfigured = true;
+            if(rawTiming)work.timerOPNA1 = new MsxRawTimer(renderingFreq, opnaMasterClock);
             music2.MsxNativeGroup = (capabilities & 1) != 0;
             music2.MsxSsg = (capabilities & 2) != 0;
             music2.MsxWave = uploadWave;

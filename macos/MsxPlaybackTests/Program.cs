@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+if(args.Length==3 && args[0]=="--album"){Environment.ExitCode=AlbumPlaybackTests.Run(args[1],args[2]);return;}
 int assertions=0;
 void Check(bool condition,string message){assertions++;if(!condition)throw new Exception(message);}
 string fixtures=args.Length>0?args[0]:Path.Combine(AppContext.BaseDirectory,"../../../../EngineSmokeTest/testdata/msx");
@@ -13,6 +14,8 @@ foreach(string path in corpus)
     byte[] data=File.ReadAllBytes(path);
     var session=MusicEngine.Load(data,path);
     Check(session!=null,"Load failed: "+path);
+    if(session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.AY8910,out uint psgClock))
+        Check(psgClock==1_789_773 / 2,"Native AY core clock differs from the VGM/MSX half-clock convention");
     short[] samples=new short[4096];long energy=0;int peak=0;
     for(int i=0;i<1200 && !session.Driver.Stopped;i++)
     {
@@ -22,6 +25,21 @@ foreach(string path in corpus)
     Check(session.Driver.Stopped,"Finite song did not stop: "+path);
     if(session.Driver is MucomDotNET driver)Check(string.IsNullOrEmpty(driver.PlaybackError),path+": "+driver.PlaybackError);
     Check(energy>0,"Silent: "+path);
+    if(Path.GetFileName(path).StartsWith("native-raw2-"))
+    {
+        var profile=MsxMubProfile.Parse(data);
+        Check(profile.RawFlags.HasValue,"Missing raw v2 chip declaration");
+        Check(session.ChipClocks.ContainsKey(MDSound.MDSound.enmInstrumentType.K051649)==profile.UsesScc,"Raw SCC was not initialized correctly");
+        Check(session.ChipClocks.ContainsKey(MDSound.MDSound.enmInstrumentType.YM2413emu)==profile.UsesOpll,"Raw v2 acquired an undeclared OPLL");
+        Check(session.UsesK052539SccPlus==profile.UsesSccPlus,"SCC/SCC+ variant mismatch");
+        if(profile.UsesScc)
+        {
+            var channels=session.ChipRegister.GetK051649Register(0).channel_list;
+            Check(channels.All(c=>c.key==0 && c.volume==0),"Raw SCC stayed keyed after completion");
+            int channel=profile.UsesSccPlus?4:0;
+            Check(channels[channel].waveram.Take(16).All(n=>n==127) && channels[channel].waveram.Skip(16).All(n=>n==-128),"Raw SCC wave/address increment mismatch");
+        }
+    }
     Console.WriteLine($"PASS MUB {Path.GetFileName(path)} {session.DescribeActiveChips()} peak={peak}");
     if(MsxMubProfile.HasMagic(data))
     {
@@ -112,4 +130,66 @@ var silence=new MsxSoundMapper((r,v)=>stopWrites.Add(new[]{0,r,v}),(r,v)=>stopWr
 silence.StopNative();silence.StopScc();
 Check(stopWrites.Count(x=>x[0]==0 && x[1]>=0x20 && x[1]<=0x28 && x[2]==0)==9,"Native stop must release all raw OPLL channels");
 Check(stopWrites.Any(x=>x.SequenceEqual(new[]{3,3,0,0})) && stopWrites.Count(x=>x[0]==3 && x[1]==2 && x[3]==0)==5,"SCC stop must disable all five channels");
+// Invalid version markers fail before chip allocation; payload bytes that only
+// resemble a marker must not select a raw target.
+byte[] raw2=File.ReadAllBytes(Path.Combine(fixtures,"native-raw2-scc.mub"));
+int marker=-1;
+for(int i=34;i<raw2.Length-6;i++)if(raw2.AsSpan(i,5).SequenceEqual(new byte[]{255,247,0,0,191})){marker=i;break;}
+Check(marker>=0,"Missing raw v2 marker");
+foreach(byte flag in new byte[]{2,9,25,33,255})
+{
+    byte[] bad=(byte[])raw2.Clone();bad[marker+5]=flag;
+    Check(MusicEngine.Load(bad,"invalid-raw2.mub")==null,"Accepted invalid raw flags "+flag);
+}
+byte[] operands=(byte[])raw2.Clone();
+// The preceding FA command's operand and a valid F7 command form the byte
+// sequence FF F7 00 00 BF 15. Its FF is not an instruction boundary.
+operands[marker-3]=250;operands[marker-2]=0;operands[marker-1]=255;
+new byte[]{247,0,0,191,21,0}.CopyTo(operands,marker);
+Check(MsxMubProfile.Parse(operands).RawFlags==null,"Mistook register data for a raw marker");
+List<int[]> carried=new();
+var continuity=new MsxSoundMapper((r,v)=>{},(r,v)=>carried.Add(new[]{1,r,v}),(r,v)=>{},(p,r,v)=>carried.Add(new[]{3,p,r,v}));
+continuity.WriteNative(0,191,29);continuity.WriteNative(0,146,128);
+for(int lap=0;lap<3;lap++)
+{
+    continuity.WriteNative(0,191,29);
+    continuity.WriteNative(0,148,17);continuity.WriteNative(0,148,33);
+}
+Check(carried.Where(w=>w[0]==3).Select(w=>w[2]).SequenceEqual(Enumerable.Range(128,6)),"Loop marker reset SCC address state");
+continuity.WriteNative(0,191,17);continuity.WriteNative(0,148,44);
+Check(carried.Last().SequenceEqual(new[]{3,4,134,44}),"Raw marker lost the existing SCC lease");
+continuity.StopNative();continuity.StopScc();
+Check(!continuity.RawScc,"SCC lease stayed active after stop");
+string timingVectors=Path.Combine(fixtures,"tick-vectors.json");
+if(File.Exists(timingVectors))
+{
+    using var timing=JsonDocument.Parse(File.ReadAllText(timingVectors));
+    int[] thresholds=timing.RootElement.GetProperty("samples").EnumerateArray().Select(v=>v.GetInt32()).ToArray();
+    Check(thresholds.Length==256,"Missing Work timer values");
+    for(int value=0;value<256;value++)
+    {
+        int expected=thresholds[value];
+        Check(mucomDotNET.Driver.MsxRawTimer.TickSamples(value)==expected,"Work timer threshold "+value);
+        var timer=new mucomDotNET.Driver.MsxRawTimer(44100,7987200);
+        timer.WriteReg(0x26,(byte)value);timer.WriteReg(0x27,0x0a);
+        for(int sample=1;sample<=expected*3;sample++)
+        {
+            timer.timer();
+            Check(((timer.StatReg&2)!=0)==(sample%expected==0),"Raw timer cadence "+value);
+            if((timer.StatReg&2)!=0)timer.WriteReg(0x27,0x2a);
+        }
+    }
+    // Changing tempo and clearing status must retain an overdue remainder.
+    var phase=new mucomDotNET.Driver.MsxRawTimer(44100,7987200);
+    phase.WriteReg(0x26,254);phase.WriteReg(0x27,0x0a);
+    for(int i=0;i<20;i++)phase.timer();
+    phase.WriteReg(0x26,255);phase.timer();
+    Check((phase.StatReg&2)!=0,"Tempo change lost pending phase");
+    phase.WriteReg(0x27,0x2a);
+    for(int i=0;i<2;i++)phase.timer();
+    Check(phase.StatReg==0,"Raw acknowledgement reset phase incorrectly");
+    phase.timer();Check((phase.StatReg&2)!=0,"Raw phase did not survive acknowledgement");
+}
+
+if(args.Length>1)RealRaw2Tests.Run(args[1],Check);
 Console.WriteLine($"PASS total assertions={assertions}, MUB files={corpus.Length}");

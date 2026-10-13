@@ -10,6 +10,9 @@ public sealed class MsxMubProfile
     public byte Capabilities { get; private init; }
     public bool NativeGroup => (Capabilities & 1) != 0;
     public bool SccSsg => (Capabilities & 2) != 0;
+    public byte? RawFlags { get; private set; }
+    public bool UsesScc => SccSsg || (RawFlags.GetValueOrDefault() & 4) != 0;
+    public bool UsesSccPlus => SccSsg || (RawFlags.GetValueOrDefault() & 8) != 0;
     public bool UsesOpna { get; private set; }
     public bool UsesPsg { get; private set; }
     public bool UsesOpll { get; private set; }
@@ -80,6 +83,18 @@ public sealed class MsxMubProfile
                 else if(part is >=14 and <=16) profile.UsesPsg=true;
                 else profile.UsesOpll=true;
             }
+            if(part is >=11 and <21 && definition.Size>1)
+            {
+                byte? raw=MsxRawTransport.ReadFlags(data.AsSpan(at,(int)definition.Size),part-11);
+                if(raw.HasValue)
+                {
+                    byte combined=profile.RawFlags.GetValueOrDefault();
+                    // v1 owns OPLL unconditionally; v2 bit 1 declares its use.
+                    if(combined==1 && raw.Value!=1)combined=19;
+                    byte incoming=raw.Value==1 && combined>=16?(byte)19:raw.Value;
+                    profile.RawFlags=(byte)(combined|incoming);
+                }
+            }
             musicSize+=definition.Size; at+=(int)definition.Size;
         }
         if(musicSize>122_880) throw new FormatException("msPb music exceeds 120 KiB.");
@@ -93,6 +108,13 @@ public sealed class MsxMubProfile
         // Raw MSXA streams can drive PSG and all nine OPLL channels. Both are registered
         // whenever the native group carries music; chip metadata cannot describe raw writes.
         if(profile.UsesPsg || profile.UsesOpll) profile.UsesPsg=profile.UsesOpll=true;
+        if(profile.RawFlags is byte rawFlags)
+        {
+            profile.UsesPsg=true;
+            profile.UsesOpll=rawFlags==1 || (rawFlags&2)!=0;
+            if(profile.SccSsg && (rawFlags&4)!=0)
+                throw new FormatException("Raw SCC conflicts with SCC+ SSG.");
+        }
         profile.SequencerData[1]=(byte)'u'; profile.SequencerData[7]=(byte)'0';
         if(version=="0101") profile.SequencerData.AsSpan(26,8).Clear();
         return profile;

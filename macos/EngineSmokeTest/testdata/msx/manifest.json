@@ -48,5 +48,30 @@
     "name": "pcm-invert",
     "magic": "MUB8P\u0000\u0000\u0000",
     "sha256": "9ddd10409d5368401cc1abba3520d3626fc5da3207d97ab377938bce50b9adc7"
+  },
+  {
+    "name": "native-raw2-psg",
+    "magic": "msPb0100",
+    "sha256": "d23fb9659d494ba1506a9ed0fbeba39ed5398b5b10bff4c06ded9a693b86fc8a"
+  },
+  {
+    "name": "native-raw2-scc",
+    "magic": "msPb0100",
+    "sha256": "9670d7cab5801fe5bb5902d8e9efa13298cd8a45d266d49c6cf590ca44ae94c5"
+  },
+  {
+    "name": "native-raw2-scc-plus",
+    "magic": "msPb0100",
+    "sha256": "c14b57839afdd7d5d1d13cf66844ae629c56bc448340d19cecbfff67641981a8"
+  },
+  {
+    "name": "native-raw2-ssg",
+    "magic": "msPb0100",
+    "sha256": "ab28dc879ca4612228a837c7de726e9a98291346faf6cb8648fa3ee82c3db807"
+  },
+  {
+    "name": "native-raw2-mixed",
+    "magic": "msPb0100",
+    "sha256": "7ba498b2164928f73788fdcf98e7c2d7e97eafe7c82d46f92b387de5e6b04b3e"
   }
 ]

@@ -61,6 +61,8 @@ namespace MDPlayer.Driver.MUCOM
             vgmSpeed = 1;
             vgmSpeedCounter = 0;
             Stopped = false;
+            PlaybackError = string.Empty;
+            msxMapper = null;
             OpmClock = GetOpmClock(data);
 
             try
@@ -96,8 +98,8 @@ namespace MDPlayer.Driver.MUCOM
                 });
                 if (msxProfile != null)
                 {
-                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload);
-                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg);
+                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload, msxProfile.RawFlags.HasValue);
+                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg, msxProfile.RawFlags);
                 }
                 driver.MusicSTART(0);
                 return true;
@@ -325,7 +327,13 @@ namespace MDPlayer.Driver.MUCOM
             if (!CanWrite(value)) return;
             if (msxProfile != null)
             {
-                if (msxProfile.NativeGroup) msxMapper.WriteNative(value.port,value.address,value.data);
+                if (msxProfile.NativeGroup)
+                {
+                    if(value.port==0 && value.address==191 && (value.data&4)!=0
+                        && (!msxProfile.UsesScc || ((value.data&8)!=0)!=msxProfile.UsesSccPlus))
+                        throw new FormatException("Raw SCC target differs from the declared transport profile.");
+                    msxMapper.WriteNative(value.port,value.address,value.data);
+                }
             }
             else chipRegister.setYM2608Register(1,value.port,value.address,value.data,model,vgmFrameCounter);
         }
@@ -346,7 +354,7 @@ namespace MDPlayer.Driver.MUCOM
             for(int channel=0;channel<3;channel++)
                 chipRegister.setYM2608Register(0,0,0x08+channel,0,model,vgmFrameCounter);
             if (msxProfile.NativeGroup) msxMapper.StopNative();
-            if (msxProfile.SccSsg) msxMapper.StopScc();
+            if (msxProfile.UsesScc) msxMapper.StopScc();
         }
         private void WriteOpnb1(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(0, value.port, value.address, value.data, model, vgmFrameCounter); }
         private void WriteOpnb2(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(1, value.port, value.address, value.data, model, vgmFrameCounter); }

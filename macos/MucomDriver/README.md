@@ -25,3 +25,7 @@ The core `MsxSoundMapper` ports MUCOMSX `MSXTargets.asm`, `MSXTargetCore.asm` an
 ymfm; the BSD-3-Clause notice is preserved in `YMFM-LICENSE.txt`.
 
 See [MSX playback](../docs/MSX-PLAYBACK.md) for semantics and regression commands.
+
+`MsxRawTimer.cs` reproduces the Work application sample accumulator for declared
+raw transport only. Its 256 periods are checked against the actual Z80 routine;
+ordinary MUC/MUB keeps the linked upstream OPNA timer.

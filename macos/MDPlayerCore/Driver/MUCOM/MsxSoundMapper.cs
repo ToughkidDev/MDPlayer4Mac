@@ -11,7 +11,12 @@ public sealed class MsxSoundMapper
     private readonly byte[] ay=new byte[14], ssg=new byte[14], drum=new byte[6];
     private readonly int[] gains={255,255,255};
     private int drumTotal, drumKeys;
-    public bool RawMode {get;private set;}
+    private byte rawFlags;
+    private bool rawSccActive, rawSccPlus;
+    private int rawSccPort, rawSccAddress, psgFactor=58741;
+    public bool RawMode => rawFlags != 0;
+    public bool RawScc => rawSccActive;
+    public bool RawSccPlus => rawSccPlus;
     public int WarningFlags {get;private set;}
     private static readonly int[] carriers={8,8,8,8,12,14,14,15};
     private static readonly int[] drumBits={16,8,2,1,4};
@@ -30,8 +35,15 @@ public sealed class MsxSoundMapper
     };
     public MsxSoundMapper(Action<int,int> opll, Action<int,int> psg, Action<int,int> opna, Action<int,int,int> scc)
         => (this.opll,this.psg,this.opna,this.scc)=(opll,psg,opna,scc);
-    public void Start(bool native,bool extended)
+    public void Start(bool native,bool extended,byte? transportFlags=null)
     {
+        if(transportFlags is byte initial && initial != 1)
+        {
+            SetRawMode(initial);
+            // Raw v2 supplies explicit resets; no OPLL preset/rhythm setup.
+            if(extended && RawScc)throw new FormatException("Raw SCC conflicts with SCC+ SSG.");
+            if(!extended)return;
+        }
         if(native)
         {
             StopNative(); PsgWrite(7,0x38);
@@ -47,22 +59,34 @@ public sealed class MsxSoundMapper
     }
     public void StopNative()
     {
-        opll(14,32);
-        for(int c=0;c<9;c++){opll(0x20+c,0);opll(0x30+c,15);}
+        if((rawFlags & 16)==0 || (rawFlags & 2)!=0)
+        {
+            opll(14,32);
+            for(int c=0;c<9;c++){opll(0x20+c,0);opll(0x30+c,15);}
+        }
         psg(7,0xbf);for(int c=0;c<3;c++) psg(8+c,0);
     }
-    public void StopScc(){scc(3,0,0);for(int c=0;c<5;c++)scc(2,c,0);}
+    public void StopScc(){scc(3,0,0);for(int c=0;c<5;c++)scc(2,c,0);rawSccActive=false;}
     private static int Scale(int value,int factor)=>(int)(((long)value*factor+32768)>>16);
     public void WriteNative(int port,int reg,int value)
     {
         if(port is <0 or >1 || reg is <0 or >255 || value is <0 or >255) return;
-        if(port==0 && reg==0xbf){RawMode=(value&1)!=0;return;}
+        if(port==0 && reg==0xbf){SetRawMode((byte)value);return;}
         if(RawMode)
         {
             if(port!=0 || reg<0x40) return;
             if(reg<0x80)opll(reg-0x40,value);
             else if(reg>=0xc0)opll(reg-0xc0,value);
             else if(reg<0x8e)psg(reg-0x80,reg==0x87?(value&63)|128:value);
+            else if(reg<=147){rawSccPort=reg-142;rawSccAddress=value;}
+            else if(reg==148)
+            {
+                if(RawScc)scc(rawSccPort,rawSccAddress,value);
+                rawSccAddress=(rawSccAddress+1)&255;
+            }
+            else if(reg<=162)PsgWrite(reg-149,value);
+            else if(reg==163)psgFactor=(psgFactor&0xff00)|value;
+            else if(reg==164)psgFactor=(psgFactor&255)|(value<<8);
             return;
         }
         fm[port,reg]=(byte)value;
@@ -115,6 +139,17 @@ public sealed class MsxSoundMapper
         int atten=pan[chn]==0?15:Math.Min(15,tl/4);
         opll(0x30+chn,(instruments[chn]<<4)|atten);
     }
+    private void SetRawMode(byte value)
+    {
+        MsxRawTransport.ValidateFlags(value);
+        // Repeated markers and song loops retain SCC address and PSG source state.
+        rawFlags=value;
+        if((value&4)!=0 && !rawSccActive)
+        {
+            rawSccActive=true;
+            rawSccPlus=(value&8)!=0;
+        }
+    }
     private void PsgWrite(int reg,int value)
     {
         if(reg>=14)return;ay[reg]=(byte)value;
@@ -122,9 +157,9 @@ public sealed class MsxSoundMapper
         {
             int address=reg<6?reg&~1:11;
             int period=ay[address]|(ay[address+1]<<8);if(reg<6)period&=4095;
-            period=Scale(period,58741);psg(address,period&255);psg(address+1,period>>8);
+            period=Scale(period,psgFactor);psg(address,period&255);psg(address+1,period>>8);
         }
-        else psg(reg,reg==6?Scale(value&31,58741):reg==7?(value&63)|128:reg==13?value&15:value&31);
+        else psg(reg,reg==6?Scale(value&31,psgFactor):reg==7?(value&63)|128:reg==13?value&15:value&31);
     }
     private int DrumVolume(int c)
     {

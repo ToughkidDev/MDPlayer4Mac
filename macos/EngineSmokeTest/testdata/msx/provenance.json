@@ -1,5 +1,5 @@
 {
-  "toolchain_driver_sha256": "1a34de825da99c6c010c598d30fad4851c42161343447ead908d8bad9bb50804",
+  "toolchain_driver_sha256": "04026a564922c50b1a020b1a5ef362745965c37dcc347757492054682f256733",
   "generator": "generate-msx-playback-fixtures.py",
-  "vectors": 27
+  "vectors": 36
 }

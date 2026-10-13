@@ -353,14 +353,15 @@ namespace MDPlayer
                     MDSound.ay8910 ay = new();
                     chips.Add(new() {type=MDSound.MDSound.enmInstrumentType.AY8910,ID=0,Instrument=ay,
                         Update=ay.Update,Start=ay.Start,Stop=ay.Stop,Reset=ay.Reset,SamplingRate=sampleRate,
-                        Volume=setting.balance.AY8910Volume,Clock=1_789_773});names.Add("AY8910 (MSX PSG)");
+                        // fmgen AY expects half the physical clock, as in VGM and MGSDRV.
+                        Volume=setting.balance.AY8910Volume,Clock=1_789_773 / 2});names.Add("AY8910 (MSX PSG)");
                 }
-                if (msx.SccSsg)
+                if (msx.UsesScc)
                 {
                     MDSound.K051649 scc = new();
                     chips.Add(new() {type=MDSound.MDSound.enmInstrumentType.K051649,ID=0,Instrument=scc,
                         Update=scc.Update,Start=scc.Start,Stop=scc.Stop,Reset=scc.Reset,SamplingRate=sampleRate,
-                        Volume=setting.balance.K051649Volume,Clock=1_789_773});names.Add("K052539 (SCC+ SSG)");
+                        Volume=setting.balance.K051649Volume,Clock=1_789_773});names.Add(msx.UsesSccPlus ? (msx.SccSsg ? "K052539 (SCC+ SSG)" : "K052539 (SCC+)") : "K051649 (SCC)");
                 }
             }
             if (chips.Count == 0) return null;
@@ -376,7 +377,7 @@ namespace MDPlayer
 
             var session = CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 format, string.Join(" + ", names));
-            session.UsesK052539SccPlus = msx?.SccSsg == true;
+            session.UsesK052539SccPlus = msx?.UsesSccPlus == true;
             return session;
         }
 
