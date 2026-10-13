@@ -56,8 +56,7 @@ accumulates a different duration when a converter changes Timer B frequently.
 ordinary MUC/MUB and native melodic MML retain their existing timer path.
 The 256 reference periods are captured by executing the shipped MUCPLAY routine.
 
-This fix is in the source and the local msPb-playback-fix app build. The previously
-published v0.2.0 download predates this fix.
+These fixes are included in v0.2.1. The v0.2.0 download predates them.
 
 ## Verification
 

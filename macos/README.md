@@ -4,7 +4,7 @@ Windows용 MDPlayer를 macOS에서 쓸 수 있도록 옮기는 개인 포팅 프
 WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코드는 `macos/` 아래의
 `.NET 8` 프로젝트로 따로 관리 중임.
 
-마지막 갱신: 2026-10-11
+마지막 갱신: 2026-10-13
 
 ## 개발 중
 
@@ -25,6 +25,16 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   원본 MSX 드라이버를 실행하므로 `.bgm`에는 사용자가 지정한 `KINROU5.DRV`가 필요하고,
   `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
   `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
+
+## v0.2.1
+
+- MUCOMSX raw v2의 PSG, SCC/SCC+ 및 소스 OPNA SSG 레지스터 전송을 지원함.
+  선언된 칩에 맞춰 에뮬레이터를 초기화하고 SCC+ 5번 채널 독립 파형을 처리함.
+- MSX PSG의 에뮬레이터 클록과 SSG 클록 변환을 보정했음.
+- raw 스트림은 MSX 플레이어와 같은 정수 샘플 타이머를 사용해 템포 변경과
+  타이머 응답 때의 누적 재생 시간 오차를 줄였음. 일반 MUCOM 타이머는 유지함.
+- 합성 MUB/MUC 각각 15개와 Z80 레지스터·타이머 비교를 포함한 회귀 검사를 추가함.
+  상세 내용은 [MSX playback](docs/MSX-PLAYBACK.md)을 참고하면 됨.
 
 ## v0.2.0
 
@@ -283,8 +293,8 @@ Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
 빌드해 Release에 첨부함.
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`임. 압축을 풀면 하나의 `MDPlayer4Mac.app` 번들이
