@@ -326,6 +326,9 @@ namespace MDPlayer
             Driver.MUCOM.MsxMubProfile msx;
             try { msx = Driver.MUCOM.MsxMubProfile.HasMagic(buf) ? Driver.MUCOM.MsxMubProfile.Parse(buf) : null; }
             catch (FormatException) { return null; }
+            // The same parsed audio targets initialize both MUC and MUB mixers.
+            // Timer-only OPNA pages remain sequenced without affecting mix gain;
+            // SCC-SSG still needs OPNA for its noise/envelope fallback.
             bool[] used = msx == null ? Driver.MUCOM.MucomDotNET.GetUsedChips(buf)
                 : new[] {msx.UsesOpna || msx.SccSsg, false, false, false, false};
             var (setting, chipRegister, mds, sampleRate) = NewCommon(samplingBuffer);
@@ -363,6 +366,14 @@ namespace MDPlayer
                         Update=scc.Update,Start=scc.Start,Stop=scc.Stop,Reset=scc.Reset,SamplingRate=sampleRate,
                         Volume=setting.balance.K051649Volume,Clock=1_789_773});names.Add(msx.UsesSccPlus ? (msx.SccSsg ? "K052539 (SCC+ SSG)" : "K052539 (SCC+)") : "K051649 (SCC)");
                 }
+            }
+            // A valid control/rest-only msPb score still needs a render clock.
+            // Restore the former silent OPNA target only when no audio target exists;
+            // adding it to PSG/SCC playback would change MDSound's normalization.
+            if (chips.Count == 0 && msx?.HasOpnaSequence == true)
+            {
+                chips.Add(MakeYM2608(setting, ym2608, 0, sourcePath));
+                names.Add("YM2608 (timing only)");
             }
             if (chips.Count == 0) return null;
 

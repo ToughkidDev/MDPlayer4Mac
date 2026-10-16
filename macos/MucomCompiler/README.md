@@ -10,3 +10,10 @@ meaning. Global `#invert` behavior remains unchanged. Tests compare music data
 rather than tag bytes and verify both K inversion and D isolation.
 
 Rebase this file together with the driver overlay when changing the submodule.
+
+The 2026-10-13 Work comparison also fixes `pm1 p4..p6`: every selected
+drum's expanded F8 command now carries its own validated wait operand.
+Omitted waits use the current default length; a single trailing operand
+previously made playback decode later pan commands as long notes.
+Tests compare 768 combinations against independently expanded packed-pan
+source and require equal MUC/toolchain-MUB duration for RhythmMute fixtures.

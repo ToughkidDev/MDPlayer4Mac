@@ -1,6 +1,6 @@
 namespace MDPlayer.Driver.MUCOM;
 
-// Port of MUCOMSX shared/MSXTargets.asm and SSGExtendDriver.asm (2026-10-11).
+// Port of MUCOMSX shared/MSXTargets.asm and SSGExtendDriver.asm (2026-10-13).
 // Keep integer factors, rounding, preset tie order and repeated register writes.
 public sealed class MsxSoundMapper
 {
@@ -10,6 +10,7 @@ public sealed class MsxSoundMapper
     private readonly int[] high=new int[6], flags=new int[6], instruments=Enumerable.Repeat(1,6).ToArray(), pan=Enumerable.Repeat(192,6).ToArray();
     private readonly byte[] ay=new byte[14], ssg=new byte[14], drum=new byte[6];
     private readonly int[] gains={255,255,255};
+    private readonly byte[] waveCache=new byte[96];
     private int drumTotal, drumKeys;
     private byte rawFlags;
     private bool rawSccActive, rawSccPlus;
@@ -52,6 +53,7 @@ public sealed class MsxSoundMapper
         }
         if(extended)
         {
+            Array.Clear(waveCache);
             scc(5,0,0);scc(3,0,0);
             for(int c=2;c>=0;c--) Upload(c,mucomDotNET.Driver.Music2.MsxPreset(0),255);
             scc(3,0,7);
@@ -192,7 +194,15 @@ public sealed class MsxSoundMapper
     {
         if(channel is <0 or >2 || wave?.Length!=32 || gain is <0 or >255)throw new FormatException("Invalid SCC+ wave/gain.");
         gains[channel]=gain;
-        for(int n=0;n<32;n++)scc(4,channel*32+n,wave[n]);
+        // Work now uses the common SCC wave port and skips only identical
+        // wave RAM. Gain/noise updates are never suppressed. Own the cache:
+        // callers may reuse or mutate their page-local source buffers.
+        Span<byte> cached=waveCache.AsSpan(channel*32,32);
+        if(!wave.AsSpan().SequenceEqual(cached))
+        {
+            wave.CopyTo(cached);
+            for(int n=0;n<32;n++)scc(0,channel*32+n,wave[n]);
+        }
         SsgVolume(channel);
     }
     public void WriteSsg(int reg,int value)

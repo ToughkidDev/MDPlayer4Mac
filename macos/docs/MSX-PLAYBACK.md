@@ -1,4 +1,97 @@
-# MUCOMSX MUB / MUC playback (2026-10-11)
+# MUCOMSX MUB / MUC playback (2026-10-17)
+
+## Native-only mixer chip detection (2026-10-16)
+
+A native msPb score may contain an OPNA page used only to set Timer B. The MUC
+adapter's default `A t225` is one example. These sequencing commands still run,
+but no longer register a silent YM2608 in the audio mixer. MUC and MUB playback
+therefore use the same gain when their sounding PSG/SCC/OPLL targets match,
+regardless of the redundant timer page.
+
+The reader excludes only fully terminated pages containing Timer-B writes and
+rests, in both direct and explicit primary-chip/port-0 encoding. Notes, other
+register writes (including CSM), other indirect writes, unknown
+commands and incomplete instructions retain OPNA conservatively. SSG D/E/F
+software-envelope opcodes are distinguished from FM register-write opcodes. Genuine mixed
+OPNA/native music, SCC-SSG noise/envelope fallback and legacy MUB8/muPb loading
+keep their existing routes. The change does not rewrite tempo, notes or loops,
+and does not alter MDSound's gain rules for other formats.
+
+Loop entry points must also fall on recognized instruction boundaries before a
+page can be excluded. A loop into an operand, an unterminated one-byte page,
+or any unclassified entry retains OPNA. A score containing only control/rest
+pages and no audio targets retains a single silent YM2608 render clock, so it
+still loads, advances and ends. This fallback is never added alongside native
+PSG, OPLL or SCC targets and therefore does not change their normalization.
+
+## v0.2.2 compatibility updates
+
+The 2026-10-13 local build fixes the forty rhythm differences reported during
+the recommended-MUB refresh. Extended OPNA G pages used an implicit instrument
+mask of 63, so rests in an otherwise unselected G page cut drums triggered by
+authored `y16` writes in other parts. MUCOMSX starts its rhythm selection at zero.
+The overlay now does the same for OPNA; explicit `@63` and other masks still work.
+OPNB ADPCM-A retains its original initialization. A mucomDotNET score relying on
+an implicit all-drums selection should explicitly specify `@63`.
+
+SSG wave uploads now use common SCC port 0, matching the latest Work driver and
+its SCC fallback. Identical channel wave RAM is cached, but gain/noise updates
+are always emitted. The cache owns its data and cannot alias caller buffers.
+The emulator still chooses SCC+ for the SSG profile; D/E/F use only the three
+wave channels common to SCC and SCC+.
+
+Raw transport discovery now walks FM3/portamento/envelope/morph/volume-mode,
+automatic-pan and TL-LFO command operands correctly, and distinguishes SSG
+wave/pan operands from FM commands. Marker-like bytes inside operands do not
+declare a chip. Existing invalid-format checks remain in force.
+
+MSX-specific MUC compilation primes Timer-B 225 before music, matching Work's
+default; authored tempo commands at tick zero override it. Interleaved selectors
+such as MSXA0B0 now participate in the header-order check. Ordinary non-MSX MUC
+compilation retains upstream defaults: source playback is not promised to match
+Work when platform defaults differ. Specify tempo/clock explicitly for comparisons.
+Optional UTF-8 BOM and CP/M EOF framing are accepted without rewriting MML or
+Shift-JIS bytes, so a first-line MSX declaration cannot silently disappear.
+
+Verification after the Work RhythmMute repair: twenty actual latest-toolchain
+MUBs and their MUC sources, 1,283,647 assertions, thirty-six assembled-driver differential vectors, and all
+256 timer periods. The recommended corpus comparison covers 888 MUBs (828 MSX,
+60 OPLL) for up to the first 600 logical ticks, excluding platform startup and the
+last boundary tick. The previous forty rhythm discrepancies become zero, with
+no new register-state/event discrepancies in that compared interval. These are
+not whole-song bit-identical audio or real-hardware claims.
+
+These compatibility changes and the native-only mixer fix are included in
+v0.2.2. Its regression suite passes 1,284,281 assertions, including 634 focused
+chip-detection/reload checks and complete finite playback of twenty MUB and
+twenty MUC fixtures. After the mixer stability follow-up, all twenty MUB fixture
+captures retain identical PCM and timing to the preceding mixer-fixed build.
+
+The separately confirmed Work RhythmMute defect is now repaired in the Work
+compiler and MUCPLAY session restoration. The tag no longer sets the native
+target-layout bit, and session playback restores its own stored mute mask rather
+than interpreting that bit as mask presence. MUC2MUB, MUCPLAY and MUCEDIT exports
+are byte-identical in the final single-boot 32MiB FAT16 / FS-A1WX / Z80 / 512KiB /
+MAKOTO test, including error recovery and complete mapper release (432KiB peak).
+See Work validation/20261013-rhythm-mute-fixed-native-v5/result.json.
+
+MDPlayer already applies the same note-level rhythm mask: no extra sequencer
+patch is necessary for these corrected files. New tests cover all 64 masks,
+unblocked key-offs, and preservation of authored direct `y16` writes, which
+bypass note-level mute in both implementations. Three complete finite models
+(plain, note-muted and raw-register control) have matching Z80/MDPlayer OPNA
+settled states and ordered events after initialization and before final shutdown.
+The editor's VGM retains four masked triggers and validates its file/sample extent.
+Previously damaged MUBs must be recompiled; a player cannot recover missing notes.
+
+Independent MUC compilation exposed a separate compiler-overlay defect:
+`pm1 p4..p6` emitted the wait only after the last selected drum's pan command.
+The overlay now emits a validated wait for every expanded F8 command, using
+the current length when omitted. 768 combinations match explicitly expanded
+packed-pan sources. The finite RhythmMute MUC and Work MUB now end together;
+ordinary authored `y16` control and static p1..p3 semantics are retained.
+
+The following sections retain earlier format and verification information.
 
 MDPlayer4Mac now recognizes the MUCOMSX toolchain's MSX containers separately from
 ordinary MUCOM88 MUBs. Opening a `.mub` or `.muc` uses the existing player UI.

@@ -1,0 +1,4 @@
+#voice voice.dat
+#OPNA1RhythmMute SB
+A t225 @1 o4 c
+G y16,63 r4 y16,191 r4

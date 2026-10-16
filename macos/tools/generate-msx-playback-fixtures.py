@@ -38,6 +38,11 @@ cases={
 'legacy-psg':b'D @0 v15 t180 o4 l8 cdefgab>c r4\n',
 'legacy-extended':b'#driver mucomDotNET\nD0 @0 v15 t180 o4 l8 c r c r\nD1 @0 v15 o5 l8 r c r c\n',
 'pcm-invert':b'#PCMInvert On\nD @0 v15 t180 o4 l8 cdef r4\n',
+'rhythm-raw-rest':b'A0 t198 y17,63 y25,223 y27,223 y16,2 r%16 y16,8 r%16 y16,136 r%4\nG0 [r%1]36\n',
+'rhythm-mute':b'#OPNA1RhythmMute SB\nA t225 @1 o4 c\nG @63 v20 pm1 p4,2 l16 cccc\n',
+'rhythm-mute-raw':b'#OPNA1RhythmMute SB\nA t225 @1 o4 c\nG y16,63 r4 y16,191 r4\n',
+'native-default-psg':b'MSXD @0 v15 o4 l8 cdef r4\n',
+'scc-default-psg':b'#SSGExtend On\nD @0 v15 @I8 o4 l8 cdef r4\n',
 }
 # raw v2: compact SCC selectors auto-increment across each data write.
 wave32=' '.join('y148,'+str(127 if n<16 else 128) for n in range(32))

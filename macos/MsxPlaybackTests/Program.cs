@@ -4,11 +4,23 @@ using System.Text;
 using System.Text.Json;
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+if(args.Length==4 && args[0]=="--trace"){Environment.ExitCode=TraceProbe.Run(args[1],args[2],int.Parse(args[3]));return;}
+if(args.Length==3 && args[0]=="--features"){Environment.ExitCode=FeatureCompatibilityTests.Run(args[1],args[2]);return;}
 if(args.Length==3 && args[0]=="--album"){Environment.ExitCode=AlbumPlaybackTests.Run(args[1],args[2]);return;}
 int assertions=0;
 void Check(bool condition,string message){assertions++;if(!condition)throw new Exception(message);}
 string fixtures=args.Length>0?args[0]:Path.Combine(AppContext.BaseDirectory,"../../../../EngineSmokeTest/testdata/msx");
+if(args.Length>0 && args[0]=="--chip-usage")
+{
+    fixtures=args.Length>1?args[1]:Path.Combine(AppContext.BaseDirectory,"../../../../EngineSmokeTest/testdata/msx");
+    MsxChipUsageTests.Run(Check,fixtures);
+    Console.WriteLine($"CHIP USAGE PASS {assertions} assertions");
+    return;
+}
+MsxChipUsageTests.Run(Check,fixtures);
+CurrentCompatibilityTests.Run(Check,fixtures);
 var corpus=Directory.GetFiles(fixtures,"*.mub");
+Dictionary<string,long> renderedFrames=new();
 foreach(string path in corpus)
 {
     byte[] data=File.ReadAllBytes(path);
@@ -16,15 +28,17 @@ foreach(string path in corpus)
     Check(session!=null,"Load failed: "+path);
     if(session.ChipClocks.TryGetValue(MDSound.MDSound.enmInstrumentType.AY8910,out uint psgClock))
         Check(psgClock==1_789_773 / 2,"Native AY core clock differs from the VGM/MSX half-clock convention");
-    short[] samples=new short[4096];long energy=0;int peak=0;
+    short[] samples=new short[4096];long energy=0,frames=0;int peak=0;
     for(int i=0;i<1200 && !session.Driver.Stopped;i++)
     {
         int n=session.RenderSamplesWithMasterVolume(samples,0,samples.Length);
+        frames+=n/2;
         foreach(short s in samples.Take(n)){energy+=Math.Abs((int)s);peak=Math.Max(peak,Math.Abs((int)s));}
     }
     Check(session.Driver.Stopped,"Finite song did not stop: "+path);
     if(session.Driver is MucomDotNET driver)Check(string.IsNullOrEmpty(driver.PlaybackError),path+": "+driver.PlaybackError);
     Check(energy>0,"Silent: "+path);
+    renderedFrames[Path.GetFileNameWithoutExtension(path)]=frames;
     if(Path.GetFileName(path).StartsWith("native-raw2-"))
     {
         var profile=MsxMubProfile.Parse(data);
@@ -62,15 +76,18 @@ foreach(string path in Directory.GetFiles(fixtures,"*.muc"))
 {
     var session=MusicEngine.Load(File.ReadAllBytes(path),path);
     if(session==null) { MucomDotNET.CompileMuc(File.ReadAllBytes(path),path,out string error); throw new Exception("MUC failed: "+path+" "+error); }
-    short[] samples=new short[4096];long energy=0;
+    short[] samples=new short[4096];long energy=0,frames=0;
     for(int i=0;i<1200 && !session.Driver.Stopped;i++)
     {
         int n=session.RenderSamplesWithMasterVolume(samples,0,samples.Length);
+        frames+=n/2;
         foreach(short s in samples.Take(n))energy+=Math.Abs((int)s);
     }
     Check(session.Driver.Stopped,"MUC did not end: "+path);
     if(session.Driver is MucomDotNET d2)Check(string.IsNullOrEmpty(d2.PlaybackError),path+": "+d2.PlaybackError);
     Check(energy>0,"MUC silent: "+path);
+    if(Path.GetFileName(path).Contains("default-psg") || Path.GetFileName(path).StartsWith("rhythm-mute"))
+        Check(frames==renderedFrames[Path.GetFileNameWithoutExtension(path)],"MSX default tempo differs between MUC and toolchain MUB");
     Console.WriteLine("PASS MUC "+Path.GetFileName(path));
 }
 // Integer target mapper differential vectors come from executing the assembled MSX driver.
@@ -111,6 +128,10 @@ foreach(string source in new[]{"#SSGExtend Wrong\nD c\n","#SSGExtend On\nMSXK c\
     byte[] result=MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes(source),Path.Combine(fixtures,"invalid.muc"),out string error);
     Check(result==null && !string.IsNullOrEmpty(error),"Accepted invalid MUC: "+source);
 }
+Check(MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes("MSXA0B0 c\n#SSGExtend On\n"),Path.Combine(fixtures,"invalid.muc"),out string lateError)==null && lateError.Length>0,"Late extension tag accepted after interleaved selectors");
+byte[] framed=new byte[]{0xef,0xbb,0xbf}.Concat(Encoding.ASCII.GetBytes("MSXD @0 v15 o4 c\n\x1aMSXK invalid\n")).ToArray();
+byte[] framedOutput=MucomDotNET.CompileMuc(framed,Path.Combine(fixtures,"framed.muc"),out string framedError);
+Check(framedOutput!=null && MsxMubProfile.HasMagic(framedOutput),"BOM/CP-M EOF lost MSX source profile: "+framedError);
 // Exercise command truncation/unsupported preset through the renderer, beyond directory validation.
 byte[] extended=File.ReadAllBytes(Path.Combine(fixtures,"scc-presets.mub"));
 int waveCommand=-1;

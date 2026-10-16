@@ -50,6 +50,31 @@
     "sha256": "9ddd10409d5368401cc1abba3520d3626fc5da3207d97ab377938bce50b9adc7"
   },
   {
+    "name": "rhythm-raw-rest",
+    "magic": "muPb0100",
+    "sha256": "eb07c9ea8fd22b2ea5a17c2c3dace84d328475ab1db4f500b51b555589705eec"
+  },
+  {
+    "name": "rhythm-mute",
+    "magic": "muPb0100",
+    "sha256": "04ece1819d5b82058ac721a18d3a6a2f0d177cb1c52f7c23dca37be79d12a94a"
+  },
+  {
+    "name": "rhythm-mute-raw",
+    "magic": "muPb0100",
+    "sha256": "060b443c4df1fb9b0a41b7b07c6f7eac9aad0d5438a27cf2f43ebd4d4a741b2c"
+  },
+  {
+    "name": "native-default-psg",
+    "magic": "msPb0100",
+    "sha256": "55cad6ea2e5738529f77d409a07affb5524b8fd80f598a75c3539a7585d7af32"
+  },
+  {
+    "name": "scc-default-psg",
+    "magic": "msPb0101",
+    "sha256": "d006e430d50323dc5f66648df85e705f68280f9310898a3bd3ced2df19a742ba"
+  },
+  {
     "name": "native-raw2-psg",
     "magic": "msPb0100",
     "sha256": "d23fb9659d494ba1506a9ed0fbeba39ed5398b5b10bff4c06ded9a693b86fc8a"

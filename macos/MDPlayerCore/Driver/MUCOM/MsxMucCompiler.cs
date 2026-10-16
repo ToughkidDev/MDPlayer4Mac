@@ -9,10 +9,11 @@ namespace MDPlayer.Driver.MUCOM;
 internal static class MsxMucCompiler
 {
     private static readonly Regex NativeLine = new(@"(?m)^[ \t]*MSX([A-K0-9]+)(?=[ \t])",RegexOptions.CultureInvariant);
+    private static readonly Regex MusicLine = new(@"(?m)^[ \t]*(?:MSX)?(?:[A-Va-z][0-9]*)+[ \t]",RegexOptions.CultureInvariant);
     private static bool Extended(string source)
     {
         bool result=false;
-        Match firstMusic = Regex.Match(source,@"(?m)^[ \t]*(?:MSX)?[A-Va-z]+[0-9]*[ \t]");
+        Match firstMusic = MusicLine.Match(source);
         foreach(Match tag in Regex.Matches(source,@"(?im)^#(SSGExtend|PCMInvert)[ \t]+([^;\r\n]*)"))
         {
             if (firstMusic.Success && tag.Index > firstMusic.Index)
@@ -45,6 +46,12 @@ internal static class MsxMucCompiler
         // Force extended command encoding even for a single-page native PSG song.
         ascii=Regex.Replace(ascii,@"(?im)^#driver[^\r\n]*","");
         ascii = NormalizeWaves(ascii);
+        // Work starts at Timer-B 225, even when a source does not issue t/T.
+        // The upstream extended compiler otherwise leaves it at its own default.
+        // Prime A before music, after header tags. An authored tempo at tick zero
+        // still wins; no event/loop operands are rewritten after compilation.
+        Match firstMusic=MusicLine.Match(ascii);
+        if(firstMusic.Success)ascii=ascii.Insert(firstMusic.Index,"A t225\r\n");
         byte[] input=Encoding.Latin1.GetBytes("#driver mucomDotNET\r\n"+ascii);
         input=MucomDotNET.NormalizeTrackDeclarationIndentation(input);
         mucomDotNET.Compiler.Compiler compiler=new();compiler.Init();

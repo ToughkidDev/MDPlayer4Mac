@@ -1,5 +1,5 @@
 // Derived from kuma4649/mucomDotNET f040376 (GPL-3.0).
-// MDPlayer4Mac fix: PCMInvert changes only ADPCM relative octaves.
+// MDPlayer4Mac fixes: ADPCM-only PCMInvert and per-drum pm1 auto-pan waits.
 using mucomDotNET.Common;
 using System;
 using System.Text;
@@ -1050,7 +1050,9 @@ namespace mucomDotNET.Compiler
             }
             else
             {
-                int n2 = -1;
+                // Each expanded F8 auto-pan command owns its wait operand.
+                // A single trailing wait desynchronizes the preceding commands.
+                int n2 = work.COUNT;
                 if (c == ',')//0x2c
                 {
                     if (mucInfo.DriverType != MUCInfo.enmDriverType.DotNet)
@@ -1060,6 +1062,9 @@ namespace mucomDotNET.Compiler
                     n2 = msub.REDATA(mucInfo.lin, ref ptr);
                     mucInfo.srcCPtr = ptr;
                 }
+
+                if (rn > 3 && rn < 7 && (n2 < 1 || n2 > 255))
+                    throw new MucException(string.Format(msg.get("E0526"), 255, v), mucInfo.row, mucInfo.col);
 
                 for(int i = 0; i < 6; i++)
                 {
@@ -1079,21 +1084,8 @@ namespace mucomDotNET.Compiler
                     msub.MWRITE(
                         new MmlDatum(enmMMLType.Pan, args, lp, 0xf8)
                         , new MmlDatum((byte)n));// COM OF 'p'
-
-                }
-
-                if (n2!=-1)//0x2c
-                {
-                    //4-6の範囲内の場合のみwait値を出力する
                     if (rn > 3 && rn < 7)
-                    {
-                        //wait値が範囲外の時 ->エラー
-                        if (n2 < 1 || n2 > 255 || (byte)n2 < 1)
-                        {
-                            throw new MucException(string.Format(msg.get("E0526"), 255, v), mucInfo.row, mucInfo.col);
-                        }
-                        msub.MWRIT2(new MmlDatum((byte)n2));// ２こめ
-                    }
+                        msub.MWRIT2(new MmlDatum((byte)n2));
                 }
 
                 return EnmFCOMPNextRtn.fcomp1;

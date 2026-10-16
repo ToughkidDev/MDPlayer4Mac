@@ -4,7 +4,7 @@ Windows용 MDPlayer를 macOS에서 쓸 수 있도록 옮기는 개인 포팅 프
 WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코드는 `macos/` 아래의
 `.NET 8` 프로젝트로 따로 관리 중임.
 
-마지막 갱신: 2026-10-13
+마지막 갱신: 2026-10-17
 
 ## 개발 중
 
@@ -25,6 +25,16 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   원본 MSX 드라이버를 실행하므로 `.bgm`에는 사용자가 지정한 `KINROU5.DRV`가 필요하고,
   `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
   `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
+
+## v0.2.2
+
+- msPb의 템포 설정 전용 OPNA 파트를 오디오 믹서에서 제외해, 같은 PSG/SCC 연주의
+  MUC와 MUB 재생 음량이 달라지는 문제를 수정함. 실제 OPNA 연주와 SCC-SSG 폴백은 유지함.
+- 루프 진입점과 미완성 명령의 칩 판정을 보완하고, 템포·쉼표만 있는 무음 곡도 재생되도록 함.
+- OPNA 리듬 초기화와 여러 드럼의 자동 팬 대기 명령을 수정함.
+- 최신 MUCOMSX의 기본 템포, SCC 파형 전송·캐시, raw 명령 판독과 MUC BOM/EOF 처리를 반영함.
+- MUB/MUC 각각 20개 재생 및 종료 검사와 칩 판정·재로드 회귀 검사를 통과함.
+  [변경 사항](release-notes/v0.2.2.md)과 [MSX playback](docs/MSX-PLAYBACK.md)을 참고하면 됨.
 
 ## v0.2.1
 
@@ -293,8 +303,8 @@ Xcode가 처리함. 번들 구성은 릴리즈 워크플로와 같음.
 빌드해 Release에 첨부함.
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 ```
 
 생성물은 `MDPlayer4Mac-osx-arm64.zip`임. 압축을 풀면 하나의 `MDPlayer4Mac.app` 번들이

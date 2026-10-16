@@ -153,6 +153,15 @@ namespace MDPlayer.Driver.MUCOM
         public static byte[] CompileMuc(byte[] source, string sourcePath, out string error)
         {
             error = string.Empty;
+            // Work accepts an optional UTF-8 BOM and the traditional CP/M EOF.
+            // Strip only these framing bytes; Shift-JIS/MML bytes stay unchanged.
+            if(source != null)
+            {
+                int start=source.AsSpan().StartsWith(new byte[]{0xef,0xbb,0xbf})?3:0;
+                int eof=Array.IndexOf(source,(byte)0x1a,start);
+                int end=eof<0?source.Length:eof;
+                if(start!=0 || end!=source.Length)source=source.AsSpan(start,end-start).ToArray();
+            }
             if (source == null || source.Length == 0)
             {
                 error = "MUC source is empty.";

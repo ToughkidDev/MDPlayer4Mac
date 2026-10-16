@@ -675,10 +675,15 @@ namespace mucomDotNET.Driver
                         pg.volReg = work.soundWork.CHNUM + 5;//ix 7
                         pg.channelNumber = (work.soundWork.CHNUM - 3) * 2;//ix 8
                     }
-                    //リズムＣｈの場合は音色番号を0x3fにセットして全てのドラム音を有効にする
+                    // Initialize rhythm selection independently of authored y writes.
                     if (ch == 6)
                     {
-                        pg.instrumentNumber = 0x3f;
+                        // OPNA's legacy rhythm selection starts empty, as in
+                        // MUCOMSX Player_Init. A rest-only G page must not cut
+                        // drums triggered with authored y writes in other parts.
+                        // Explicit @63 still selects all six; OPNB ADPCM-A keeps
+                        // its upstream default selection.
+                        pg.instrumentNumber = chipIndex < 2 ? 0 : 0x3f;
                     }
                 }
 

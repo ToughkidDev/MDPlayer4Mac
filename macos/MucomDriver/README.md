@@ -21,7 +21,8 @@ MUC compilation uses upstream SSG encodings (`FF F6`/`FF FB`) without moving byt
 or invalidating repeat offsets. These in-memory buffers are not MUB export files.
 
 The core `MsxSoundMapper` ports MUCOMSX `MSXTargets.asm`, `MSXTargetCore.asm` and
-`SSGExtendDriver.asm` (2026-10-11). Its YM2413 ROM table comes from Aaron Giles'
+`SSGExtendDriver.asm` (2026-10-13), including common SCC wave writes and duplicate
+wave suppression. Its YM2413 ROM table comes from Aaron Giles'
 ymfm; the BSD-3-Clause notice is preserved in `YMFM-LICENSE.txt`.
 
 See [MSX playback](../docs/MSX-PLAYBACK.md) for semantics and regression commands.
@@ -29,3 +30,9 @@ See [MSX playback](../docs/MSX-PLAYBACK.md) for semantics and regression command
 `MsxRawTimer.cs` reproduces the Work application sample accumulator for declared
 raw transport only. Its 256 periods are checked against the actual Z80 routine;
 ordinary MUC/MUB keeps the linked upstream OPNA timer.
+
+The 2026-10-13 local overlay starts extended OPNA rhythm selection at zero,
+matching Work and the legacy MUB8 path. Unselected G-page rests cannot release
+drums authored in another part; explicit @ masks are unaffected. OPNB ADPCM-A
+keeps its upstream default. See the playback guide for the local-build evidence
+and the separate, unresolved Work RhythmMute compiler defect.

@@ -26,16 +26,40 @@ internal static class MsxRawTransport
             {
                 if(at+1>=page.Length)return flags;
                 size=page[at+1] switch {0=>7,1 or 2=>2,3 or 4 or 6=>3,5=>4,_=>0};
+                if(page[at+1]==7)
+                {
+                    if(at+2>=page.Length)return flags;
+                    size=part is >=3 and <=5 || page[at+2]==0?3:4;
+                }
             }
             else if(code==0xf1)size=part==6 && at+1<page.Length && (page[at+1]&128)==0?8:2;
-            else if(code==0xf7)size=part is >=3 and <=5?2:5;
+            else if(code==0xf7)size=part is >=3 and <=5?2:9;
             else if(code==0xfa)size=part is >=3 and <=5?7:3;
+            else if(code==0xf8)
+            {
+                if(at+1>=page.Length)return flags;
+                int pan=page[at+1];
+                bool automatic=part==6 ? (pan>>4) is >=4 and <=6
+                    : part is not (>=3 and <=5) && pan is >=4 and <=6;
+                size=automatic?3:2;
+            }
             else if(code==0xff)
             {
                 if(at+1>=page.Length)return flags;
                 byte sub=page[at+1];
-                size=sub switch {0xf0 or 0xf1 or 0xf3 or 0xf4 or 0xf5 or 0xfb=>3,0xf2=>4,0xf6 or 0xf7=>6,_=>0};
-                if(sub==0xfb)
+                bool ssg=part is >=3 and <=5;
+                size=sub switch {0xf0 or 0xf1 or 0xf3 or 0xf4 or 0xf5 or 0xfb=>3,0xf2 or 0xf8=>4,0xf6 or 0xf7 or 0xf9 or 0xfc=>6,0xfa=>8,0xff=>2,_=>0};
+                if(ssg && sub==0xf0)
+                {
+                    if(at+2>=page.Length)return flags;
+                    if(page[at+2]>=4)size=4;
+                }
+                if(ssg && sub==0xf6)
+                {
+                    if(at+2>=page.Length)return flags;
+                    size=page[at+2]==255?4:3;
+                }
+                if(sub==0xfb && !ssg)
                 {
                     if(at+2>=page.Length)return flags;
                     size=page[at+2] switch {1=>23,255=>7,_=>3};

@@ -2,4 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><RollForward>LatestMajor</RollForward></PropertyGroup>
   <ItemGroup><ProjectReference Include="../MDPlayerCore/MDPlayerCore.csproj" /></ItemGroup>
   <ItemGroup><Reference Include="musicDriverInterface"><HintPath>../ThirdParty/mucomDotNET/Common_NET5/musicDriverInterface.dll</HintPath></Reference></ItemGroup>
+  <ItemGroup>
+    <None Include="../MDPlayerUI/Assets/Rhythm/*.WAV" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

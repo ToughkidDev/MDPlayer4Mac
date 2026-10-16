@@ -14,10 +14,46 @@ public sealed class MsxMubProfile
     public bool UsesScc => SccSsg || (RawFlags.GetValueOrDefault() & 4) != 0;
     public bool UsesSccPlus => SccSsg || (RawFlags.GetValueOrDefault() & 8) != 0;
     public bool UsesOpna { get; private set; }
+    internal bool HasOpnaSequence { get; private set; }
     public bool UsesPsg { get; private set; }
     public bool UsesOpll { get; private set; }
     public byte[] SequencerData { get; private init; }
     public static bool HasMagic(byte[] data) => data?.Length >= 4 && data[0]=='m' && data[1]=='s' && data[2]=='P' && data[3]=='b';
+    // Timer-B writes sequence every target, including native-only PSG/SCC scores.
+    // Keep them in SequencerData, but do not add a silent OPNA to MDSound: its
+    // automatic gain depends on the registered chip set. Only recognize this
+    // narrow control-only grammar; non-timer writes, unknown instructions,
+    // truncated commands and trailing bytes conservatively retain the chip.
+    private static bool MayProduceOpnaSound(ReadOnlySpan<byte> page, int part, int loop)
+    {
+        // FA is a software-envelope command on SSG D/E/F, not a raw write.
+        int at = 0;
+        bool loopAtInstruction = loop == -1;
+        while (at < page.Length)
+        {
+            // A header loop can re-enter at an operand and interpret it as a note.
+            // Exclude OPNA only when every execution entry has been classified.
+            if (at == loop) loopAtInstruction = true;
+            byte code = page[at++];
+            if (code == 0) return at != page.Length || !loopAtInstruction;
+            if (code is >= 0x80 and < 0xf0) continue; // rest, encoded in one byte
+            if (code == 0xfa && part is not (>= 3 and <= 5)
+                && at + 2 <= page.Length && page[at] == 0x26)
+            {
+                at += 2; // port-0 Timer-B value; zero is a valid operand
+                continue;
+            }
+            if (code == 0xff && at + 5 <= page.Length && page[at] == 0xf7
+                && page[at + 1] == 0 && page[at + 2] == 0 && page[at + 3] == 0x26)
+            {
+                at += 5; // extended write: primary OPNA, port 0, Timer B
+                continue;
+            }
+            return true;
+        }
+        return true; // no terminating opcode: leave validation to the driver
+    }
+
     public static MsxMubProfile Parse(byte[] data)
     {
         if (!HasMagic(data) || data.Length < 34) throw new FormatException("Truncated msPb header.");
@@ -77,10 +113,14 @@ public sealed class MsxMubProfile
             bool supported=part<11 || profile.NativeGroup && part<21;
             if(!supported && (definition.Size!=1 || data[at]!=0 || definition.Loop!=-1))
                 throw new FormatException("Music in an unsupported msPb part (including MSXK).");
-            if(definition.Size>1)
+            if(part<11)
             {
-                if(part<11) profile.UsesOpna=true;
-                else if(part is >=14 and <=16) profile.UsesPsg=true;
+                profile.HasOpnaSequence |= definition.Size>1;
+                profile.UsesOpna |= MayProduceOpnaSound(data.AsSpan(at,(int)definition.Size),part,definition.Loop);
+            }
+            else if(definition.Size>1)
+            {
+                if(part is >=14 and <=16) profile.UsesPsg=true;
                 else profile.UsesOpll=true;
             }
             if(part is >=11 and <21 && definition.Size>1)
