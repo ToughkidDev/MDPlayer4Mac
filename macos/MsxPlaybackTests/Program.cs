@@ -17,6 +17,7 @@ if(args.Length>0 && args[0]=="--chip-usage")
     Console.WriteLine($"CHIP USAGE PASS {assertions} assertions");
     return;
 }
+Scc5Tests.Run(Check,fixtures);
 MsxChipUsageTests.Run(Check,fixtures);
 CurrentCompatibilityTests.Run(Check,fixtures);
 var corpus=Directory.GetFiles(fixtures,"*.mub");

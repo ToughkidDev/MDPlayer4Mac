@@ -687,6 +687,12 @@ namespace mucomDotNET.Driver
                     }
                 }
 
+                if (MsxDedicatedScc && chipIndex == 2 && ch < 5)
+                {
+                    // Every dedicated SCC part runs an independent SSG-D prototype.
+                    pg.channelNumber = 0;
+                    pg.volReg = 8;
+                }
                 pg.panMode = 3;
             }
 
@@ -1041,10 +1047,11 @@ namespace mucomDotNET.Driver
                     //Log.WriteLine(LogLevel.TRACE, aryDRIVE[i].Item1);
 
                     //KUMA:フラグ系パラメータのセット
-                    work.soundWork.FMPORT = aryDrv[i].Item2;
-                    work.soundWork.SSGF1 = aryDrv[i].Item3;
-                    work.soundWork.DRMF1 = aryDrv[i].Item4;
-                    work.soundWork.PCMFLG = aryDrv[i].Item5;
+                    var route = MsxDedicatedScc && c == 2 && i < 5 ? aryDRIVE[3] : aryDrv[i];
+                    work.soundWork.FMPORT = route.Item2;
+                    work.soundWork.SSGF1 = route.Item3;
+                    work.soundWork.DRMF1 = route.Item4;
+                    work.soundWork.PCMFLG = route.Item5;
 
                     work.cd = work.soundWork.CHDAT[c][i];//KUMA:カレントのパートワーク切り替え
                     work.cd.keyOnCh = -1;//KUMA:発音ページ情報をリセット
@@ -1063,7 +1070,7 @@ namespace mucomDotNET.Driver
                         {
                             if (work.pg.muteFlg || work.pg.silentFlg) work.soundWork.READY = 0x00; //KUMA: 0x08(bit3)=MUTE FLAG 又は外部からmuteの指定がある場合
 
-                            aryDrv[i].Item6();//KUMA:パートごとの処理をコール
+                            route.Item6();//KUMA:パートごとの処理をコール
 
                             if (work.pg.muteFlg || work.pg.silentFlg) work.soundWork.READY = 0xff;//KUMA: 0x08(bit3)=MUTE FLAG
                         }
@@ -1427,6 +1434,12 @@ namespace mucomDotNET.Driver
 
         public void PSGOUT(byte d, byte e)
         {
+            if (IsDedicatedScc)
+            {
+                MsxSccRegister?.Invoke(work.soundWork.currentCh / 10, d, e);
+                work.crntMmlDatum = null;
+                return;
+            }
             byte port = 0;
             if (d >= 0x30)
             {
@@ -4649,7 +4662,7 @@ namespace mucomDotNET.Driver
             nxOct = (a + (isNeg ? -1 : 1)) / 12;
 
             int bsFnum = 0, nxFnum = 0;
-            if (work.soundWork.currentChip < 2)
+            if (work.soundWork.currentChip < 2 || IsDedicatedScc)
             {
                 bsFnum = work.soundWork.SNUMB[0][b];
                 if (nxOct - bsOct >= 0) nxFnum = work.soundWork.SNUMB[0][n] >> (nxOct - bsOct);
@@ -5046,7 +5059,7 @@ namespace mucomDotNET.Driver
             b = a;
             a &= 0b0000_1111;//  GET KEY CODE
             byte e = a;
-            int hl = work.soundWork.SNUMB[work.soundWork.currentChip / 2][e];// GET FNUM2
+            int hl = work.soundWork.SNUMB[IsDedicatedScc ? 0 : work.soundWork.currentChip / 2][e];// GET FNUM2
             int de = work.pg.detune;// GET DETUNE DATA
             hl += de;//  DETUNE PLUS
             hl = (short)hl;

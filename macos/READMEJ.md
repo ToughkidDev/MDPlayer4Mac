@@ -6,7 +6,7 @@ Windows用のMDPlayerをmacOSで使えるように移植する個人プロジェ
 WinFormsコードはリポジトリの `MDPlayer/` にそのまま残し、macOS側のコードは `macos/` 以下の
 `.NET 8` プロジェクトとして別に管理している。
 
-最終更新: 2026-10-17
+最終更新: 2026-10-20
 
 ## 開発中
 
@@ -27,6 +27,14 @@ WinFormsコードはリポジトリの `MDPlayer/` にそのまま残し、macOS
   オリジナルのMSXドライバを実行するため、`.bgm` にはユーザーが指定した `KINROU5.DRV` が必要で、
   `.msd` をその場でコンパイルするには `KINROU4.COM` も必要である。この2つのプログラムはアプリに含めない。
   `.m3u` ファイルはプレイリストとして開き、相対パスの対応音楽ファイルを現在のプレイリストに展開して追加する。
+
+## v0.2.3
+
+- `msPb0102` のSCC/SCC+専用5チャンネル音符MMLに対応した。`SCCA`〜`SCCE`、インライン `@W` とSCWD波形バンクを読み、第5チャンネルの独立波形と線形音量を保持する。
+- SCC再生をOPNAのFM・リズム・ADPCMおよびMSX PSGから分離した。従来のmsPb0100/0101も引き続き対応する。
+- 繰り返し直後のタイ結合でジャンプ先が壊れるMUCコンパイラの不具合と、未使用ページによる誤った容量超過を修正した。
+- SCC5・OPNA/PSG同時再生・波形バンク・繰り返し/ループ・不正入力の回帰テストを追加した。
+  [リリースノート](release-notes/v0.2.3.md)と[MSX playback](docs/MSX-PLAYBACK.md)を参照。
 
 ## v0.2.2
 
@@ -305,8 +313,8 @@ Xcodeが処理する。バンドル構成はリリースワークフローと同
 ビルドしてReleaseに添付する。
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 生成物は `MDPlayer4Mac-osx-arm64.zip` である。展開すると1つの `MDPlayer4Mac.app` バンドルが

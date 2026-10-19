@@ -98,8 +98,8 @@ namespace MDPlayer.Driver.MUCOM
                 });
                 if (msxProfile != null)
                 {
-                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload, msxProfile.RawFlags.HasValue);
-                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg, msxProfile.RawFlags);
+                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload, msxProfile.RawFlags.HasValue, msxMapper.WriteSccNative);
+                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg, msxProfile.RawFlags, msxProfile.DedicatedScc);
                 }
                 driver.MusicSTART(0);
                 return true;

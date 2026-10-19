@@ -9,7 +9,7 @@ namespace MDPlayer.Driver.MUCOM;
 internal static class MsxMucCompiler
 {
     private static readonly Regex NativeLine = new(@"(?m)^[ \t]*MSX([A-K0-9]+)(?=[ \t])",RegexOptions.CultureInvariant);
-    private static readonly Regex MusicLine = new(@"(?m)^[ \t]*(?:MSX)?(?:[A-Va-z][0-9]*)+[ \t]",RegexOptions.CultureInvariant);
+    private static readonly Regex MusicLine = new(@"(?m)^[ \t]*(?:(?:MSX)?(?:[A-Va-z][0-9]*)+|SCC(?:[A-E][0-9]?)+)[ \t]",RegexOptions.CultureInvariant);
     private static bool Extended(string source)
     {
         bool result=false;
@@ -28,12 +28,21 @@ internal static class MsxMucCompiler
     public static bool IsNativeSource(byte[] source)
     {
         string ascii=Encoding.Latin1.GetString(source);
-        return NativeLine.IsMatch(ascii) || Extended(ascii);
+        return NativeLine.IsMatch(ascii) || SccLine.IsMatch(ascii) || Extended(ascii);
     }
     public static byte[] Compile(byte[] source,string path,Func<string,Stream> sibling)
     {
         string ascii=Encoding.Latin1.GetString(source);
         bool native=NativeLine.IsMatch(ascii), extended=Extended(ascii);
+        bool scc=SccLine.IsMatch(ascii);
+        if(scc && extended)throw new FormatException("SCC5 cannot be combined with #SSGExtend On.");
+        Dictionary<int,byte[]> waves=new();
+        List<string>[] sccRows=Enumerable.Range(0,5).Select(_=>new List<string>()).ToArray();
+        if(scc)
+        {
+            ascii=ExtractScc(ascii,sibling,waves,sccRows);
+            native=true; // msPb0102 always includes the native group.
+        }
         // L..V is upstream OPNA #2's sequencing lane; it becomes MSX output
         // only in this explicit profile. Ordinary dual-OPNA MUCs remain unchanged.
         ascii=NativeLine.Replace(ascii,m=>
@@ -52,6 +61,9 @@ internal static class MsxMucCompiler
         // still wins; no event/loop operands are rewritten after compilation.
         Match firstMusic=MusicLine.Match(ascii);
         if(firstMusic.Success)ascii=ascii.Insert(firstMusic.Index,"A t225\r\n");
+        else if(scc)ascii+="\r\nA t225\r\n";
+        // Force a five-group directory even for SCC-only music.
+        if(scc && !NativeLine.IsMatch(ascii) && !Regex.IsMatch(ascii,@"(?m)^[L-V][0-9]*[ \t]"))ascii+="\r\nL ; extended directory\r\n";
         byte[] input=Encoding.Latin1.GetBytes("#driver mucomDotNET\r\n"+ascii);
         input=MucomDotNET.NormalizeTrackDeclarationIndentation(input);
         mucomDotNET.Compiler.Compiler compiler=new();compiler.Init();
@@ -62,7 +74,109 @@ internal static class MsxMucCompiler
             throw new FormatException(info?.errorList?.Count>0?string.Join("\n",info.errorList.Select(x=>x.Item3)):"MSX MUC compilation failed.");
         MUBHeader header=new(output,myEncoding.Default);
         if(header.mupb==null)throw new FormatException("MSX source requires extended compiler output.");
-        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)));
+        List<MupbInfo.PageDefine>[] dedicated=null;
+        if(scc)
+        {
+            dedicated=Enumerable.Range(0,5).Select(_=>new List<MupbInfo.PageDefine>()).ToArray();
+            string common=string.Join("\r\n",ascii.Split(new[]{"\r\n","\n"},StringSplitOptions.None)
+                .Where(line=>!MusicLine.IsMatch(line)));
+            for(int ch=0;ch<5;ch++)
+            {
+                if(sccRows[ch].Count==0)continue;
+                string isolated="#driver mucomDotNET\r\n"+common+"\r\nL ; extended directory\r\n"+string.Join("\r\n",sccRows[ch]);
+                var compiled=mucomDotNET.Compiler.Muc88.CompileScc(waves,()=>
+                {
+                    mucomDotNET.Compiler.Compiler c=new();c.Init();
+                    using MemoryStream src=new(MucomDotNET.NormalizeTrackDeclarationIndentation(Encoding.Latin1.GetBytes(isolated)),false);
+                    MmlDatum[] bytes=c.Compile(src,sibling);var ci=c.GetCompilerInfo();
+                    if(bytes==null || ci?.errorList?.Count>0)throw new FormatException("SCC"+(char)('A'+ch)+": "+string.Join("\n",ci?.errorList?.Select(e=>e.Item3)??Enumerable.Empty<string>()));
+                    return new MUBHeader(bytes,myEncoding.Default).mupb;
+                });
+                dedicated[ch].AddRange(compiled.chips[0].parts[3].pages);
+                // Work initializes the D prototype's envelope independently of @wave.
+                foreach(var page in dedicated[ch])
+                {
+                    if(page.length<=1)continue;
+                    page.data=new[]{new MmlDatum(0xf0),new MmlDatum(0)}.Concat(page.data).ToArray();
+                    page.length+=2;if(page.loopPoint>=0)page.loopPoint+=2;
+                }
+            }
+        }
+        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated);
+    }
+    private static readonly Regex SccLine=new(@"(?m)^[ \t]*SCC((?:[A-E][0-9]?)+)(?=[ \t])",RegexOptions.CultureInvariant);
+    private static string ExtractScc(string source,Func<string,Stream> sibling,Dictionary<int,byte[]> waves,List<string>[] tracks)
+    {
+        Match first=MusicLine.Match(source);
+        var bank=Regex.Matches(source,@"(?im)^#sccvoice[ \t]+([^;\r\n]+)");
+        foreach(Match tag in bank)if(first.Success && tag.Index>first.Index)throw new FormatException("#sccvoice must precede music rows.");
+        string name=bank.Count>0?bank[^1].Groups[1].Value.Trim():"SCCVOICE.DAT";
+        Stream file=null;
+        try { file=sibling(name); }
+        catch(FileNotFoundException) { if(bank.Count>0)throw; }
+        catch(DirectoryNotFoundException) { if(bank.Count>0)throw; }
+        if(file==null && bank.Count>0)throw new FormatException("Missing SCC voice bank: "+name);
+        if(file!=null)
+        {
+            using(file)using(MemoryStream copy=new())
+            {
+                file.CopyTo(copy);byte[] data=copy.ToArray();
+                if(data.Length<16 || data.Length>8720 || Encoding.ASCII.GetString(data,0,4)!="SCWD" || data[4]!=1 || data[5]!=0
+                    || BitConverter.ToUInt16(data,8)!=34 || BitConverter.ToUInt16(data,10)!=0)throw new FormatException("Invalid SCWD header.");
+                int count=BitConverter.ToUInt16(data,6);
+                if(count is <1 or >256 || data.Length!=16+count*34)throw new FormatException("Invalid SCWD size.");
+                uint crc=uint.MaxValue;
+                foreach(byte b in data.AsSpan(16)){crc^=b;for(int n=0;n<8;n++)crc=(crc>>1)^((crc&1)!=0?0xedb88320u:0);}
+                if((crc^uint.MaxValue)!=BitConverter.ToUInt32(data,12))throw new FormatException("Invalid SCWD CRC.");
+                int previous=-1;
+                for(int i=0;i<count;i++)
+                {
+                    int at=16+i*34,id=BitConverter.ToUInt16(data,at);
+                    if(id>255 || id<=previous)throw new FormatException("Invalid SCWD waveform ID/order.");
+                    waves[id]=data.AsSpan(at+2,32).ToArray();previous=id;
+                }
+            }
+        }
+        HashSet<int> inline=new();List<string> output=new();
+        string[] lines=source.Replace("\r\n","\n").Replace('\r','\n').Split('\n');
+        for(int i=0;i<lines.Length;i++)
+        {
+            string row=lines[i];
+            if(Regex.IsMatch(row,@"(?i)^#sccvoice\b"))continue;
+            Match wave=Regex.Match(row,@"^[ \t]+@W(\d+)[ \t]*(?:[:=][ \t]*)?(\{)?(.*)$");
+            if(wave.Success)
+            {
+                if(!int.TryParse(wave.Groups[1].Value,out int id) || id>255 || !inline.Add(id))throw new FormatException("Invalid/duplicate SCC waveform ID.");
+                bool braces=wave.Groups[2].Success,closed=false;List<byte> samples=new();
+                string values=wave.Groups[3].Value;
+                while(true)
+                {
+                    values=values.Split(';')[0];int close=values.IndexOf('}');
+                    if(close>=0){if(!braces || values[(close+1)..].Trim().Length>0)throw new FormatException("Invalid SCC waveform closure.");values=values[..close];closed=true;}
+                    foreach(string token in values.Split(new[]{',',' ','\t'},StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if(!int.TryParse(token,out int n) || n is <-128 or >127)throw new FormatException("SCC samples must be signed decimal -128..127.");
+                        samples.Add(unchecked((byte)n));
+                    }
+                    if(samples.Count>32)throw new FormatException("SCC waveform needs exactly 32 samples.");
+                    if(closed || !braces && samples.Count==32)break;
+                    if(++i>=lines.Length)throw new FormatException("Unterminated SCC waveform.");values=lines[i];
+                }
+                if(samples.Count!=32)throw new FormatException("SCC waveform needs exactly 32 samples.");
+                waves[id]=samples.ToArray();continue;
+            }
+            Match track=SccLine.Match(row);
+            if(track.Success)
+            {
+                string selectors=track.Groups[1].Value,body=row[(track.Index+track.Length)..];
+                foreach(Match selector in Regex.Matches(selectors,@"([A-E])([0-9]?)"))
+                    tracks[selector.Groups[1].Value[0]-'A'].Add("D"+selector.Groups[2].Value+body);
+                continue;
+            }
+            if(Regex.IsMatch(row,@"^[ \t]*SCC"))throw new FormatException("Invalid SCC track selector.");
+            output.Add(row);
+        }
+        return string.Join("\r\n",output);
     }
     private static string NormalizeWaves(string source)
     {
@@ -100,7 +214,7 @@ internal static class MsxMucCompiler
         }
         return string.Join("\r\n",output);
     }
-    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps)
+    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps,List<MupbInfo.PageDefine>[] dedicated=null)
     {
         // Canonical MUCOMSX five-descriptor directory. Copy streams unchanged so repeat
         // distances/loop offsets remain valid. The driver handles upstream SSG opcodes.
@@ -129,13 +243,27 @@ internal static class MsxMucCompiler
         if(inst.Count==0)inst.Add(new byte[]{0});
         for(int p=0;p<11*((caps&1)!=0?2:1);p++)
             if(parts[p].Count==0)parts[p].Add(new(){length=1,loopPoint=-1,data=new[]{new MmlDatum(0)}});
+        if(dedicated!=null)for(int ch=0;ch<5;ch++)parts[22+ch].AddRange(dedicated[ch]);
+        // Upstream allocates ten empty pages even for a single-page score.
+        // Keep authored page numbers, but trim only unused trailing pages so
+        // their 00 terminators cannot consume the music budget.
+        for(int part=0;part<parts.Length;part++)
+        {
+            int minimum=part<22?1:0;
+            while(parts[part].Count>minimum)
+            {
+                var page=parts[part][^1];
+                if(page.length!=1 || page.loopPoint!=-1 || page.data[0].dat!=0)break;
+                parts[part].RemoveAt(parts[part].Count-1);
+            }
+        }
         byte[] pcm=Array.Empty<byte>();
         if(input.chips[0].pcmNumber.Length>0)pcm=input.pcms[input.chips[0].pcmNumber[0]].data;
         byte[] tags=output.Skip((int)input.tagDataOffset).Take((int)input.tagDataSize).Select(x=>(byte)x.dat).ToArray();
-        writer.Write(Encoding.ASCII.GetBytes((caps&2)!=0?"msPb0101":"msPb0100"));
+        writer.Write(Encoding.ASCII.GetBytes((caps&4)!=0?"msPb0102":(caps&2)!=0?"msPb0101":"msPb0100"));
         writer.Write((byte)5);writer.Write((byte)5);writer.Write((ushort)55);writer.Write((ushort)parts.Sum(p=>p.Count));
         writer.Write((ushort)inst.Count);writer.Write((ushort)1);writer.Write(0u);writer.Write((uint)tags.Length);
-        writer.Write((caps&2)!=0?(uint)caps:0u);writer.Write(0u);
+        writer.Write((caps&6)!=0?(uint)caps:0u);writer.Write(0u);
         for(int c=0;c<5;c++)
         {
             writer.Write((ushort)c);writer.Write(c<2?72u:c<4?76u:48u);writer.Write(c<2?7_987_200u:c<4?8_000_000u:3_579_545u);

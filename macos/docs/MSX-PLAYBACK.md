@@ -1,3 +1,39 @@
+# Local msPb0102 update (2026-10-20)
+
+The local build additionally supports `msPb0102` capability value 5. The latest
+published GitHub release remains v0.2.2 and predates this update.
+
+SCCA–SCCE are five independent native SCC+ note parts (directory parts 22–26),
+separate from OPNA and MSXA–MSXJ. The driver uses an independent SSG-D work area
+per part/page, the OPNA pitch table and Work's period rounding; volume is linear
+0–15. Wave uploads use SCC+ port 4, including the independent fifth wave. The
+legacy 0100, 0101, raw and ordinary MUB/muPb paths remain separate.
+
+Opening a MUC accepts signed 32-sample inline `@Wn:{...}` definitions and
+optional `#sccvoice` SCWD v1 banks. Inline definitions override bank IDs; duplicate
+inline IDs, undefined IDs, invalid banks, mixed SSGExtend/SCC5, unsupported
+capabilities and reserved header bytes are rejected. An explicitly named missing
+or corrupt bank remains an error even with inline definitions. The in-memory
+compiler emits the exact inline-wave instruction inside the musical stream;
+repeat and loop offsets are calculated by the compiler, never patched by a byte
+search. MUC compilation has no converter/toolchain executable dependency.
+
+Only primary-chip Timer-B writes are allowed in SCC5's extended register control
+instruction. Noise, hardware envelopes, raw SCC and pan extensions cannot claim
+this dedicated target. End/error mutes all five SCC channels. SCC-only scores do
+not register a silent OPNA/OPLL/PSG audio target.
+
+Regression coverage includes simultaneous five-channel waves/linear volume,
+independent fifth wave, page 9, multi-select, macros/repeat endings, continuous
+loops, SCWD CRC/overrides/errors, profile bounds and ordinary SSG compiler mode
+isolation. Run the existing MsxPlaybackTests command below.
+
+Player verification also found a converter defect: restoring the constant
+software envelope at L while emitting a tie can put the envelope into release.
+MUCCONVERTER now starts a note at that restoration point, without a hardware
+key-off; regenerate affected note MUC/MUB files. Playback equality between MUC
+and MUB alone cannot detect a shared conversion defect.
+
 # MUCOMSX MUB / MUC playback (2026-10-17)
 
 ## Native-only mixer chip detection (2026-10-16)
@@ -220,3 +256,9 @@ parts; global `#invert` is unchanged.
 
 The [driver overlay](../MucomDriver/README.md) explains source provenance, the pinned
 submodule dependency and how to update it without overwriting local submodule edits.
+
+### SCC album regression fixes (2026-10-20 local msPb0102 build)
+
+The original-MUC compiler now merges tied notes only when the previous note bytes are adjacent and belong to the same chip/part/page. A tie after a repeat end can otherwise overwrite its jump operands and crash later playback. The msPb packer also removes unused trailing pages while preserving authored page numbers and the required base parts; empty pages no longer consume the 120 KiB music budget.
+
+These changes were exercised with original MUC compilation and playback of the converter-produced MUB, using the coherent six-assembly Release reference. Corpus comparison records natural completion or three source passes, exact MUC/MUB output PCM, and separate source SCC/PSG audible-state checks. This does not claim waveform identity to the source VGM or GUI/real-time listening coverage. The converter additionally restores compile-time octave after `/` repeat exits and preserves byte-level normal-SCC/fifth-wave aliasing.

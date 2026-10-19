@@ -6,7 +6,7 @@ A personal porting project to make the Windows MDPlayer usable on macOS. The ori
 WinForms code is kept as-is in the repository's `MDPlayer/`, and the macOS code is maintained
 separately as `.NET 8` projects under `macos/`.
 
-Last updated: 2026-10-17
+Last updated: 2026-10-20
 
 ## In development
 
@@ -30,6 +30,14 @@ Last updated: 2026-10-17
   `.msd` on the fly also requires `KINROU4.COM`. Neither program is bundled with the app.
   `.m3u` files open as playlists, expanding the supported music files at relative paths into
   the current playlist.
+
+## v0.2.3
+
+- Supports dedicated five-channel SCC/SCC+ note scores in `msPb0102`: `SCCA`–`SCCE`, inline `@W` waves and SCWD banks, including the independent fifth wave and linear volume.
+- Keeps SCC playback separate from OPNA FM/rhythm/ADPCM and native MSX PSG. Existing msPb0100/0101 playback remains supported.
+- Fixes MUC repeat jump corruption when merging a following tied note, and false music-size overflow caused by unused pages.
+- Adds SCC5, mixed OPNA/PSG, waveform-bank, repeat/loop and invalid-input regression coverage.
+  See the [release notes](release-notes/v0.2.3.md) and [MSX playback](docs/MSX-PLAYBACK.md).
 
 ## v0.2.2
 
@@ -346,8 +354,8 @@ Pushing a `v*` tag makes `.github/workflows/release-macos.yml` build a self-cont
 Apple Silicon and attach it to the Release.
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 The output is `MDPlayer4Mac-osx-arm64.zip`. Unzipping it yields a single `MDPlayer4Mac.app`

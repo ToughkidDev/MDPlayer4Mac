@@ -11,6 +11,22 @@ namespace mucomDotNET.Compiler
 {
     public class Muc88
     {
+        // A scoped, async-local compilation mode: only the isolated SCC D-prototype
+        // pass sees these waves. Concurrent ordinary MUC compilations remain unchanged.
+        private static readonly System.Threading.AsyncLocal<IReadOnlyDictionary<int,byte[]>> sccWaves = new();
+        public static T CompileScc<T>(IReadOnlyDictionary<int,byte[]> waves, Func<T> compile)
+        {
+            var previous=sccWaves.Value;
+            try { sccWaves.Value=waves; return compile(); }
+            finally { sccWaves.Value=previous; }
+        }
+        private int lastMergeNoteEnd = -1, lastMergeChip = -1, lastMergePart = -1, lastMergePage = -1;
+        private void MarkMergeNote()
+        {
+            lastMergeNoteEnd=work.MDATA;lastMergeChip=work.ChipIndex;lastMergePart=work.CHIP_CH;lastMergePage=work.pageNow;
+        }
+        private bool CanMergeNote() => lastMergeNoteEnd==work.MDATA-1 && lastMergeChip==work.ChipIndex
+            && lastMergePart==work.CHIP_CH && lastMergePage==work.pageNow;
         public Msub msub = null;
         public expand expand = null;
 
@@ -3718,6 +3734,14 @@ namespace mucomDotNET.Compiler
             mucInfo.srcCPtr = ptr;
 
             ChannelType tp = CHCHK();
+            if (tp == ChannelType.SSG && sccWaves.Value != null)
+            {
+                if (w != '\0' || !sccWaves.Value.TryGetValue(n,out byte[] samples) || samples.Length!=32)
+                    throw new FormatException("Undefined SCC waveform: " + n);
+                msub.MWRITE(new MmlDatum(0xff),new MmlDatum(0xed),new MmlDatum(0xff));
+                foreach(byte sample in samples) msub.MWRIT2(new MmlDatum(sample));
+                return EnmFCOMPNextRtn.fcomp1;
+            }
             if (tp == ChannelType.SSG)
             {
                 if (mucInfo.SSGExtend && w == 'I')
@@ -5538,7 +5562,10 @@ namespace mucomDotNET.Compiler
 
         private EnmFCOMPNextRtn FCOMP13(int note)
         {
-            work.MDATA -= 3;
+            // A repeat/control instruction can lie between the previous note and
+            // this tie. Rewinding three bytes there corrupts its jump operands.
+            bool merge=CanMergeNote();
+            if(merge)work.MDATA -= 3;
 
             int ptr = mucInfo.srcCPtr;
             byte clk;
@@ -5551,7 +5578,7 @@ namespace mucomDotNET.Compiler
             clk = FCOMP1X(clk);
             TCLKSUB(clk);
             int n = clk;
-            n += work.BEFCO;
+            if(merge)n += work.BEFCO;
             if (n > 0xff)
             {
                 n -= 127;
@@ -5631,6 +5658,7 @@ namespace mucomDotNET.Compiler
 
             work.BEFTONE[0] = (byte)note;
             msub.MWRIT2(new MmlDatum((byte)note));
+            MarkMergeNote();
         }
 
         // --	ﾉｰﾏﾙ ｼｮﾘ	--
@@ -5668,6 +5696,7 @@ namespace mucomDotNET.Compiler
             for (int i = 0; i < 8; i++)
                 work.BEFTONE[8 - i] = work.BEFTONE[7 - i];
             work.BEFTONE[0] = (byte)note;
+            MarkMergeNote();
         }
 
         public EnmFCOMPNextRtn COMPRC()

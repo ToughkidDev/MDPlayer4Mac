@@ -7,12 +7,14 @@ namespace mucomDotNET.Driver
     {
         // Called after Init and before MusicSTART. The five sequencing groups stay intact;
         // sound sinks, versioned SSG commands and declared raw timing follow Work.
-        public void ConfigureMsx(byte capabilities, Action<int, byte[], int> uploadWave, bool rawTiming = false)
+        public void ConfigureMsx(byte capabilities, Action<int, byte[], int> uploadWave, bool rawTiming = false, Action<int, int, int> sccRegister = null)
         {
             music2.MsxProfileConfigured = true;
             if(rawTiming)work.timerOPNA1 = new MsxRawTimer(renderingFreq, opnaMasterClock);
             music2.MsxNativeGroup = (capabilities & 1) != 0;
             music2.MsxSsg = (capabilities & 2) != 0;
+            music2.MsxDedicatedScc = (capabilities & 4) != 0;
+            music2.MsxSccRegister = sccRegister;
             music2.MsxWave = uploadWave;
             work.isDotNET = true;
             work.SSGExtend = false; // SCC+ approximation, not fmvgen virtual SSG registers.
@@ -24,6 +26,9 @@ namespace mucomDotNET.Driver
         public bool MsxProfileConfigured { get; internal set; }
         public bool MsxNativeGroup { get; internal set; }
         public bool MsxSsg { get; internal set; }
+        public bool MsxDedicatedScc { get; internal set; }
+        public Action<int, int, int> MsxSccRegister { get; internal set; }
+        private bool IsDedicatedScc => MsxDedicatedScc && work.soundWork.currentChip == 2 && work.soundWork.currentCh / 10 < 5;
         public Action<int, byte[], int> MsxWave { get; internal set; }
         private sealed class MsxWaveState
         {
@@ -60,12 +65,33 @@ namespace mucomDotNET.Driver
         }
         private void RestoreMsxSsg()
         {
-            if (!MsxSsg || work.soundWork.currentChip != 0 || work.soundWork.SSGF1 == 0) return;
+            if (!IsDedicatedScc && (!MsxSsg || work.soundWork.currentChip != 0 || work.soundWork.SSGF1 == 0)) return;
             MsxWaveState state = MsxState();
-            MsxWave?.Invoke(work.pg.channelNumber / 2, state.Wave, state.Gain);
+            MsxWave?.Invoke(IsDedicatedScc ? work.soundWork.currentCh / 10 : work.pg.channelNumber / 2, state.Wave, state.Gain);
         }
         private bool TryMsxSsgCommand(byte command)
         {
+            if (IsDedicatedScc)
+            {
+                if (command == 0xed)
+                {
+                    if (MsxRead() != 255) throw new FormatException("SCC5 requires an inline 32-sample waveform.");
+                    var state = MsxState();
+                    state.Wave = new byte[32];
+                    for (int i = 0; i < 32; i++) state.Wave[i] = MsxRead();
+                    if (work.pg.pageNo == work.cd.currentPageNo) RestoreMsxSsg();
+                    return true;
+                }
+                if (command == 0xf7)
+                {
+                    int chip=MsxRead(),port=MsxRead(),reg=MsxRead(),value=MsxRead();
+                    if(chip!=0 || port!=0 || reg!=0x26)throw new FormatException("SCC5 permits only a primary Timer-B control write.");
+                    PSGOUT(0,0,0x26,(byte)value);return true;
+                }
+                if (command is 0xee or 0xf0 or 0xf1 or 0xf2 or 0xf6 or 0xf8 or 0xfb)
+                    throw new FormatException("Unsupported SCC5 hardware envelope, wave preset, register or pan command.");
+                return false;
+            }
             if (MsxProfileConfigured && !MsxSsg && (command is 0xed or 0xee))
                 throw new FormatException("SCC+ command requires msPb0101 capability bit 1.");
             if (!MsxSsg) return false;

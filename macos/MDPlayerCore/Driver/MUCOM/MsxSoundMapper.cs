@@ -10,7 +10,9 @@ public sealed class MsxSoundMapper
     private readonly int[] high=new int[6], flags=new int[6], instruments=Enumerable.Repeat(1,6).ToArray(), pan=Enumerable.Repeat(192,6).ToArray();
     private readonly byte[] ay=new byte[14], ssg=new byte[14], drum=new byte[6];
     private readonly int[] gains={255,255,255};
-    private readonly byte[] waveCache=new byte[96];
+    private readonly byte[] waveCache=new byte[160];
+    private readonly byte[,] sccNotes=new byte[5,14];
+    private bool dedicatedScc;
     private int drumTotal, drumKeys;
     private byte rawFlags;
     private bool rawSccActive, rawSccPlus;
@@ -36,8 +38,16 @@ public sealed class MsxSoundMapper
     };
     public MsxSoundMapper(Action<int,int> opll, Action<int,int> psg, Action<int,int> opna, Action<int,int,int> scc)
         => (this.opll,this.psg,this.opna,this.scc)=(opll,psg,opna,scc);
-    public void Start(bool native,bool extended,byte? transportFlags=null)
+    public void Start(bool native,bool extended,byte? transportFlags=null,bool dedicated=false)
     {
+        dedicatedScc=dedicated;
+        if(dedicated)
+        {
+            Array.Clear(waveCache);Array.Clear(sccNotes);
+            scc(5,0,0);scc(3,0,0);
+            for(int c=0;c<5;c++) { sccNotes[c,7]=0x38; scc(2,c,0); Upload(c,mucomDotNET.Driver.Music2.MsxPreset(0),255); }
+            scc(3,0,31);
+        }
         if(transportFlags is byte initial && initial != 1)
         {
             SetRawMode(initial);
@@ -192,8 +202,8 @@ public sealed class MsxSoundMapper
     }
     public void Upload(int channel,byte[] wave,int gain)
     {
-        if(channel is <0 or >2 || wave?.Length!=32 || gain is <0 or >255)throw new FormatException("Invalid SCC+ wave/gain.");
-        gains[channel]=gain;
+        if(channel<0 || channel> (dedicatedScc?4:2) || wave?.Length!=32 || gain is <0 or >255)throw new FormatException("Invalid SCC+ wave/gain.");
+        if(!dedicatedScc)gains[channel]=gain;
         // Work now uses the common SCC wave port and skips only identical
         // wave RAM. Gain/noise updates are never suppressed. Own the cache:
         // callers may reuse or mutate their page-local source buffers.
@@ -201,9 +211,24 @@ public sealed class MsxSoundMapper
         if(!wave.AsSpan().SequenceEqual(cached))
         {
             wave.CopyTo(cached);
-            for(int n=0;n<32;n++)scc(0,channel*32+n,wave[n]);
+            for(int n=0;n<32;n++)scc(dedicatedScc?4:0,channel*32+n,wave[n]);
         }
-        SsgVolume(channel);
+        if(!dedicatedScc)SsgVolume(channel);
+    }
+    // SCC5 uses five independent D-prototype register sets and linear volume.
+    // It never forwards noise/envelope registers to OPNA.
+    public void WriteSccNative(int channel,int reg,int value)
+    {
+        if(!dedicatedScc || channel is <0 or >4 || reg is <0 or >=14)return;
+        sccNotes[channel,reg]=(byte)value;
+        if(reg is 0 or 1)
+        {
+            int period=sccNotes[channel,0]|((sccNotes[channel,1]&15)<<8);
+            period=Math.Max(9,((period*229+128)>>8)-1);
+            scc(1,channel*2,period&255);scc(1,channel*2+1,period>>8);
+        }
+        else if(reg is 7 or 8)
+            scc(2,channel,(sccNotes[channel,7]&1)!=0?0:sccNotes[channel,8]&15);
     }
     public void WriteSsg(int reg,int value)
     {

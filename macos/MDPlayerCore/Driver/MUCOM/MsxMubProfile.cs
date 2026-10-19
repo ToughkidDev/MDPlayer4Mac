@@ -10,9 +10,10 @@ public sealed class MsxMubProfile
     public byte Capabilities { get; private init; }
     public bool NativeGroup => (Capabilities & 1) != 0;
     public bool SccSsg => (Capabilities & 2) != 0;
+    public bool DedicatedScc => (Capabilities & 4) != 0;
     public byte? RawFlags { get; private set; }
-    public bool UsesScc => SccSsg || (RawFlags.GetValueOrDefault() & 4) != 0;
-    public bool UsesSccPlus => SccSsg || (RawFlags.GetValueOrDefault() & 8) != 0;
+    public bool UsesScc => SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 4) != 0;
+    public bool UsesSccPlus => SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 8) != 0;
     public bool UsesOpna { get; private set; }
     internal bool HasOpnaSequence { get; private set; }
     public bool UsesPsg { get; private set; }
@@ -58,9 +59,9 @@ public sealed class MsxMubProfile
     {
         if (!HasMagic(data) || data.Length < 34) throw new FormatException("Truncated msPb header.");
         string version = Encoding.ASCII.GetString(data, 4, 4);
-        if (version != "0100" && version != "0101") throw new FormatException("Unsupported msPb version.");
+        if (version != "0100" && version != "0101" && version != "0102") throw new FormatException("Unsupported msPb version.");
         byte caps = version == "0100" ? (byte)1 : data[26];
-        if (version == "0101" && (caps is not (2 or 3) || data.AsSpan(27, 7).ContainsAnyExcept((byte)0)))
+        if (version != "0100" && ((version == "0101" ? caps is not (2 or 3) : caps != 5) || data.AsSpan(27, 7).ContainsAnyExcept((byte)0)))
             throw new FormatException("Unknown msPb capabilities or reserved bytes.");
         int at = 8;
         uint Read(int size)
@@ -110,7 +111,7 @@ public sealed class MsxMubProfile
         {
             var definition=definitions[page++];
             if(definition.Size>(uint)(data.Length-at)) throw new FormatException("Truncated msPb page.");
-            bool supported=part<11 || profile.NativeGroup && part<21;
+            bool supported=part<11 || profile.NativeGroup && part<21 || profile.DedicatedScc && part is >=22 and <=26;
             if(!supported && (definition.Size!=1 || data[at]!=0 || definition.Loop!=-1))
                 throw new FormatException("Music in an unsupported msPb part (including MSXK).");
             if(part<11)
@@ -118,7 +119,7 @@ public sealed class MsxMubProfile
                 profile.HasOpnaSequence |= definition.Size>1;
                 profile.UsesOpna |= MayProduceOpnaSound(data.AsSpan(at,(int)definition.Size),part,definition.Loop);
             }
-            else if(definition.Size>1)
+            else if(part<21 && definition.Size>1)
             {
                 if(part is >=14 and <=16) profile.UsesPsg=true;
                 else profile.UsesOpll=true;
@@ -137,7 +138,7 @@ public sealed class MsxMubProfile
             }
             musicSize+=definition.Size; at+=(int)definition.Size;
         }
-        if(musicSize>122_880) throw new FormatException("msPb music exceeds 120 KiB.");
+        if(musicSize>122_880) throw new FormatException($"msPb music exceeds 120 KiB ({musicSize} bytes).");
         foreach(uint size in blocks)
         {
             if(size>(uint)(data.Length-at)) throw new FormatException("Truncated msPb instrument/PCM block.");
@@ -147,16 +148,16 @@ public sealed class MsxMubProfile
             throw new FormatException("Invalid msPb tags.");
         // Raw MSXA streams can drive PSG and all nine OPLL channels. Both are registered
         // whenever the native group carries music; chip metadata cannot describe raw writes.
-        if(profile.UsesPsg || profile.UsesOpll) profile.UsesPsg=profile.UsesOpll=true;
+        if(!profile.DedicatedScc && (profile.UsesPsg || profile.UsesOpll)) profile.UsesPsg=profile.UsesOpll=true;
         if(profile.RawFlags is byte rawFlags)
         {
             profile.UsesPsg=true;
             profile.UsesOpll=rawFlags==1 || (rawFlags&2)!=0;
-            if(profile.SccSsg && (rawFlags&4)!=0)
+            if((profile.SccSsg || profile.DedicatedScc) && (rawFlags&4)!=0)
                 throw new FormatException("Raw SCC conflicts with SCC+ SSG.");
         }
         profile.SequencerData[1]=(byte)'u'; profile.SequencerData[7]=(byte)'0';
-        if(version=="0101") profile.SequencerData.AsSpan(26,8).Clear();
+        if(version!="0100") profile.SequencerData.AsSpan(26,8).Clear();
         return profile;
     }
 }

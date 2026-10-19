@@ -66,7 +66,7 @@ jobs:
           </dict>
           </plist>
           EOF
-          find "$MACOS_DIR" -type f \( -name "*.dylib" -o -perm -111 \) -exec codesign --force --sign - --timestamp=none {} \;
+          find "$MACOS_DIR" -type f ! -path "$MACOS_DIR/MDPlayer4Mac" -exec codesign --force --sign - --timestamp=none {} +
           codesign --force --deep --sign - --timestamp=none "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           test -f "$MACOS_DIR/libMDPlayerForceTouch.dylib"
@@ -75,6 +75,28 @@ jobs:
           done
           ditto -c -k --sequesterRsrc --keepParent "$APP" release/MDPlayer4Mac-osx-arm64.zip
 
+      - name: Verify archive and write checksum
+        working-directory: release
+        run: |
+          shasum -a 256 MDPlayer4Mac-osx-arm64.zip > MDPlayer4Mac-osx-arm64.zip.sha256
+          mkdir verified
+          ditto -x -k MDPlayer4Mac-osx-arm64.zip verified
+          codesign --verify --deep --strict --verbose=2 verified/MDPlayer4Mac.app
+
+      - name: Launch packaged app
+        run: |
+          APP="release/verified/MDPlayer4Mac.app"
+          "$APP/Contents/MacOS/MDPlayer4Mac" > release/launch.log 2>&1 &
+          PID=$!
+          sleep 15
+          if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID"
+            wait "$PID" || true
+          else
+            cat release/launch.log
+            exit 1
+          fi
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,9 +104,9 @@ jobs:
         run: |
           NOTES_FILE="macos/release-notes/$TAG_NAME.md"
           if [ -f "$NOTES_FILE" ]; then
-            gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip \
+            gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip release/MDPlayer4Mac-osx-arm64.zip.sha256 \
               --title "MDPlayer4Mac $TAG_NAME" --notes-file "$NOTES_FILE" --latest
           else
-            gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip \
+            gh release create "$TAG_NAME" release/MDPlayer4Mac-osx-arm64.zip release/MDPlayer4Mac-osx-arm64.zip.sha256 \
               --title "MDPlayer4Mac $TAG_NAME" --generate-notes --latest
           fi
