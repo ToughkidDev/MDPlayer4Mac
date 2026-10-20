@@ -234,6 +234,10 @@ The extensions that can be opened or dropped in the UI are as follows.
 - `.mub` is MUCOM88's compiled data format, and `.muc` is compiled in memory to the same format
   at playback time. For MUC files that specify external data such as `#voice`, `#pcm`, or
   `#@pcm`, those files must be placed in the same folder as the MUC.
+- MUCOM88 portamento takes its length after the first note: `{c4>c}`. The `{c>c}4` form used in the
+  MUCEdit manual (length after `}`) is moved to `{c4>c}` in memory just before compiling, so both
+  play the same. The MUC file itself is not changed, and a first note that already has a length is
+  left as written.
 - Even for formats in the supported list, not every driver and chip combination is complete.
   Combinations that cannot be loaded are shown as errors in the status bar.
 
