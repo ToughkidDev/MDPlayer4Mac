@@ -830,7 +830,7 @@ namespace MDPlayer.UI
                 Children =
                 {
                     new TextBlock { Text = "MDPlayer4Mac", FontSize = 19, FontWeight = FontWeight.Bold },
-                    new TextBlock { Text = $"Version {version}", FontFamily = new FontFamily("Menlo") }.WithGridRow(1),
+                    new TextBlock { Text = $"Version {version}\n{MDPlayer.MucoNative.NativeToolchainCompatibility.Baseline}", FontFamily = new FontFamily("Menlo") }.WithGridRow(1),
                     new TextBlock { Text = "Copyright © ToughkidDev", Foreground = Brushes.Gray }.WithGridRow(2),
                     new TextBlock { Text = "Based on MDPlayer by kuma4649", Foreground = Brushes.Gray }.WithGridRow(3),
                     description.WithGridRow(4),

@@ -23,6 +23,9 @@ internal static class Scc5Tests
         string definitions=string.Concat(Enumerable.Range(0,5).Select(ch=>Wave(ch,ch*20-100)));
         string rows=string.Concat(Enumerable.Range(0,5).Select(ch=>$"SCC{(char)('A'+ch)} C192t240q0 @{ch} E255,0,0,0,0,255 v{ch+2} o4 c%24 r%4\n"));
         byte[] binary=Compile(definitions+rows);var profile=MsxMubProfile.Parse(binary);
+        foreach(string form in new[]{Wave(7,-80),Wave(7,-80).TrimStart(),Wave(7,-80).Replace("@W","@w"),
+                    Wave(7,-80).Replace(":","="),Wave(7,-80).Replace(":{", "\n").Replace("}","")})
+            Compile(form+"SCCA @7 o4 v15 c8\n");
         check(profile.DedicatedScc && profile.Capabilities==5 && profile.UsesSccPlus,"SCC5 profile");
         check(!profile.UsesOpll && !profile.UsesPsg && !profile.UsesOpna,"SCC-only profile registered unrelated chips");
         var session=MusicEngine.Load(binary,Path.ChangeExtension(path,".mub"));check(session!=null,"SCC5 MUB load");
@@ -39,6 +42,19 @@ internal static class Scc5Tests
             check(channels[ch].frequency>0 && channels[ch].key!=0,"SCC5 missing pitch/key: "+ch);
         }
         check(energy>0,"SCC5 silent");
+        // An unused page 9 remains in this packet because v0 is a command.
+        // Its end must not clear page 0's physical SCC or OPNA SSG volume.
+        foreach(string channel in new[]{"SCCA","D","MSXD"})
+        {
+            string score=(channel=="SCCA"?Wave(7,-80):"")+
+                $"{channel}0 C192t240q0 @{(channel=="SCCA"?7:0)} E255,0,0,0,0,255 v15 o4 c%48 r%2\n{channel}9 v0\n";
+            byte[] packet=channel=="D"?Compile("MSXA r%1\n"+score):Compile(score);
+            var active=MusicEngine.Load(packet,Path.ChangeExtension(path,".mub"));
+            check(active!=null,"Inactive-page regression load: "+channel);
+            short[] first=new short[128];active.RenderSamplesWithMasterVolume(first,0,first.Length);
+            check(first.Any(v=>v!=0),"Inactive page muted the first audio block: "+channel);
+            if(channel=="SCCA")check(active.ChipRegister.GetK051649Register(0).channel_list[0].volume>0,"Unused SCC page stole volume");
+        }
         for(int i=0;i<1000 && !session.Driver.Stopped;i++)session.RenderSamplesWithMasterVolume(audio,0,audio.Length);
         check(session.Driver.Stopped && session.Driver is MucomDotNET d && d.PlaybackError=="","SCC5 finite completion");
         check(channels.All(c=>c.volume==0 && c.key==0),"SCC5 stop did not mute five channels");
@@ -60,8 +76,10 @@ internal static class Scc5Tests
         Reject(Wave(0,0)+"#SSGExtend On\nSCCA @0 c\n");
         Reject(Wave(0,0)+"#sccvoice missing.dat\nSCCA @0 c\n");
         Reject(Wave(0,0)+"SCCA @0 c\n#sccvoice missing.dat\n");
-        string repeating=Wave(0,70)+"SCCA C192t240q0 @0 E255,0,0,0,0,255 v15 [o4c%7]4 &c%50 r%2\n";
-        string expanded=Wave(0,70)+"SCCA C192t240q0 @0 E255,0,0,0,0,255 v15 o4 c%7 c%7 c%7 c%7 &c%50 r%2\n";
+        foreach(int duration in new[]{50,127,128,200,255})
+        {
+        string repeating=Wave(0,70)+$"SCCA C192t240q0 @0 E255,0,0,0,0,255 v15 [o4c%7]4 &c%{duration} r%2\n";
+        string expanded=Wave(0,70)+$"SCCA C192t240q0 @0 E255,0,0,0,0,255 v15 o4 c%7 c%7 c%7 c%7 &c%{duration} r%2\n";
         var re=MusicEngine.Load(Compile(repeating),Path.ChangeExtension(path,".mub"));
         var ex=MusicEngine.Load(Compile(expanded),Path.ChangeExtension(path,".mub"));
         check(re!=null && ex!=null,"Repeat/tie regression load");short[] ra=new short[128],ea=new short[128];
@@ -72,6 +90,7 @@ internal static class Scc5Tests
             check(re.Driver.Stopped==ex.Driver.Stopped,"Repeat-ending tie duration differs");
         }
         check(re.Driver.Stopped && re.Driver is MucomDotNET rd && rd.PlaybackError=="","Repeat-ending tie failed to end");
+        }
         // Dedicated SCC runs alongside both OPNA FM banks and native PSG.
         File.Copy(Path.Combine(fixtures,"voice.dat"),Path.Combine(folder,"voice.dat"));
         string fm=string.Concat("ABCHIJ".Select(c=>$"{c} C192t240q0 @0 v12 o4 c%24 r%4\n"));

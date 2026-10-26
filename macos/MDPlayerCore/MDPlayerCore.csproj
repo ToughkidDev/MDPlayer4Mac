@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MDSound\MDSound.csproj" />
+    <ProjectReference Include="../MucoNative/MucoNative.csproj" />
     <!-- MUCOM88 MUB driver.  The upstream project is GPL-3.0, as is MDPlayer. -->
     <ProjectReference Include="..\ThirdParty\mucomDotNET\Common_NET5\Common_NET6.csproj" />
     <ProjectReference Include="..\MucomCompiler\MucomCompiler.csproj" />

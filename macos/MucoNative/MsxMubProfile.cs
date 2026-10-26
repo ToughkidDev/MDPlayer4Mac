@@ -5,15 +5,19 @@ namespace MDPlayer.Driver.MUCOM;
 
 // A bounded reader for MUCOMSX's directory. Never let malformed counts reach the
 // upstream MUBHeader allocator. In particular 0101 capability bytes are not JCLOCK.
-public sealed class MsxMubProfile
+public sealed partial class MsxMubProfile
 {
     public byte Capabilities { get; private init; }
+    public uint ExtendedCapabilities { get; private init; }
+    internal MDPlayer.MucoNative.PackedScoreData Packed { get; private init; }
+    public bool IsPacked => Packed != null;
+    internal int PackedTimer { get; private init; }
     public bool NativeGroup => (Capabilities & 1) != 0;
-    public bool SccSsg => (Capabilities & 2) != 0;
+    public bool SccSsg => !IsPacked && (Capabilities & 2) != 0;
     public bool DedicatedScc => (Capabilities & 4) != 0;
     public byte? RawFlags { get; private set; }
-    public bool UsesScc => SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 4) != 0;
-    public bool UsesSccPlus => SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 8) != 0;
+    public bool UsesScc => IsPacked ? Packed.UsesScc : SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 4) != 0;
+    public bool UsesSccPlus => IsPacked ? Packed.UsesScc : SccSsg || DedicatedScc || (RawFlags.GetValueOrDefault() & 8) != 0;
     public bool UsesOpna { get; private set; }
     internal bool HasOpnaSequence { get; private set; }
     public bool UsesPsg { get; private set; }
@@ -59,6 +63,7 @@ public sealed class MsxMubProfile
     {
         if (!HasMagic(data) || data.Length < 34) throw new FormatException("Truncated msPb header.");
         string version = Encoding.ASCII.GetString(data, 4, 4);
+        if(version is "0103" or "0104" or "0105" or "0106" or "0107" or "0108" or "0109" or "010A")return ReadPacked(data,version);
         if (version != "0100" && version != "0101" && version != "0102") throw new FormatException("Unsupported msPb version.");
         byte caps = version == "0100" ? (byte)1 : data[26];
         if (version != "0100" && ((version == "0101" ? caps is not (2 or 3) : caps != 5) || data.AsSpan(27, 7).ContainsAnyExcept((byte)0)))
@@ -105,7 +110,7 @@ public sealed class MsxMubProfile
         }
         uint[] blocks=new uint[instruments+pcms];
         for(int i=0;i<blocks.Length;i++) blocks[i]=Read(4);
-        MsxMubProfile profile=new(){Capabilities=caps, SequencerData=(byte[])data.Clone()};
+        MsxMubProfile profile=new(){Capabilities=caps, ExtendedCapabilities=caps, SequencerData=(byte[])data.Clone()};
         int page=0; long musicSize=0;
         for(int part=0;part<55;part++) for(int p=0;p<counts[part];p++)
         {

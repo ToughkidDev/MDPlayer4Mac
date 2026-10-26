@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>MDPlayer.MucoNative</AssemblyName>
+    <RootNamespace>MDPlayer.MucoNative</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MucomCompiler/MucomCompiler.csproj" />
+    <ProjectReference Include="../MucomDriver/MucomDriver.csproj" />
+    <ProjectReference Include="../ThirdParty/mucomDotNET/Common_NET5/Common_NET6.csproj" />
+    <Reference Include="musicDriverInterface">
+      <HintPath>../ThirdParty/mucomDotNET/Common_NET5/musicDriverInterface.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MDPlayerCore" />
+    <InternalsVisibleTo Include="MucoNativeTests" />
+  </ItemGroup>
+</Project>

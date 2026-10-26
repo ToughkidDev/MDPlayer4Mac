@@ -9,6 +9,8 @@ internal static class CurrentCompatibilityTests
  private delegate byte? FlagReader(ReadOnlySpan<byte> page,int part);
  internal static void Run(Action<bool,string> check,string fixtures)
  {
+  var forwarded=typeof(MucomDotNET).Assembly.GetForwardedTypes();
+  check(forwarded.Contains(typeof(MsxMubProfile))&&forwarded.Contains(typeof(MsxSoundMapper)),"Public MSX type forwarding was lost during native-core split");
   // Raw declarations must be found after every valid extension, but never
   // inside operands. Invoke the production bounded instruction reader.
   var type=typeof(MsxMubProfile).Assembly.GetType("MDPlayer.Driver.MUCOM.MsxRawTransport")!;

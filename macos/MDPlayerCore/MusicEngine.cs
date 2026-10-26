@@ -370,7 +370,7 @@ namespace MDPlayer
             // A valid control/rest-only msPb score still needs a render clock.
             // Restore the former silent OPNA target only when no audio target exists;
             // adding it to PSG/SCC playback would change MDSound's normalization.
-            if (chips.Count == 0 && msx?.HasOpnaSequence == true)
+            if (chips.Count == 0 && (msx?.HasOpnaSequence == true || msx?.IsPacked == true))
             {
                 chips.Add(MakeYM2608(setting, ym2608, 0, sourcePath));
                 names.Add("YM2608 (timing only)");

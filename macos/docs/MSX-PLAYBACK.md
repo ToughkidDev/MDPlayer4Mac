@@ -1,7 +1,36 @@
+# MDPlayer4Mac native core split (2026-10-26)
+
+`macos/MucoNative` builds `MDPlayer.MucoNative.dll`, independently of the
+MSX toolchain and the MDPlayer UI/audio engine. The in-process C# compiler and
+session sequencer own channel mapping, bounded profile reads and ordered chip
+delivery. The app supplies chip synthesis, an asset resolver and a sample clock.
+No MSX executable, overlay, game ROM, disk or CPU emulator is used by this core.
+Ordinary OPNA MUB/MUC remains on the existing adapter path.
+
+The native core now implements the musical PN1–PN6 profiles (`msPb0103` through
+`010A`) as well as the previous `0100`–`0102` paths. New two-letter `?` commands,
+historical `?`/`@` aliases, shared waves/phrases, envelopes, signed detune,
+pitch/instrument tables, effect lifecycle, fade and interpolation are compiled
+and sequenced in process. OPNA A–K retains its existing syntax and can play
+alongside SCC+/PSG/OPLL. See [the command and core guide](../MucoNative/README.md).
+
+PN6 `?XTn,1` changes the live track state directly, while compact
+`?XTn,2` additionally preserves dormant note phases in rhythm mode. Returning
+to melody does not restore cancelled vibrato or detune. The single-operand
+legacy `?XTn` and `?k`/`@k` aliases keep their existing saved-state semantics.
+This distinction fixes the PSG pitch drift found in Special PSG selectors
+`P20_03`, `P30_05` and `P38_02`; their MUC and MUB bytes remain unchanged.
+
+The new tests compare compiled musical bytes and bounded per-tick chip output;
+the engine suite also renders a newly compiled four-chip score and exercises
+error/restart. The earlier 41-case legacy migration comparison remains separate.
+Bounded runtime parity does not establish full original-game or listening parity.
+
 # Local msPb0102 update (2026-10-20)
 
-The local build additionally supports `msPb0102` capability value 5. The latest
-published GitHub release remains v0.2.2 and predates this update.
+The local build additionally supports `msPb0102` capability value 5. GitHub's
+latest-release API, checked on 2026-10-26, identifies v0.2.3 as the published
+release. The native-core split above is a local source update after that release.
 
 SCCA–SCCE are five independent native SCC+ note parts (directory parts 22–26),
 separate from OPNA and MSXA–MSXJ. The driver uses an independent SSG-D work area
@@ -262,3 +291,53 @@ submodule dependency and how to update it without overwriting local submodule ed
 The original-MUC compiler now merges tied notes only when the previous note bytes are adjacent and belong to the same chip/part/page. A tie after a repeat end can otherwise overwrite its jump operands and crash later playback. The msPb packer also removes unused trailing pages while preserving authored page numbers and the required base parts; empty pages no longer consume the 120 KiB music budget.
 
 These changes were exercised with original MUC compilation and playback of the converter-produced MUB, using the coherent six-assembly Release reference. Corpus comparison records natural completion or three source passes, exact MUC/MUB output PCM, and separate source SCC/PSG audible-state checks. This does not claim waveform identity to the source VGM or GUI/real-time listening coverage. The converter additionally restores compile-time octave after `/` repeat exits and preserves byte-level normal-SCC/fifth-wave aliasing.
+
+### Original-driver OPLL and PSG controls (PN6)
+
+Compact OPLL melodies can select a twelve-entry ?KTid[,start] F-number window
+(1..1023), with ?KT- restoring the ordinary table. Values at least 512 advance
+the block after halving the F-number. PSG/SCC KT semantics are unchanged.
+?QPvalue,1 starts fresh gate arithmetic for each OPLL note; mode 0 retains the
+old accumulated counter. One-operand QP keeps the selected mode.
+
+On MSXG, ?ITid,bias adds 0..15 to high-hat attenuation while preserving the
+six-byte resource and existing one-operand default. ?ID-,length commits any
+pending kit/volume and disables rhythm during the rest; numeric masks stay 0..31.
+?XT0 clears saved OPLL type state and requires ?XT1 before pitched notes.
+
+?QE0/1/2 is a new OPLL end-policy family: ordinary key-off (default), a keyed
+frequency-zero end preserving the instrument (melody only), or final physical
+state hold. Explicit stop/disposal silences the session. ?NP-,3 selects
+one shared last-writer PSG noise latch without changing policies 0..2.
+
+Declare global resources before musical channel rows. Existing supported
+@/? aliases and OPNA syntax retain their paths. The MDPlayer core remains
+an independent managed implementation; these controls require no MSX runtime,
+ROM, disk, Python process or CPU emulator at playback.
+
+### MucoMSX 2026-10-26 synchronization
+
+The native core accepts the current toolchain's musical msPb profiles through
+010A, including PN6 and `?WG`. New two-letter commands retain existing `?`/`@`
+aliases; OPNA MML remains on its established managed compiler/driver path.
+The About page displays the compatibility date independently of app version.
+
+Compact byte sweeps now rearm on the next duration boundary. Ordinary PSG `w`
+writes the shared noise latch; `?NP` retains explicit ownership policies. A rest
+after `?IM- ?XC` releases cancelled program ownership while preserving native
+pitch phases. These distinctions are covered by regression cases.
+
+For mixed MUC, braced FM definitions (`@N:{38 parameters}` and
+`@%N:{25 bytes}`) are converted in memory to the managed compiler's existing
+fixed-column voice format. Existing fixed-column definitions and external banks
+retain their paths. A missing referenced FM voice still fails compilation; no
+empty default bank is substituted. OPLL projection shares the same packing.
+The on-disk MUC is not rewritten.
+
+This macOS implementation has no MSX CPU, ROM, COM, mapper or external toolchain
+process dependency during playback. See MucoNative/README.md and the native
+regression executable for the validation boundary.
+
+Compact channel routes are also established when shared phrase definitions
+precede their main notes in a mixed ordinary/compact source. Definition-only
+rows remain silent; a real following main stream must not become an empty route.

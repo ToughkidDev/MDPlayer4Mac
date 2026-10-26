@@ -5429,6 +5429,9 @@ namespace mucomDotNET.Driver
         public void SKYOFF()
         {
             work.pg.volume = 0;// ENVE FLAG RESET
+            // An ended or unused page still retires its own envelope, but
+            // must not silence the page currently owning this physical lane.
+            if (work.isDotNET && work.pg.pageNo != work.cd.currentPageNo) return;
             byte e = 0;
             byte d = (byte)work.pg.volReg;
             PSGOUT(d, e);

@@ -7,6 +7,11 @@ namespace mucomDotNET.Driver
     {
         // Called after Init and before MusicSTART. The five sequencing groups stay intact;
         // sound sinks, versioned SSG commands and declared raw timing follow Work.
+        public void SetMsxTimerB(int value)
+        {
+            if(value is <0 or >255)throw new ArgumentOutOfRangeException(nameof(value));
+            work.timerOPNA1.WriteReg(0x26,(byte)value);
+        }
         public void ConfigureMsx(byte capabilities, Action<int, byte[], int> uploadWave, bool rawTiming = false, Action<int, int, int> sccRegister = null)
         {
             music2.MsxProfileConfigured = true;

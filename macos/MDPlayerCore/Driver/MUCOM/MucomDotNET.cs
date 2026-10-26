@@ -1,4 +1,5 @@
 using musicDriverInterface;
+using MDPlayer.MucoNative;
 using mucomDotNET.Common;
 using mucomDotNET.Driver;
 
@@ -14,7 +15,7 @@ namespace MDPlayer.Driver.MUCOM
 
         private mucomDotNET.Driver.Driver driver;
         private MsxMubProfile msxProfile;
-        private MsxSoundMapper msxMapper;
+        private NativeMucomSession native;
         public string PlaybackError { get; private set; } = string.Empty;
         public string SourcePath { get; set; }
         public uint OpmClock { get; private set; } = OPMBaseClock;
@@ -62,7 +63,9 @@ namespace MDPlayer.Driver.MUCOM
             vgmSpeedCounter = 0;
             Stopped = false;
             PlaybackError = string.Empty;
-            msxMapper = null;
+            native?.Dispose();
+            native = null;
+            driver = null;
             OpmClock = GetOpmClock(data);
 
             try
@@ -70,12 +73,11 @@ namespace MDPlayer.Driver.MUCOM
                 msxProfile = MsxMubProfile.HasMagic(data) ? MsxMubProfile.Parse(data) : null;
                 if (msxProfile != null)
                 {
-                    msxMapper = new MsxSoundMapper(
-                        (r,v) => chipRegister.setYM2413Register(0,r,v,model,vgmFrameCounter),
-                        (r,v) => chipRegister.setAY8910Register(0,r,v,model,vgmFrameCounter),
-                        (r,v) => chipRegister.setYM2608Register(0,0,r,v,model,vgmFrameCounter),
-                        WriteScc);
-                    data = msxProfile.SequencerData;
+                    native = new NativeMucomSession(data, Common.VGMProcSampleRate, WriteNative,
+                        OpenSiblingFile, WriteNativePcm, SourcePath);
+                    // Preserve the reference harness's managed-sequencer handle.
+                    driver = native.Sequencer;
+                    return true;
                 }
                 driver = new mucomDotNET.Driver.Driver();
                 List<ChipAction> actions = new()
@@ -96,11 +98,6 @@ namespace MDPlayer.Driver.MUCOM
                     Tuple.Create(string.Empty, (int)OPNBBaseClock),
                     Tuple.Create(string.Empty, (int)OpmClock),
                 });
-                if (msxProfile != null)
-                {
-                    driver.ConfigureMsx(msxProfile.Capabilities, msxMapper.Upload, msxProfile.RawFlags.HasValue, msxMapper.WriteSccNative);
-                    msxMapper.Start(msxProfile.NativeGroup, msxProfile.SccSsg, msxProfile.RawFlags, msxProfile.DedicatedScc);
-                }
                 driver.MusicSTART(0);
                 return true;
             }
@@ -126,13 +123,14 @@ namespace MDPlayer.Driver.MUCOM
                 while (vgmSpeedCounter >= 1.0)
                 {
                     vgmSpeedCounter -= 1.0;
-                    driver.Rendering();
+                    if (native != null) native.AdvanceSample();
+                    else driver.Rendering();
                     Counter++;
                     vgmFrameCounter++;
                 }
 
-                vgmCurLoop = (uint)Math.Max(0, driver.GetNowLoopCounter());
-                if (driver.GetStatus() < 1) { SilenceMsx(); Stopped = true; }
+                vgmCurLoop = (uint)(native?.LoopCounter ?? Math.Max(0, driver.GetNowLoopCounter()));
+                if ((native?.Status ?? driver.GetStatus()) < 1) { SilenceMsx(); Stopped = true; }
             }
             catch (Exception exception)
             {
@@ -177,7 +175,7 @@ namespace MDPlayer.Driver.MUCOM
                 // when the first non-space byte is a legal MUCOM track label; all ordinary
                 // MML, tags, comments, and Japanese Shift-JIS text remain byte-identical.
                 if (MsxMucCompiler.IsNativeSource(source))
-                    return MsxMucCompiler.Compile(source, sourcePath, name => OpenSiblingFile(sourcePath,name));
+                    return NativeMucCompiler.Compile(source, name => OpenSiblingFile(sourcePath,name), sourcePath);
                 byte[] normalizedSource = NormalizeTrackDeclarationIndentation(source);
 
                 mucomDotNET.Compiler.Compiler compiler = new();
@@ -282,161 +280,41 @@ namespace MDPlayer.Driver.MUCOM
         }
 
         internal static byte[] NormalizeTrackDeclarationIndentation(byte[] source)
-        {
-            const string trackCharacters = "ABCDEFGHIJKLMNOPQRSTUVabcdefghijklmnopqrstuvWXYZwxyz";
-            using MemoryStream result = new(source.Length);
-
-            for (int position = 0; position < source.Length;)
-            {
-                int lineEnd = position;
-                while (lineEnd < source.Length && source[lineEnd] != '\r' && source[lineEnd] != '\n') lineEnd++;
-
-                int contentStart = position;
-                while (contentStart < lineEnd && (source[contentStart] == (byte)' ' || source[contentStart] == (byte)'\t')) contentStart++;
-                bool isTrackDeclaration = contentStart < lineEnd
-                    && source[contentStart] < 0x80
-                    && trackCharacters.IndexOf((char)source[contentStart]) >= 0;
-
-                int copyStart = isTrackDeclaration ? contentStart : position;
-                byte[] line = source.AsSpan(copyStart, lineEnd - copyStart).ToArray();
-                MovePortamentoLengths(line);
-                result.Write(line, 0, line.Length);
-
-                if (lineEnd >= source.Length) break;
-
-                // MUCOM's parser deliberately splits source on CRLF.  MUC files copied
-                // from a Git repository or authored on macOS often use LF, which would
-                // otherwise be parsed as one giant line (and terminate almost at once).
-                if (source[lineEnd] == '\r')
-                {
-                    result.WriteByte((byte)'\r');
-                    lineEnd++;
-                    if (lineEnd < source.Length && source[lineEnd] == '\n') lineEnd++;
-                }
-                else
-                {
-                    lineEnd++;
-                    result.WriteByte((byte)'\r');
-                }
-                result.WriteByte((byte)'\n');
-                position = lineEnd;
-            }
-
-            return result.ToArray();
-        }
-
-        // MUCOM88's portamento takes its length right after the first note: {c4>c}.
-        // The MUCEdit manual also writes it after the closing brace ({c>c}4), which the
-        // compiler rejects with E0100 because the trailing number is left over. Rewrite
-        // that form in memory only (the user's MUC file is never changed) by moving the
-        // length next to the first note. The line keeps its byte length, so compiler error
-        // columns stay correct. Comment (;) and tag (#) lines and Shift-JIS double-byte
-        // characters are left untouched; a portamento that already has a length on its
-        // first note is left as written.
+            => MDPlayer.MucoNative.MucSourceNormalization.NormalizeTrackDeclarationIndentation(source);
         internal static void MovePortamentoLengths(byte[] line)
-        {
-            int first = 0;
-            while (first < line.Length && (line[first] == (byte)' ' || line[first] == (byte)'\t')) first++;
-            if (first >= line.Length || line[first] == (byte)';' || line[first] == (byte)'#') return;
-
-            for (int i = first; i < line.Length; i++)
-            {
-                byte b = line[i];
-                if (b == (byte)';') return;
-                if ((b >= 0x81 && b <= 0x9f) || (b >= 0xe0 && b <= 0xfc)) { i++; continue; }
-                if (b != (byte)'{') continue;
-
-                int noteEnd = SkipNote(line, i + 1);
-                if (noteEnd < 0 || SkipLength(line, noteEnd) != noteEnd) continue;
-                int k = noteEnd;
-                while (k < line.Length && (line[k] == (byte)' ' || line[k] == (byte)'\t' || line[k] == (byte)'<' || line[k] == (byte)'>')) k++;
-                k = SkipNote(line, k);
-                if (k < 0) continue;
-                while (k < line.Length && (line[k] == (byte)' ' || line[k] == (byte)'\t')) k++;
-                if (k >= line.Length || line[k] != (byte)'}') continue;
-                int close = k;
-                int lengthStart = close + 1;
-                while (lengthStart < line.Length && (line[lengthStart] == (byte)' ' || line[lengthStart] == (byte)'\t')) lengthStart++;
-                int lengthEnd = SkipLength(line, lengthStart);
-                if (lengthEnd == lengthStart) continue;
-
-                // {note  rest}  ws  length  ->  {note length rest}  ws
-                byte[] length = line.AsSpan(lengthStart, lengthEnd - lengthStart).ToArray();
-                byte[] rest = line.AsSpan(noteEnd, close + 1 - noteEnd).ToArray();
-                byte[] gap = line.AsSpan(close + 1, lengthStart - close - 1).ToArray();
-                int w = noteEnd;
-                length.CopyTo(line, w); w += length.Length;
-                rest.CopyTo(line, w); w += rest.Length;
-                gap.CopyTo(line, w);
-                i = lengthEnd - 1;
-            }
-        }
-
-        // A MUCOM note: c d e f g a b, optionally followed by one + or -. Returns the index
-        // after it, or -1 when there is no note at index.
-        private static int SkipNote(byte[] line, int index)
-        {
-            if (index >= line.Length || line[index] < (byte)'a' || line[index] > (byte)'g') return -1;
-            index++;
-            if (index < line.Length && (line[index] == (byte)'+' || line[index] == (byte)'-')) index++;
-            return index;
-        }
-
-        // A MUCOM length: digits or %digits (clock count), followed by optional dots.
-        // Returns index unchanged when there is no length.
-        private static int SkipLength(byte[] line, int index)
-        {
-            int p = index;
-            if (p < line.Length && line[p] == (byte)'%') p++;
-            int digits = p;
-            while (p < line.Length && line[p] >= (byte)'0' && line[p] <= (byte)'9') p++;
-            if (p == digits) return index;
-            while (p < line.Length && line[p] == (byte)'.') p++;
-            return p;
-        }
+            => MDPlayer.MucoNative.MucSourceNormalization.MovePortamentoLengths(line);
 
         private bool CanWrite(ChipDatum value) => value != null && value.port >= 0 && value.address >= 0 && value.data >= 0;
         private void WriteOpna1(ChipDatum value)
         {
-            if (!CanWrite(value)) return;
-            if (msxProfile?.SccSsg == true && value.port == 0 && value.address < 14)
-                msxMapper.WriteSsg(value.address,value.data);
-            else chipRegister.setYM2608Register(0,value.port,value.address,value.data,model,vgmFrameCounter);
+            if (CanWrite(value)) chipRegister.setYM2608Register(0,value.port,value.address,value.data,model,vgmFrameCounter);
         }
         private void WriteOpna2(ChipDatum value)
         {
-            if (!CanWrite(value)) return;
-            if (msxProfile != null)
+            if (CanWrite(value)) chipRegister.setYM2608Register(1,value.port,value.address,value.data,model,vgmFrameCounter);
+        }
+        private void WriteNative(NativeChipWrite value)
+        {
+            switch(value.Chip)
             {
-                if (msxProfile.NativeGroup)
-                {
-                    if(value.port==0 && value.address==191 && (value.data&4)!=0
-                        && (!msxProfile.UsesScc || ((value.data&8)!=0)!=msxProfile.UsesSccPlus))
-                        throw new FormatException("Raw SCC target differs from the declared transport profile.");
-                    msxMapper.WriteNative(value.port,value.address,value.data);
-                }
+                case NativeChip.Opna1: chipRegister.setYM2608Register(0,value.Port,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Opna2: chipRegister.setYM2608Register(1,value.Port,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Opnb1: chipRegister.setYM2610Register(0,value.Port,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Opnb2: chipRegister.setYM2610Register(1,value.Port,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Opm: chipRegister.setYM2151Register(0,value.Port,value.Address,value.Value,model,0,vgmFrameCounter); break;
+                case NativeChip.Psg: chipRegister.setAY8910Register(0,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Opll: chipRegister.setYM2413Register(0,value.Address,value.Value,model,vgmFrameCounter); break;
+                case NativeChip.Scc:
+                    chipRegister.writeK051649(0,(uint)(value.Port*2),(byte)value.Address,model,vgmFrameCounter);
+                    chipRegister.writeK051649(0,(uint)(value.Port*2+1),(byte)value.Value,model,vgmFrameCounter); break;
             }
-            else chipRegister.setYM2608Register(1,value.port,value.address,value.data,model,vgmFrameCounter);
         }
-        private void WriteScc(int port,int address,int value)
+        private void WriteNativePcm(NativeChip chip,byte[] data,int type)
         {
-            chipRegister.writeK051649(0,(uint)(port*2),(byte)address,model,vgmFrameCounter);
-            chipRegister.writeK051649(0,(uint)(port*2+1),(byte)value,model,vgmFrameCounter);
+            if(chip==NativeChip.Opnb1) WriteOpnb1Pcm(data,type,0);
+            else if(chip==NativeChip.Opnb2) WriteOpnb2Pcm(data,type,0);
         }
-        private void SilenceMsx()
-        {
-            if (msxProfile == null || msxMapper == null) return;
-            // Mute ordinary OPNA output too if a malformed extended command ends playback.
-            for (int channel=0;channel<6;channel++)
-                chipRegister.setYM2608Register(0,0,0x28,channel<3?channel:channel+1,model,vgmFrameCounter);
-            chipRegister.setYM2608Register(0,1,0x00,0x01,model,vgmFrameCounter);
-            chipRegister.setYM2608Register(0,0,0x10,0xbf,model,vgmFrameCounter);
-            chipRegister.setYM2608Register(0,0,0x07,0x3f,model,vgmFrameCounter);
-            for(int channel=0;channel<3;channel++)
-                chipRegister.setYM2608Register(0,0,0x08+channel,0,model,vgmFrameCounter);
-            if (msxProfile.NativeGroup) msxMapper.StopNative();
-            if (msxProfile.UsesScc) msxMapper.StopScc();
-        }
+        private void SilenceMsx() => native?.Dispose();
         private void WriteOpnb1(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(0, value.port, value.address, value.data, model, vgmFrameCounter); }
         private void WriteOpnb2(ChipDatum value) { if (CanWrite(value)) chipRegister.setYM2610Register(1, value.port, value.address, value.data, model, vgmFrameCounter); }
         private void WriteOpm(ChipDatum value) { if (value != null && value.address >= 0 && value.data >= 0) chipRegister.setYM2151Register(0, value.port, value.address, value.data, model, 0, vgmFrameCounter); }

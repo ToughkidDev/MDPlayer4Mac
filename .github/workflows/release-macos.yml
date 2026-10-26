@@ -23,6 +23,9 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Verify independent native core
+        run: dotnet run --project macos/MucoNativeTests/MucoNativeTests.csproj -c Release
+
       - name: Verify MSX playback
         run: dotnet run --project macos/MsxPlaybackTests/MsxPlaybackTests.csproj -c Release
 
@@ -46,6 +49,14 @@ jobs:
           mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
           cp -R release/publish/. "$MACOS_DIR/"
           cp macos/MDPlayerUI/Assets/MDPlayer4Mac.icns "$RESOURCES_DIR/MDPlayer4Mac.icns"
+          mkdir -p "$RESOURCES_DIR/Licenses"
+          cp LICENSE.txt "$RESOURCES_DIR/Licenses/MDPlayer4Mac.txt"
+          cp macos/MDSound/LICENSE.txt "$RESOURCES_DIR/Licenses/MDSound.txt"
+          cp macos/ThirdParty/mucomDotNET/LICENSE.txt "$RESOURCES_DIR/Licenses/mucomDotNET.txt"
+          cp macos/MucomDriver/YMFM-LICENSE.txt "$RESOURCES_DIR/Licenses/YMFM.txt"
+          cp macos/ThirdParty/PMDDotNET/LICENSE.txt "$RESOURCES_DIR/Licenses/PMDDotNET.txt"
+          cp macos/ThirdParty/muapDotNET/license/LICENSE.txt "$RESOURCES_DIR/Licenses/muapDotNET.txt"
+          cp macos/ThirdParty/muapDotNET/license/COPYING.TXT "$RESOURCES_DIR/Licenses/muapDotNET-COPYING.txt"
           cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

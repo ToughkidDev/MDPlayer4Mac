@@ -5641,15 +5641,15 @@ namespace mucomDotNET.Compiler
                 , 0, work.ChipIndex % 2, work.CHIP_CH * work.MAXPG + work.pageNow);
 
             // --	ｶｳﾝﾄ ｵｰﾊﾞｰ ｼｮﾘ	--
-            clk -= 127;
-            msub.MWRIT2(new MmlDatum(
-                enmMMLType.Note
-                , args
-                , lp
-                , 127
-                ));// FIRST COUNT
-            msub.MWRIT2(new MmlDatum((byte)note));// TONE DATA
-            msub.MWRIT2(new MmlDatum(0xfd));// COM OF COUNT OVER(SOUND)
+            // 255 clocks requires 127 + 127 + 1. A remaining 128 would
+            // otherwise become a rest opcode instead of a note duration.
+            while (clk >= 128)
+            {
+                clk -= 127;
+                msub.MWRIT2(new MmlDatum(enmMMLType.Note, args, lp, 127));
+                msub.MWRIT2(new MmlDatum((byte)note));
+                msub.MWRIT2(new MmlDatum(0xfd));
+            }
             work.BEFCO = clk;// RESTORE SECOND COUNT
             msub.MWRIT2(new MmlDatum((byte)clk));
 

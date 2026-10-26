@@ -65,7 +65,7 @@ internal static class MsxMucCompiler
         // Force a five-group directory even for SCC-only music.
         if(scc && !NativeLine.IsMatch(ascii) && !Regex.IsMatch(ascii,@"(?m)^[L-V][0-9]*[ \t]"))ascii+="\r\nL ; extended directory\r\n";
         byte[] input=Encoding.Latin1.GetBytes("#driver mucomDotNET\r\n"+ascii);
-        input=MucomDotNET.NormalizeTrackDeclarationIndentation(input);
+        input=MDPlayer.MucoNative.MucSourceNormalization.NormalizeTrackDeclarationIndentation(input);
         mucomDotNET.Compiler.Compiler compiler=new();compiler.Init();
         using MemoryStream stream=new(input,false);
         MmlDatum[] output=compiler.Compile(stream,sibling);
@@ -87,7 +87,7 @@ internal static class MsxMucCompiler
                 var compiled=mucomDotNET.Compiler.Muc88.CompileScc(waves,()=>
                 {
                     mucomDotNET.Compiler.Compiler c=new();c.Init();
-                    using MemoryStream src=new(MucomDotNET.NormalizeTrackDeclarationIndentation(Encoding.Latin1.GetBytes(isolated)),false);
+                    using MemoryStream src=new(MDPlayer.MucoNative.MucSourceNormalization.NormalizeTrackDeclarationIndentation(Encoding.Latin1.GetBytes(isolated)),false);
                     MmlDatum[] bytes=c.Compile(src,sibling);var ci=c.GetCompilerInfo();
                     if(bytes==null || ci?.errorList?.Count>0)throw new FormatException("SCC"+(char)('A'+ch)+": "+string.Join("\n",ci?.errorList?.Select(e=>e.Item3)??Enumerable.Empty<string>()));
                     return new MUBHeader(bytes,myEncoding.Default).mupb;
@@ -143,7 +143,7 @@ internal static class MsxMucCompiler
         {
             string row=lines[i];
             if(Regex.IsMatch(row,@"(?i)^#sccvoice\b"))continue;
-            Match wave=Regex.Match(row,@"^[ \t]+@W(\d+)[ \t]*(?:[:=][ \t]*)?(\{)?(.*)$");
+            Match wave=Regex.Match(row,@"^[ \t]*@[Ww](\d+)[ \t]*(?:[:=][ \t]*)?(\{)?(.*)$");
             if(wave.Success)
             {
                 if(!int.TryParse(wave.Groups[1].Value,out int id) || id>255 || !inline.Add(id))throw new FormatException("Invalid/duplicate SCC waveform ID.");

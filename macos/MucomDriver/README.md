@@ -20,7 +20,7 @@ page-local waveform/gain state and handles disk `FF ED`/`FF EE` commands. In-mem
 MUC compilation uses upstream SSG encodings (`FF F6`/`FF FB`) without moving bytes
 or invalidating repeat offsets. These in-memory buffers are not MUB export files.
 
-The core `MsxSoundMapper` ports MUCOMSX `MSXTargets.asm`, `MSXTargetCore.asm` and
+The `MucoNative` project's `MsxSoundMapper` ports MUCOMSX `MSXTargets.asm`, `MSXTargetCore.asm` and
 `SSGExtendDriver.asm` (2026-10-13), including common SCC wave writes and duplicate
 wave suppression. Its YM2413 ROM table comes from Aaron Giles'
 ymfm; the BSD-3-Clause notice is preserved in `YMFM-LICENSE.txt`.
