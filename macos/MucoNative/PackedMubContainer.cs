@@ -27,7 +27,7 @@ internal static class PackedMubContainer
         using var input=new MemoryStream(MucSourceNormalization.NormalizeTrackDeclarationIndentation(Encoding.Latin1.GetBytes(text)),false);
         MmlDatum[] output=compiler.Compile(input,name=>asset?.Invoke(name));var info=compiler.GetCompilerInfo();
         if(output==null||info?.errorList?.Count>0)throw new FormatException(info?.errorList?.Count>0?string.Join('\n',info.errorList.Select(x=>x.Item3)):"OPNA compilation failed.");
-        var header=new MUBHeader(output,myEncoding.Default);if(header.mupb==null)throw new FormatException("Mixed packed score requires an OPNA directory.");
+        var header=new MUBHeader(output,myEncoding.Default);header.GetTags();if(header.mupb==null)throw new FormatException("Mixed packed score requires an OPNA directory.");
         var parts=Enumerable.Range(0,55).Select(_=>new List<Page>()).ToArray();
         for(int chip=0;chip<header.mupb.chips.Length;chip++)for(int p=0;p<header.mupb.chips[chip].parts.Length;p++)
         {
