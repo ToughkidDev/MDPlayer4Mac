@@ -135,6 +135,8 @@ internal sealed partial class PackedMusicPlayer
             }
             if((type&4)!=0)
             {
+                // Note values 0-9 start ?XD0-?XD9; 12 is the rest, which starts nothing.
+                if(op>>4==12){Duration(c,(op%16+1)*c.W[20]);OnDuration(c);c.Pc=p;return;}
                 // A score note selects a shared effect phrase; its clock stays
                 // in the main voice while literal steps advance independently.
                 c.W[9]=9;Duration(c,(op%16+1)*c.W[20]);OnDuration(c);c.Pc=p;
@@ -331,9 +333,11 @@ internal sealed partial class PackedMusicPlayer
     private byte[] WaveSamples(Channel c)
     {
         if(Bit(c.M[28],0)||Bit(c.M[28],2)){if(Bit(c.M[28],0)&&c.Index==waveOwner&&(waveFlags&8)!=0&&c.Index<7)channels[c.Index+1].W[15]|=128;return GeneratedWave(c);}
-        int ptr=c.Word(38),stride=Bit(c.M[5],3)?c.M[10]:1;
-        if(ptr<score.U16(26)||ptr+31*stride>=score.U16(8))throw new FormatException("Wave morph reads beyond shared waveform data.");
-        var wave=new byte[32];for(int n=0;n<32;n++)wave[n]=score.Bytes[ptr+n*stride];return wave;
+        int ptr=c.Word(38),stride=Bit(c.M[5],3)?c.M[10]:1,start=score.U16(26),end=score.U16(8);
+        if(ptr<start||ptr>=end)throw new FormatException("Wave morph reads beyond shared waveform data.");
+        // A morph steps through the wave data with a stride of up to 31 bytes. Where that runs
+        // past the last wave (the original driver read whatever followed), it wraps to the first.
+        var wave=new byte[32];for(int n=0;n<32;n++)wave[n]=score.Bytes[start+(ptr-start+n*stride)%(end-start)];return wave;
     }
     private int GateFlags(Channel c)
     {

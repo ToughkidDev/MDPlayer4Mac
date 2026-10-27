@@ -57,7 +57,9 @@ internal sealed partial class PackedMusicPlayer
                 if(op==0xd8)
                 {
                     if(c.Index!=14)throw new FormatException("OPLL drum hit outside MSXG.");int mask=score.Read(ref p),length=score.Read(ref p);
-                    if(mask>32||length>15)throw new FormatException("Invalid OPLL drum hit.");Duration(c,B((length+1)*c.W[20]));c.Pc=p;if(mask==32){FlushOpllDrums(c);Opll(14,0);}else OpllDrumHit(mask);return;
+                    if(mask>32||length>15)throw new FormatException("Invalid OPLL drum hit.");Duration(c,B((length+1)*c.W[20]));c.Pc=p;FlushOpllDrums(c);
+                    // A hit applies the pending kit, volume and ?IB bass drum, as a note hit does.
+                    if(mask==32)Opll(14,0);else{if(bassPending){mask|=16;bassPending=false;}OpllDrumHit(mask);}return;
                 }
                 OpllControl(c,op,ref p,start);
                 if(!c.Active)return;if(c.Standard){ParseStandard(c,ref p);return;}continue;
@@ -66,7 +68,8 @@ internal sealed partial class PackedMusicPlayer
             if(c.Index==14||c.W[31]==64)
             {
                 FlushOpllDrums(c);
-                int mask=op>>4;if(bassPending){mask|=16;bassPending=false;}OpllDrumHit(mask);return;
+                // Note values 0-11 are drum masks; 12 is the rest, which hits nothing.
+                int mask=op>>4;if(mask>=12)return;if(bassPending){mask|=16;bassPending=false;}OpllDrumHit(mask);return;
             }
             if(c.W[31]!=1)throw new FormatException("Unsupported native OPLL track type.");
             int pitch=op>>4;
@@ -92,6 +95,10 @@ internal sealed partial class PackedMusicPlayer
         {
             case 0xe7:
                 int drum=score.Read(ref p);if(drum>15||score.Drums[drum]==null)throw new FormatException("Undefined OPLL drum preset.");c.Word(34,drum);c.W[15]|=64;return;
+            case 0xde:c.Mark=p;return;
+            case 0xdf:
+                int marked=score.Read(ref p);if(marked==0||c.Mark<0)throw new FormatException("Compact repeat has no loop mark.");
+                int pass=B(c.W[5]+1);c.W[5]=pass==marked?(byte)0:B(pass);if(pass!=marked)p=c.Mark;return;
             case 0xe8:c.W[36]=B(score.Read(ref p));return;
             case 0xe9:
                 c.W[20]=B(score.Read(ref p));if(c.W[20] is 0 or >15)throw new FormatException("OPLL duration unit must be 1..15.");return;

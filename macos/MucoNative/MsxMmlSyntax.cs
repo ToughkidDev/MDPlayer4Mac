@@ -13,6 +13,8 @@ internal static class MsxMmlSyntax
     {
         ["DB"]="d",["DS"]="g",["MW"]="h",["QP"]="q",["NP"]="n",["GH"]="H",["GL"]="L",["WM"]="w",["IR"]="I",["IU"]="O",["IT"]="T",["IS"]="s",["ID"]="D",["IB"]="B",["FC"]="p",["FR"]="r",["FJ"]="j",["FB"]="b",["XM"]="x",["XI"]="i",["XS"]="z",["XP"]="f",["XT"]="k",["XU"]="u"
     };
+    // The two-letter name of an internal one-letter command, for messages (?I -> ?IR).
+    internal static string NameOf(char c)=>"?"+(Simple.FirstOrDefault(x=>x.Value==c.ToString()).Key??c.ToString());
     internal static string NormalizeHex(string text,bool resources=false)
     {
         var replacements=new SortedDictionary<int,(int End,string Value)>();

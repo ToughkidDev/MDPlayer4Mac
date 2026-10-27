@@ -34,7 +34,9 @@ internal static class MsxMusicalCompiler
         internal readonly HashSet<string> Standard=new();
         internal readonly Dictionary<string,(int Default,int Octave,int Clock)> Defaults=new();
         internal byte[] Voice=new byte[8192];internal string Title="Packed note score";
-        internal bool InBlock,Stage1,Pn6,HasWave,Carrier,Pn6Source;internal int Timer=198,Serial;
+        internal bool InBlock,Stage1,Pn6,HasWave,Carrier,Pn6Source,NeedsWave;internal int Timer=198,Serial,BlockLoops;
+        // Compact rows are parsed line by line: their [ ] repeats and L loop carry over to the next line.
+        internal readonly Dictionary<string,(List<(string Target,int? Escape)> Loops,string LoopPoint)> Compact=new();
         internal (bool Normal,int Default,int Octave,int Clock,int Volume,bool Direct)? ProgramContext;
     }
     internal static Compilation Parse(string source,Func<string,Stream> asset,byte[] voiceBank=null)
@@ -109,6 +111,9 @@ internal static class MsxMusicalCompiler
             new Parser(b,row.Groups[1].Value,row.Groups[2].Value).Run();
         }
         if(b.InBlock)throw new FormatException("Unclosed MSX definition.");
+        foreach(var (ch,state) in b.Compact)if(state.Loops.Count>0)throw new FormatException(ch+": Unclosed [ ] repeat.");
+        // Compact PSG rows need the wave table even when no SCC part plays: a silent wave 0.
+        if(b.NeedsWave&&!b.HasWave)b.Waves.Insert(0,"wave 0 "+string.Join(',',new int[32]));
         string[] channels=b.Stage1||b.Standard.Count>0||b.Pn6?Channels:opll?Channels:BaseChannels;
         foreach(string ch in channels)if(!b.Routes.ContainsKey(ch))b.Routes[ch]="EMPTY";
         if(b.Routes.Values.Contains("EMPTY"))b.Body.AddRange(new[]{"EMPTY:","end"});
@@ -239,9 +244,13 @@ internal static class MsxMusicalCompiler
     {
         private readonly Build b;private readonly string ch,text;private int pos,def,octave,clock,volume,rhythmMask;private int[] rhythmLevels=new int[6];
         private bool normal,direct,closed,pendingTie;private int? lastNote,programId;private string loopPoint;
-        private readonly List<(string Target,int? Escape)> loops=new();
+        private List<(string Target,int? Escape)> loops=new();
         private bool Ol=>OpllChannels.Contains(ch);private bool Base=>BaseChannels.Contains(ch);
-        internal Parser(Build build,string channel,string source){b=build;ch=channel;text=source;(def,octave,clock)=b.Defaults[ch];normal=b.Standard.Contains(ch);}
+        internal Parser(Build build,string channel,string source)
+        {
+            b=build;ch=channel;text=source;(def,octave,clock)=b.Defaults[ch];normal=b.Standard.Contains(ch);
+            if(!normal&&b.Compact.TryGetValue(ch,out var state))(loops,loopPoint)=state;
+        }
         private void Error(string msg)=>throw new FormatException(ch+": "+msg+" (column "+(pos+1)+")");
         private void Spaces(){while(pos<text.Length&&char.IsWhiteSpace(text[pos]))pos++;}
         private int Num(int min=0,int max=255)
@@ -279,7 +288,11 @@ internal static class MsxMusicalCompiler
         }
         internal void Run()
         {
-            if(!normal&&!b.HasWave&&!Ol&&!(b.Pn6Source&&Array.IndexOf(BaseChannels,ch)<3))Error("Define SCC wave data before compact PSG/SCC rows");
+            if(!normal&&!b.HasWave&&!Ol&&!(b.Pn6Source&&Array.IndexOf(BaseChannels,ch)<3))
+            {
+                if(ch.StartsWith("SCC",StringComparison.Ordinal)&&!Regex.IsMatch(text,@"^\s*[@?][RP]"))Error("Define SCC waves (?WDn={...}) before compact SCC rows");
+                b.NeedsWave=true;
+            }
             bool definition=b.InBlock||Regex.IsMatch(text,@"^[@?][RP]");if(!definition)Route();
             while(pos<text.Length)
             {
@@ -287,9 +300,9 @@ internal static class MsxMusicalCompiler
                 Spaces();if(pos==text.Length)break;
                 if(!b.InBlock&&!b.Routes.ContainsKey(ch)&&!Regex.IsMatch(text[pos..],@"^[@?][RP]"))Route();
                 char c=text[pos++];
-                if(c=='}') {if(!b.InBlock)Error("Unmatched }");b.InBlock=false;programId=null;if(b.ProgramContext is {} saved){(normal,def,octave,clock,volume,direct)=saved;b.ProgramContext=null;}continue;}
+                if(c=='}') {if(!b.InBlock)Error("Unmatched }");if(!normal&&loops.Count!=b.BlockLoops)Error("A [ ] repeat cannot cross the end of a definition");b.InBlock=false;programId=null;if(b.ProgramContext is {} saved){(normal,def,octave,clock,volume,direct)=saved;b.ProgramContext=null;}continue;}
                 if(c==':'){Emit("L"+Num()+":");continue;}
-                if(c=='!') {if(programId.HasValue&&!b.TablePrograms.Contains(programId.Value))Error("Use ?FR to end an instrument-map program");if(normal&&b.InBlock)Error("Use ?FR to end a runtime phrase");if(normal&&loopPoint!=null)Emit("jump "+loopPoint);Emit("end");if(normal)closed=true;continue;}
+                if(c=='!') {if(programId.HasValue&&!b.TablePrograms.Contains(programId.Value))Error("Use ?FR to end an instrument-map program");if(normal&&b.InBlock)Error("Use ?FR to end a runtime phrase");if(loopPoint!=null&&(normal||!b.InBlock)){if(!normal&&loops.Count>0)Error("! inside a [ ] repeat");Emit("jump "+loopPoint);if(!normal)loopPoint=null;}Emit("end");if(normal)closed=true;continue;}
                 if("abcdefgr".Contains(c)){Note(c);continue;}
                 if(c=='o'){octave=Num(1,normal||Ol?8:6);if(!normal)Emit("octave "+((Ol?8:6)-octave));continue;}
                 if(c is '<' or '>'){octave+=c=='>'?1:-1;if(octave<1||octave>(normal||Ol?8:6))Error("Octave outside channel range");if(!normal)Emit("octave "+((Ol?8:6)-octave));continue;}
@@ -308,6 +321,7 @@ internal static class MsxMusicalCompiler
                 if(c is 't' or 'T'&&(normal||c=='t')){int value=Num(c=='T'?1:0);if(c=='T')value=(-(14483/value))&255;if(normal)Emit("standard-tempo "+value);else b.Timer=value;continue;}
                 if(c=='C'){if(normal){int value=Num();if(value!=0)clock=value;}else if(Num(1,192)!=192)Error("Compact duration base is C192");continue;}
                 if(normal&&Common(c))continue;
+                if(!normal&&CompactStructure(c))continue;
                 if(c is not('@' or '?'))Error("Unsupported extended-channel command "+c);
                 if(c=='?'&&(pos==text.Length||!char.IsAsciiLetter(text[pos])))Error("? requires an MSX extension letter; numeric voice selection uses @N");
                 if(pos<text.Length&&char.IsAsciiDigit(text[pos])){Voice();continue;}
@@ -320,6 +334,7 @@ internal static class MsxMusicalCompiler
                 if(loops.Count!=0)Error("Unclosed repeat");if(pendingTie)Error("Tie has no following note");
                 if(!closed&&b.Body.Count>0&&!Regex.IsMatch(b.Body[^1],@"(?:end|return)$")){if(loopPoint!=null)Emit("jump "+loopPoint);Emit("end");}
             }
+            if(!normal)b.Compact[ch]=(loops,loopPoint);
             b.Defaults[ch]=(def,octave,clock);
         }
         private void Note(char c)
@@ -377,6 +392,25 @@ internal static class MsxMusicalCompiler
                 case '/':
                     if(loops.Count==0||loops[^1].Escape.HasValue)Error("/ requires an unescaped repeat");var active=loops[^1];loops[^1]=(active.Target,b.Body.Count);Emit("standard-escape 0,1,EMPTY");return true;
                 case 'L':if(loopPoint!=null)Error("Duplicate song loop");loopPoint=$"S_{ch}_{++b.Serial}";Emit(loopPoint+":");return true;
+                default:return false;
+            }
+        }
+        // | [ ]n and L on compact rows, written as on ordinary rows. A repeat becomes a labelled
+        // repeat (two levels, as ?FBn,label and ?FBn,label,2); L becomes a label that ! jumps back to.
+        private bool CompactStructure(char c)
+        {
+            switch(c)
+            {
+                case '|':return true;
+                case '[':
+                    if(loops.Count>=2)Error("At most two nested repeats");string target=$"S_{ch}_{++b.Serial}";Emit(target+":");loops.Add((target,null));return true;
+                case ']':
+                    if(loops.Count==0||loops.Count==b.BlockLoops&&b.InBlock)Error("Unmatched ]");int count=Num(1,255);var loop=loops[^1];loops.RemoveAt(loops.Count-1);
+                    if(count>1)Emit((loops.Count>0?"repeat2 ":"repeat ")+$"{count},{loop.Target}");return true;
+                case '/':Error("/ is not available on compact rows: write [A B]n-1 A instead of [A / B]n");return true;
+                case 'L':
+                    if(b.InBlock)Error("L marks the loop of a channel's own row, not of a definition");if(loopPoint!=null)Error("Duplicate song loop");
+                    loopPoint=$"S_{ch}_{++b.Serial}";Emit(loopPoint+":");return true;
                 default:return false;
             }
         }
@@ -451,18 +485,18 @@ internal static class MsxMusicalCompiler
         }
         private void Extension(char cmd)
         {
-            if(normal&&"fzix".Contains(cmd))Error("?"+cmd+" requires an explicit ?XU compact channel");
+            if(normal&&"fzix".Contains(cmd))Error(MsxMmlSyntax.NameOf(cmd)+" requires an explicit ?XU compact channel");
             if(Ol)
             {
-                if(normal&&cmd is 'I' or 'O'&&ch!="MSXG"){int id=Num(cmd=='I'?1:0,15);direct=true;Emit("voice "+(cmd=='I'?id*16:id));return;}
+                if(cmd is 'I' or 'O'&&ch!="MSXG"){int id=Num(cmd=='I'?1:0,15);if(normal)direct=true;Emit("voice "+(cmd=='I'?id*16:id));return;}
                 if(cmd=='q'){int q=Num();if(CommaAhead()){if(normal)Error("?QP mode requires compact OPLL");pos++;Emit($"gate-mode {q},{Num(0,1)}");}else Emit("gate "+q);return;}if(cmd=='s'){Emit(Num(0,1)==1?"sustain":"sustain-off");return;}
                 if(cmd=='T'){Emit("drum-preset "+Num(0,15));if(CommaAhead()){if(ch!="MSXG")Error("?IT bias requires MSXG");pos++;Emit("drum-bias "+Num(0,15));}return;}if(cmd=='B'){Emit("bass");return;}
                 if(cmd=='D'){if(ch!="MSXG")Error("?ID requires MSXG");Spaces();int mask;if(Off){pos++;mask=32;}else mask=Num(0,31);Comma();Emit($"drum {mask},{Num(1,16)-1}");return;}
-                if(!"Ppjbrudmhkea".Contains(cmd))Error("Unsupported OPLL extension "+cmd);
+                if(!"Ppjbrudmhkea".Contains(cmd))Error(MsxMmlSyntax.NameOf(cmd)+" is not available on "+(ch=="MSXG"?"MSXG":"MSX-MUSIC channels"));
             }
             if(cmd is 'R' or 'P')
             {
-                int id=Num(0,cmd=='R'?9:255);Spaces();if(pos==text.Length||text[pos]!='{'||b.InBlock)Error("Definition requires { ... }");pos++;b.InBlock=true;
+                int id=Num(0,cmd=='R'?9:255);Spaces();if(pos==text.Length||text[pos]!='{'||b.InBlock)Error("Definition requires { ... }");pos++;b.InBlock=true;b.BlockLoops=loops.Count;
                 if(cmd=='R'){if(!b.Rhythms.TryAdd(id,"R"+id))Error("Duplicate rhythm definition");Emit("R"+id+":");}
                 else{Emit("L"+id+":");if(b.ProgramLabels.Contains(id))programId=id;if(normal&&b.ProgramLabels.Contains(id)){b.ProgramContext=(normal,def,octave,clock,volume,direct);normal=false;}}return;
             }
@@ -523,7 +557,7 @@ internal static class MsxMusicalCompiler
                 case 'u':name="unit";argc=1;break;case 'h':name="vibrato-delay";argc=1;break;case 'k':name="type";argc=1;break;
                 case 'n':name="noise";argc=1;break;case 's':name="shape";argc=1;break;case 'H':name="env-high";argc=1;break;case 'L':name="env-low";argc=1;break;
                 case 'z':name="step";argc=1;break;case 'f':name="pitch";argc=2;break;case 'p':name="call";argc=1;break;case 'j':name="jump";argc=1;break;case 'r':name="return";argc=0;break;case 'q':name="gate-normal";argc=0;break;
-                default:Error("Unknown extension "+cmd);return;
+                default:Error("Unknown extension "+MsxMmlSyntax.NameOf(cmd));return;
             }
             int[] values=new int[argc];for(int i=0;i<argc;i++){if(i>0)Comma();values[i]=Num(cmd=='u'?1:0,cmd=='f'&&i==0?4095:255);}
             if(cmd=='k')
