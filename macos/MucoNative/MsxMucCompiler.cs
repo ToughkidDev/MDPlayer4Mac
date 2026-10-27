@@ -102,7 +102,7 @@ internal static class MsxMucCompiler
                 }
             }
         }
-        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated);
+        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated,header.tagdata,header.tagsize);
     }
     private static readonly Regex SccLine=new(@"(?m)^[ \t]*SCC((?:[A-E][0-9]?)+)(?=[ \t])",RegexOptions.CultureInvariant);
     private static string ExtractScc(string source,Func<string,Stream> sibling,Dictionary<int,byte[]> waves,List<string>[] tracks)
@@ -214,7 +214,7 @@ internal static class MsxMucCompiler
         }
         return string.Join("\r\n",output);
     }
-    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps,List<MupbInfo.PageDefine>[] dedicated=null)
+    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps,List<MupbInfo.PageDefine>[] dedicated=null,uint tagOffsetIn=0,uint tagSizeIn=0)
     {
         // Canonical MUCOMSX five-descriptor directory. Copy streams unchanged so repeat
         // distances/loop offsets remain valid. The driver handles upstream SSG opcodes.
@@ -259,7 +259,7 @@ internal static class MsxMucCompiler
         }
         byte[] pcm=Array.Empty<byte>();
         if(input.chips[0].pcmNumber.Length>0)pcm=input.pcms[input.chips[0].pcmNumber[0]].data;
-        byte[] tags=output.Skip((int)input.tagDataOffset).Take((int)input.tagDataSize).Select(x=>(byte)x.dat).ToArray();
+        byte[] tags=output.Skip((int)tagOffsetIn).Take((int)tagSizeIn).Select(x=>(byte)x.dat).ToArray();
         writer.Write(Encoding.ASCII.GetBytes((caps&4)!=0?"msPb0102":(caps&2)!=0?"msPb0101":"msPb0100"));
         writer.Write((byte)5);writer.Write((byte)5);writer.Write((ushort)55);writer.Write((ushort)parts.Sum(p=>p.Count));
         writer.Write((ushort)inst.Count);writer.Write((ushort)1);writer.Write(0u);writer.Write((uint)tags.Length);
