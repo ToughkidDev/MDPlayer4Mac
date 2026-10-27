@@ -128,3 +128,27 @@ regression executable for the validation boundary.
 Compact channel routes are also established when shared phrase definitions
 precede their main notes in a mixed ordinary/compact source. Definition-only
 rows remain silent; a real following main stream must not become an empty route.
+
+### Compact-row authoring fixes
+
+Compiled scores that were accepted before are unchanged byte for byte (the 38 chip
+extension MUCs of MUCOMSX's Samples compile to the same objects). Fixed playback:
+
+* `?FB0 … ?FBn` now repeats on OPLL melody and `MSXG` routes; the OPLL player
+  stopped at the loop mark (opcode `DE`) the compiler emitted.
+* A rest on a `?XT4` effect track waits instead of stopping playback, and a rest
+  on an `MSXG` `?XT64` track hits nothing instead of mask 12 (snare and tom).
+* `?ID` hits apply a pending `?IT` kit, rhythm volume and `?IB`, as note hits do.
+* A wave morph whose stride runs past the last wave wraps to the first wave
+  instead of stopping playback.
+
+Newly accepted source (previously compile errors):
+
+* Compact rows take `|`, `[ ]n` (two levels, also across lines; labelled repeats)
+  and `L` (the closing `!` jumps back to it). `/` is refused with a hint.
+* Compact OPLL rows take `?IRn` (as `@n`) and `?IUn` (custom patch n).
+* Songs whose compact rows are all PSG need no `?WD`; a silent wave 0 is added.
+  A compact SCC row without waves names `?WD` in its error.
+* Messages name the two-letter commands (`?IR`, `?WM` …) instead of internal letters.
+
+`macos/MucoNativeTests/CompactRowTests.cs` covers these cases.
