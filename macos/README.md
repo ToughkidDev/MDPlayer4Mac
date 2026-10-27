@@ -33,6 +33,12 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
   `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
 
+## v0.2.8
+
+- `msPb0100~0102` 컴파일 결과에서 헤더 태그가 누락되던 문제를 수정함.
+- 제목 등 메타데이터와 `#CarrierCorrection` 같은 드라이버 설정을 원래 헤더의 태그 위치·크기로 보존함.
+- [변경 사항](release-notes/v0.2.8.md)을 참고하면 됨.
+
 ## v0.2.7
 
 - OPNA/MSX 혼합곡에서 `#CarrierCorrection`과 `#OPNA1RhythmMute` 설정이 누락되던 문제를 수정함.
