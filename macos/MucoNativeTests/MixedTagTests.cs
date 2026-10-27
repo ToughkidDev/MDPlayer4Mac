@@ -1,8 +1,8 @@
 using System.Text;
 using MDPlayer.MucoNative;
 
-// OPNA driver tags (#CarrierCorrection, #OPNA1RhythmMute) survive when MSX parts
-// turn the song into a mixed packed container.
+// OPNA driver tags (#CarrierCorrection, #OPNA1RhythmMute) and the other header tags
+// survive when MSX parts turn the song into a packed container.
 internal static class MixedTagTests
 {
     internal static void Run(Action<bool,string> check)
@@ -26,10 +26,18 @@ internal static class MixedTagTests
             var off=Render(wave+voice+fm+msx);
             check(LastTl(off,0x4c)==LastTl(off,0x48),"Carriers were corrected without #CarrierCorrection beside "+msx[..4]+".");
         }
+        // msPb0100-0102 (inline @W and ordinary SCC rows) keep the header tags too.
+        const string inline="  @W0:{0,25,49,71,90,106,117,125,127,125,117,106,90,71,49,25,0,-25,-49,-71,-90,-106,-117,-125,-128,-125,-117,-106,-90,-71,-49,-25}\n";
+        string legacy="#title Legacy\n#CarrierCorrection Yes\n"+inline+voice+"A t198 C112 @1 v12 o4 c4 v8 c4\nSCCA C112 @0 v12 o4 c4 c4\n";
+        byte[] packed=NativeMucCompiler.Compile(Encoding.ASCII.GetBytes(legacy),_=>null);
+        check(Encoding.ASCII.GetString(packed,0,8)=="msPb0102","The inline-wave song did not compile to msPb0102.");
+        check(Encoding.ASCII.GetString(packed).Contains("#title Legacy"),"msPb0102 dropped the header tags.");
+        var legacyOn=Render(legacy);
+        check(LastTl(legacyOn,0x4c)-LastTl(legacyOn,0x48)==24,"#CarrierCorrection was ignored in msPb0102.");
         string drums="A t198 C112 o4 c4\nG C112 v50,30,30,30,30,30,30 @1c4 @2c4\nSCCA ?XU7 ?XT1 @0 v8 o4 c%8 !\n";
         bool Snare(List<NativeChipWrite> w)=>w.Any(x=>x.Chip==NativeChip.Opna1&&x.Port==0&&x.Address==0x10&&(x.Value&0x82)==0x02);
         check(Snare(Render(wave+drums)),"The rhythm snare did not play beside SCC.");
         check(!Snare(Render("#OPNA1RhythmMute S\n"+wave+drums)),"#OPNA1RhythmMute was ignored beside SCC.");
-        Console.WriteLine("PASS mixed OPNA tags: #CarrierCorrection and #OPNA1RhythmMute beside SCC/MSX-MUSIC");
+        Console.WriteLine("PASS mixed OPNA tags: #CarrierCorrection and #OPNA1RhythmMute beside SCC/MSX-MUSIC, header tags in msPb0102");
     }
 }
