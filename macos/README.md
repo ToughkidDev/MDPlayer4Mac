@@ -33,6 +33,12 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   `.msd`를 즉석 컴파일하려면 `KINROU4.COM`도 필요함. 두 프로그램은 앱에 포함하지 않음.
   `.m3u` 파일은 재생목록으로 열어 상대 경로의 지원 음악 파일을 현재 재생목록에 펼쳐 넣음.
 
+## v0.2.7
+
+- OPNA/MSX 혼합곡에서 `#CarrierCorrection`과 `#OPNA1RhythmMute` 설정이 누락되던 문제를 수정함.
+- SCC 또는 OPLL과 함께 재생해도 FM 캐리어의 음량 차이와 지정한 OPNA 리듬 뮤트를 보존함.
+- [변경 사항](release-notes/v0.2.7.md)을 참고하면 됨.
+
 ## v0.2.6
 
 - [PR #1](https://github.com/ToughkidDev/MDPlayer4Mac/pull/1)의 압축 행 문법과 OPLL 재생 수정을 적용함.
