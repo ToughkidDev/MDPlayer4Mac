@@ -134,6 +134,23 @@ Check(MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes("MSXA0B0 c\n#SSGExtend On\n
 byte[] framed=new byte[]{0xef,0xbb,0xbf}.Concat(Encoding.ASCII.GetBytes("MSXD @0 v15 o4 c\n\x1aMSXK invalid\n")).ToArray();
 byte[] framedOutput=MucomDotNET.CompileMuc(framed,Path.Combine(fixtures,"framed.muc"),out string framedError);
 Check(framedOutput!=null && MsxMubProfile.HasMagic(framedOutput),"BOM/CP-M EOF lost MSX source profile: "+framedError);
+// MUC sources are limited to 60,000 bytes (file size); one byte more is rejected with the size in the message.
+byte[] SizedMuc(int size)
+{
+    const string body="D @0 v12 o4 c4\n";
+    var text=new StringBuilder();
+    while(text.Length+body.Length+100<=size)text.Append(';').Append('x',98).Append('\n');
+    int rest=size-body.Length-text.Length;
+    if(rest==1)text.Append('\n');else if(rest>=2)text.Append(';').Append('x',rest-2).Append('\n');
+    byte[] bytes=Encoding.ASCII.GetBytes(text.Append(body).ToString());
+    Check(bytes.Length==size,"Sized MUC fixture length");
+    return bytes;
+}
+Check(MucomDotNET.CompileMuc(SizedMuc(MucomDotNET.MaxMucSourceBytes),Path.Combine(fixtures,"limit.muc"),out string limitError)!=null,"MUC at the 60,000-byte limit rejected: "+limitError);
+Check(MucomDotNET.CompileMuc(SizedMuc(MucomDotNET.MaxMucSourceBytes+1),Path.Combine(fixtures,"oversize.muc"),out string oversizeError)==null
+    && oversizeError.Contains("60,001") && oversizeError.Contains("60,000"),"MUC over 60,000 bytes accepted or unclear error: "+oversizeError);
+Check(MusicEngine.Load(SizedMuc(MucomDotNET.MaxMucSourceBytes+1),Path.Combine(fixtures,"oversize.muc"))==null
+    && MusicEngine.LastLoadError.Contains("60,000"),"MusicEngine did not report the MUC size limit");
 // Exercise command truncation/unsupported preset through the renderer, beyond directory validation.
 byte[] extended=File.ReadAllBytes(Path.Combine(fixtures,"scc-presets.mub"));
 int waveCommand=-1;

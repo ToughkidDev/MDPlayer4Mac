@@ -1627,6 +1627,16 @@ namespace MDPlayer.UI
             VisualizerHost.Children.Clear();
         }
 
+        // Shows the loader's own reason (e.g. a MUC over the 60,000-byte limit or a compile
+        // error) when it gave one, otherwise the generic unsupported-format message.
+        private static string LoadFailureMessage()
+        {
+            string reason = MusicEngine.LastLoadError;
+            return string.IsNullOrWhiteSpace(reason)
+                ? "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)"
+                : "오류: " + reason.ReplaceLineEndings(" / ");
+        }
+
         private static readonly string[] SupportedMusicExtensions =
         {
             ".vgm", ".vgz", ".xgm", ".xgz", ".sid", ".mnd", ".mgs", ".zms", ".zmd", ".mdx",
@@ -2264,7 +2274,7 @@ namespace MDPlayer.UI
                 if (session == null || stopRequested)
                 {
                     if (!stopRequested)
-                        StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
+                        StatusLabel.Text = LoadFailureMessage();
                     playbackEnded = true;
                     return;
                 }
@@ -2482,7 +2492,7 @@ namespace MDPlayer.UI
 
             if (session == null)
             {
-                StatusLabel.Text = "오류: 이 파일은 재생할 수 없습니다 (지원하지 않는 포맷/칩, MusicEngine.cs 참고)";
+                StatusLabel.Text = LoadFailureMessage();
                 return;
             }
 

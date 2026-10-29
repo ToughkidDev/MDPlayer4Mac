@@ -99,8 +99,13 @@ namespace MDPlayer
         // format detection (see DetectFormat) - pass the original file name/path if you have
         // one; it's fine to pass null if all you have is bytes (magic-byte detection still
         // covers VGM/VGZ/XGM/XGM2/SID/HES/NSF/S98/ZGM).
+        // Why the most recent Load() returned null, when a loader can say (currently MUC
+        // compile errors such as the 60,000-byte source limit); empty otherwise.
+        public static string LastLoadError { get; private set; } = string.Empty;
+
         public static MusicEngineSession Load(byte[] buf, string fileNameHint = null, uint samplingBuffer = 2048)
         {
+            LastLoadError = string.Empty;
             if (buf == null || buf.Length < 4) return null;
 
             EnmFileFormat format = DetectFormat(buf, fileNameHint);
@@ -312,7 +317,8 @@ namespace MDPlayer
         // retain that five-target layout here, including the optional second OPNA/OPNB and OPM.
         private static MusicEngineSession LoadMuc(byte[] buf, uint samplingBuffer, string sourcePath)
         {
-            byte[] compiledMub = Driver.MUCOM.MucomDotNET.CompileMuc(buf, sourcePath, out _);
+            byte[] compiledMub = Driver.MUCOM.MucomDotNET.CompileMuc(buf, sourcePath, out string error);
+            if (compiledMub == null) LastLoadError = error;
             return compiledMub == null
                 ? null
                 : LoadMub(compiledMub, samplingBuffer, sourcePath, EnmFileFormat.MUC);

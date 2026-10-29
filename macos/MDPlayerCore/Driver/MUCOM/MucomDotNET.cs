@@ -148,9 +148,20 @@ namespace MDPlayer.Driver.MUCOM
         // Matches the Windows player's MUC path: compile in memory, then feed the resulting
         // MUB bytes to this same driver.  The companion-file callback resolves relative
         // #voice/#pcm/include paths inside the selected source file's folder.
+        // MUCOM88 MUC sources are limited to 60,000 bytes; larger files do not fit the
+        // format and are rejected rather than compiled. The limit applies to the file as
+        // given (before the optional BOM/EOF framing below is removed). MUB files are not
+        // affected.
+        public const int MaxMucSourceBytes = 60_000;
+
         public static byte[] CompileMuc(byte[] source, string sourcePath, out string error)
         {
             error = string.Empty;
+            if (source != null && source.Length > MaxMucSourceBytes)
+            {
+                error = $"MUC source is {source.Length:N0} bytes; MUC files larger than {MaxMucSourceBytes:N0} bytes do not fit the MUCOM88 format and are rejected.";
+                return null;
+            }
             // Work accepts an optional UTF-8 BOM and the traditional CP/M EOF.
             // Strip only these framing bytes; Shift-JIS/MML bytes stay unchanged.
             if(source != null)
