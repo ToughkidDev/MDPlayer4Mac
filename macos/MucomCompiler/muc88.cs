@@ -2009,6 +2009,7 @@ namespace mucomDotNET.Compiler
 
             int n = mucInfo.bufLoopStack.Get(loopStackPtr)
                 + mucInfo.bufLoopStack.Get(loopStackPtr + 1) * 0x100;
+            n = LoopStackAdr(n);
             adr -= n;
 
             mucInfo.bufDst.Set(n, new MmlDatum((byte)adr));// RSKIP JP ADR
@@ -2016,6 +2017,7 @@ namespace mucomDotNET.Compiler
 
             int m = mucInfo.bufLoopStack.Get(loopStackPtr + 2)
                 + mucInfo.bufLoopStack.Get(loopStackPtr + 3) * 0x100;// HL ﾊ LOOP ｦ ｶｲｼｼﾀ ｱﾄﾞﾚｽ
+            m = LoopStackAdr(m);
 
             int loopRetOfs = work.MDATA - m;//LOOP RET ADR OFFSET
             mucInfo.bufDst.Set(work.MDATA, new MmlDatum((byte)loopRetOfs));
@@ -2026,6 +2028,7 @@ namespace mucomDotNET.Compiler
             m += mucInfo.bufLoopStack.Get(loopStackPtr + 5) * 0x100;
             if (m != 0)
             {
+                m = LoopStackAdr(m);
                 int DE = work.MDATA - 4;
                 DE -= m;// loopStackPtr + 4;//DE as OFFSET
                 mucInfo.bufDst.Set(m, new MmlDatum((byte)DE));// loopStackPtr + 4, (byte)DE);
@@ -2050,6 +2053,16 @@ namespace mucomDotNET.Compiler
             work.tcnt[work.ChipIndex][work.CHIP_CH][work.pageNow] = backupAdr;
 
             return EnmFCOMPNextRtn.fcomp1;
+        }
+
+        // The loop stack keeps addresses as 16 bits, but MDATA (the output position over all
+        // parts) can pass 0xFFFF when the song data is larger than 64 KB.  A loop never spans
+        // more than one part (< 64 KB), so the full address is the one just below MDATA.
+        private int LoopStackAdr(int adr16)
+        {
+            int full = (work.MDATA & ~0xFFFF) | (adr16 & 0xFFFF);
+            if (full > work.MDATA) full -= 0x10000;
+            return full;
         }
 
         // **	LOOP START	**

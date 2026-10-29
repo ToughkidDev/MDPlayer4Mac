@@ -622,7 +622,7 @@ namespace mucomDotNET.Driver
             work.soundWork.CHDAT[chipIndex][ch].PGDAT[0].dataAddressWork
                 = (uint)0;//ix 2,3
             work.soundWork.CHDAT[chipIndex][ch].PGDAT[0].dataTopAddress
-                = (int)(lpPtr != -1 ? (lpPtr - stPtr) : -1);//ix 4,5
+                = (int)(lpPtr != -1 ? (lpPtr - stPtr + (lpPtr < stPtr ? 0x10000 : 0)) : -1);//ix 4,5 (loop point past a 64 KB wrap)
 
 
             work.soundWork.C2NUM++;
