@@ -1,0 +1,75 @@
+name: Deploy MDPlayer4Web
+
+# Publishes MDPlayer4Web (the browser build of the playback engine) to GitHub Pages at
+# https://toughkiddev.github.io/MDPlayer4Mac/MDPlayer4Web/ whenever the web app or the
+# engine it is built from changes on the default branch.
+# Requires Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+on:
+  push:
+    branches:
+      - MDPlayer4Mac
+    paths:
+      - "MDPlayer4Web/**"
+      - "macos/**"
+      - ".github/workflows/web-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish MDPlayer4Web
+        run: dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/MDPlayer4Web
+          cp -R MDPlayer4Web/publish/wwwroot/. _site/MDPlayer4Web/
+          # Pages compresses responses itself and never serves the precompressed copies.
+          find _site -type f \( -name '*.br' -o -name '*.gz' \) -delete
+          touch _site/.nojekyll
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=MDPlayer4Web/">
+          <title>MDPlayer4Mac</title>
+          <a href="MDPlayer4Web/">MDPlayer4Web</a>
+          EOF
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}MDPlayer4Web/
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -3,6 +3,8 @@
 MDPlayer4Mac의 재생 엔진(MDPlayerCore)을 .NET WebAssembly로 빌드해 브라우저에서 실행하는 웹 버전입니다.
 설치 없이 브라우저에서 칩 음악 파일을 열어 재생할 수 있습니다. 파일은 서버로 올라가지 않고 브라우저 안에서만 처리됩니다.
 
+**바로 사용하기: https://toughkiddev.github.io/MDPlayer4Mac/MDPlayer4Web/**
+
 ## 구조
 
 | 파일 | 역할 |
@@ -26,6 +28,9 @@ dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publi
 ```
 
 `MDPlayer4Web/publish/wwwroot`가 사이트 루트입니다. 정적 파일만 있으므로 아무 웹 서버로 배포할 수 있습니다.
+
+`MDPlayer4Mac` 브랜치에 `MDPlayer4Web/` 또는 `macos/` 변경이 푸시되면 `.github/workflows/web-pages.yml`이 같은 방식으로 빌드해 GitHub Pages에 자동 배포합니다
+(저장소 Settings → Pages → Source를 "GitHub Actions"로 두어야 함). Actions 탭에서 수동 실행도 됩니다.
 
 ```sh
 cd MDPlayer4Web/publish/wwwroot
