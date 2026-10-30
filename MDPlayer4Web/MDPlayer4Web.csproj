@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!--
+    Browser build of MDPlayer4Mac. The same playback engine (macos/MDPlayerCore and the
+    drivers it links) runs on .NET WebAssembly inside a Web Worker; wwwroot/ holds the
+    HTML/JS front end and the AudioWorklet that plays the rendered PCM.
+
+    Build:  dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
+    Serve:  the publish/wwwroot folder as static files (see readme.md).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>MDPlayer4Web</AssemblyName>
+    <RootNamespace>MDPlayer.Web</RootNamespace>
+    <Version>0.1.0</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Z80dotNet targets .NET Framework (same warning as the macOS build); the macOS-only
+         AudioToolbox paths in MDPlayerCore are never reached in the browser. -->
+    <NoWarn>$(NoWarn);NU1701;CA1416</NoWarn>
+    <!-- No culture data is needed; Shift-JIS titles and MML use the code-page encodings,
+         which do not depend on ICU. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\macos\MDPlayerCore\MDPlayerCore.csproj" />
+  </ItemGroup>
+
+  <!-- The same YM2608 rhythm samples the macOS app ships (MDPlayerUI/Assets/Rhythm),
+       served as rhythm/*.WAV and copied into the engine's application folder at start-up. -->
+  <ItemGroup>
+    <Content Include="..\macos\MDPlayerUI\Assets\Rhythm\*.WAV"
+             Link="wwwroot\rhythm\%(Filename)%(Extension)"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
