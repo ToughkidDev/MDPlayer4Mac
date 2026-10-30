@@ -14,9 +14,6 @@ namespace MDPlayer.UI
             // line becomes a console.log call that stalls playback.
             Console.SetOut(TextWriter.Null);
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            // Setting.Load locates the app folder from the executable path, which a browser
-            // build does not have (Assembly.Location is empty).
-            MDPlayer.Application.ExecutablePath = Path.Combine(Common.GetApplicationFolder(), "MDPlayer4Mac");
             InstallRhythmSamples();
             WebPersistence.Start();
 

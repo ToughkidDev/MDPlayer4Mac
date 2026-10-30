@@ -516,7 +516,9 @@ namespace MDPlayer
         {
             try
             {
-                string appPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                // On macOS/Linux this is ~/.config, which .NET reports as "" unless it exists;
+                // Create makes sure settings never fall back to the current directory.
+                string appPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create);
                 string fullPath;
                 fullPath = System.IO.Path.Combine(appPath, "KumaApp", AssemblyTitle);
                 if (!System.IO.Directory.Exists(fullPath)) System.IO.Directory.CreateDirectory(fullPath);

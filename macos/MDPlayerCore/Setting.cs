@@ -6711,10 +6711,11 @@ namespace MDPlayer
             try
             {
                 string fn = Resources.cntSettingFileName;
-                if (File.Exists(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), fn)))
+                string appDir = Path.GetDirectoryName(Application.ExecutablePath);
+                if (!string.IsNullOrEmpty(appDir) && File.Exists(Path.Combine(appDir, fn)))
                 {
                     //アプリケーションと同じフォルダに設定ファイルがあるならそちらを使用する
-                    Common.settingFilePath = Path.GetDirectoryName(Application.ExecutablePath);
+                    Common.settingFilePath = appDir;
                 }
                 else
                 {

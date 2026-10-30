@@ -220,8 +220,17 @@ namespace MDPlayer
     // plugin files) is provided. No real Application/message-loop semantics here.
     public static class Application
     {
-        public static string ExecutablePath { get; set; } =
-            System.Reflection.Assembly.GetExecutingAssembly().Location;
+        public static string ExecutablePath { get; set; } = DefaultExecutablePath();
+
+        // Assembly.Location is empty in a single-file publish (the macOS release app) and in
+        // the browser build; use the process's own executable, or the app folder, instead.
+        private static string DefaultExecutablePath()
+        {
+            string location = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            if (!string.IsNullOrEmpty(location)) return location;
+            return Environment.ProcessPath
+                ?? System.IO.Path.Combine(AppContext.BaseDirectory, "MDPlayer4Mac");
+        }
     }
 
     // TODO(macOS port): WinForms MessageBox shim. There is no UI layer yet in this portable
