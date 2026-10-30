@@ -105,15 +105,6 @@ namespace MDPlayer.UI
             }
         }
 
-        // The macOS player redraws its channel views every 33 ms (~30 fps). The page redraws
-        // at the browser's 60 fps instead, the original Windows MDPlayer's default rate.
-        private static readonly TimeSpan WebFrameInterval = TimeSpan.FromMilliseconds(16);
-
-        static MainWindow()
-        {
-            VisualizerInterval = WebFrameInterval;
-        }
-
         // The shared Open button asks Avalonia's storage provider for files, which in a
         // browser are path-less handles. Swap in a button with the same sprite, tooltip and
         // shortcut that goes through the page's own chooser instead (see OnOpenClick).
@@ -125,8 +116,6 @@ namespace MDPlayer.UI
             openButton = webOpenButton;
             dashboardKeyBindings[Avalonia.Input.Key.A] = webOpenButton;
             UpdateTransportButtons();
-            // Dashboard clocks, timeline and lyrics follow the same frame rate.
-            informationTimer.Interval = WebFrameInterval;
         }
 
         // OnOpenClick
