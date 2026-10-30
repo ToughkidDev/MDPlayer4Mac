@@ -1,6 +1,6 @@
 name: Deploy MDPlayer4Web
 
-# Publishes MDPlayer4Web (the browser build of the playback engine) to GitHub Pages at
+# Publishes MDPlayer4Web (the MDPlayer4Mac player built for the browser) to GitHub Pages at
 # https://toughkiddev.github.io/MDPlayer4Mac/MDPlayer4Web/ whenever the web app or the
 # engine it is built from changes on the default branch.
 # Requires Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
@@ -13,6 +13,10 @@ on:
       - "macos/**"
       - ".github/workflows/web-pages.yml"
   workflow_dispatch:
+
+env:
+  AVALONIA_TELEMETRY_OPTOUT: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 permissions:
   contents: read
@@ -36,6 +40,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+
+      # Avalonia.Browser links SkiaSharp's native WebAssembly library into the runtime.
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
 
       - name: Publish MDPlayer4Web
         run: dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish

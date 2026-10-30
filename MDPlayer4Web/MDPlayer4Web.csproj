@@ -1,41 +1,79 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
 
   <!--
-    Browser build of MDPlayer4Mac. The same playback engine (macos/MDPlayerCore and the
-    drivers it links) runs on .NET WebAssembly inside a Web Worker; wwwroot/ holds the
-    HTML/JS front end and the AudioWorklet that plays the rendered PCM.
+    MDPlayer4Web: the MDPlayer4Mac player running in a browser.
 
-    Build:  dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
-    Serve:  the publish/wwwroot folder as static files (see readme.md).
+    The window, dashboard, channel visualizers, mixer and settings dialog are the macOS
+    app's own Avalonia sources (macos/MDPlayerUI), compiled here for Avalonia.Browser.
+    Only the pieces a browser cannot provide are replaced by files in Web/:
+      * Window             - the browser has no native windows (Web/Window.cs)
+      * CoreAudioQueue     - audio goes to a Web Audio AudioWorklet (Web/CoreAudioQueue.cs)
+      * ForceTouchMonitor  - AppKit-only (Web/ForceTouchMonitor.cs)
+      * file pickers       - picked files are placed in the in-memory file system so the
+                             drivers find companion files beside the song (Web/WebStorage.cs)
+
+    Build (needs the wasm-tools workload for SkiaSharp's native library):
+      dotnet workload install wasm-tools
+      dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
   -->
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
-    <AssemblyName>MDPlayer4Web</AssemblyName>
-    <RootNamespace>MDPlayer.Web</RootNamespace>
-    <Version>0.1.0</Version>
+    <!-- avares://MDPlayer4Mac/... URIs in the shared sources resolve against this name. -->
+    <AssemblyName>MDPlayer4Mac</AssemblyName>
+    <RootNamespace>MDPlayer.UI</RootNamespace>
+    <Version>0.2.9</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Z80dotNet targets .NET Framework (same warning as the macOS build); the macOS-only
-         AudioToolbox paths in MDPlayerCore are never reached in the browser. -->
-    <NoWarn>$(NoWarn);NU1701;CA1416</NoWarn>
-    <!-- No culture data is needed; Shift-JIS titles and MML use the code-page encodings,
-         which do not depend on ICU. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <WasmBuildNative>true</WasmBuildNative>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <NoWarn>$(NoWarn);NU1701;CA1416;IL2026;IL2104;IL3050</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\macos\MDPlayerCore\MDPlayerCore.csproj" />
+    <PackageReference Include="Avalonia.Browser" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
   </ItemGroup>
 
-  <!-- The same YM2608 rhythm samples the macOS app ships (MDPlayerUI/Assets/Rhythm),
-       served as rhythm/*.WAV and copied into the engine's application folder at start-up. -->
   <ItemGroup>
-    <Content Include="..\macos\MDPlayerUI\Assets\Rhythm\*.WAV"
-             Link="wwwroot\rhythm\%(Filename)%(Extension)"
-             CopyToPublishDirectory="PreserveNewest" />
+    <ProjectReference Include="..\macos\MDPlayerCore\MDPlayerCore.csproj" />
+    <Reference Include="musicDriverInterface">
+      <HintPath>..\macos\ThirdParty\mucomDotNET\Common_NET5\musicDriverInterface.dll</HintPath>
+    </Reference>
+    <!-- Setting is read and written with XmlSerializer; keep the engine untrimmed. -->
+    <TrimmerRootAssembly Include="MDPlayerCore" />
   </ItemGroup>
+
+  <!-- The macOS player's UI, shared verbatim. -->
+  <PropertyGroup>
+    <MacUI>..\macos\MDPlayerUI\</MacUI>
+    <WebMainWindowXaml>$(BaseIntermediateOutputPath)web\MainWindow.axaml</WebMainWindowXaml>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MacUI)MainWindow.axaml.cs" Link="MacUI\MainWindow.axaml.cs" />
+    <Compile Include="$(MacUI)SettingsWindow.cs" Link="MacUI\SettingsWindow.cs" />
+    <Compile Include="$(MacUI)Visualizer\*.cs" Link="MacUI\Visualizer\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="$(MacUI)Assets\**" Exclude="$(MacUI)Assets\Drivers\**;$(MacUI)Assets\Rhythm\**;$(MacUI)Assets\*.icns;$(MacUI)Assets\**\README.md"
+                      Link="Assets\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="Assets\Fonts\*.otf" />
+    <!-- FMGen loads the YM2608 rhythm samples from the application folder. -->
+    <EmbeddedResource Include="$(MacUI)Assets\Rhythm\*.WAV" LogicalName="Rhythm.%(Filename)%(Extension)" />
+    <!-- MainWindow.axaml derives from Avalonia's Window. The browser has no windows, so the
+         copy compiled here roots it at the in-page MDPlayer.UI.Window from Web/Window.cs. -->
+    <AvaloniaXaml Include="$(WebMainWindowXaml)" Link="MacUI\MainWindow.axaml" />
+  </ItemGroup>
+
+  <Target Name="GenerateWebMainWindowXaml" BeforeTargets="BeforeBuild;CoreCompile;PrepareForBuild"
+          Inputs="$(MacUI)MainWindow.axaml" Outputs="$(WebMainWindowXaml)">
+    <PropertyGroup>
+      <MacMainWindowXaml>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\$(MacUI)MainWindow.axaml'))</MacMainWindowXaml>
+      <WebXaml>$(MacMainWindowXaml.Replace('&lt;Window xmlns=', '&lt;web:Window xmlns:web="clr-namespace:MDPlayer.UI" xmlns=').Replace('&lt;/Window&gt;', '&lt;/web:Window&gt;'))</WebXaml>
+    </PropertyGroup>
+    <MakeDir Directories="$(BaseIntermediateOutputPath)web" />
+    <WriteLinesToFile File="$(WebMainWindowXaml)" Lines="$(WebXaml)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
 
 </Project>

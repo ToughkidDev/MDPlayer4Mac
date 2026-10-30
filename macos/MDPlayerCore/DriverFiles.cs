@@ -23,6 +23,9 @@ namespace MDPlayer
                 if (OperatingSystem.IsMacOS() && !string.IsNullOrEmpty(home))
                     return Path.Combine(home, "Library", "Application Support", "MDPlayer4Mac", DriversFolderName);
                 string data = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                // The browser build (MDPlayer4Web) reports no special folders; it sets HOME.
+                if (string.IsNullOrEmpty(data) && Environment.GetEnvironmentVariable("HOME") is { Length: > 0 } homeVariable)
+                    data = Path.Combine(homeVariable, ".config");
                 return string.IsNullOrEmpty(data) ? null : Path.Combine(data, "MDPlayer4Mac", DriversFolderName);
             }
         }

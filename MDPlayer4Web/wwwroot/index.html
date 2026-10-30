@@ -5,63 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MDPlayer4Web</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #e6e6e6; }
+    @media (prefers-color-scheme: dark) { html, body { background: #1f1f1f; } }
+    #out { position: fixed; inset: 0; }
+    /* Avalonia's software renderer leaves pixels of opaque bitmaps transparent; the
+       native renderers show them black (the dashboard and channel views' background). */
+    #out canvas { background: #000; }
+    #splash {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #888;
+    }
+  </style>
 </head>
 <body>
-  <header class="top">
-    <h1>MDPlayer4Web</h1>
-    <span class="subtitle">MDPlayer4Mac 재생 엔진을 브라우저에서 실행</span>
-    <span id="engineState" class="pill">엔진 준비 중…</span>
-  </header>
-
-  <main>
-    <section class="now" aria-label="현재 곡">
-      <div class="meta">
-        <div id="title" class="title">파일을 열거나 여기로 끌어다 놓으세요</div>
-        <div id="subline" class="subline"></div>
-        <div id="chips" class="chips"></div>
-      </div>
-      <canvas id="scope" width="640" height="120" aria-hidden="true"></canvas>
-      <div class="timeline">
-        <span id="time">0:00</span>
-        <div class="bar"><div id="progress"></div></div>
-        <span id="total">--:--</span>
-      </div>
-      <div class="transport">
-        <button id="prev" title="이전 곡">⏮</button>
-        <button id="play" class="primary" title="재생 / 일시정지 (Space)">▶</button>
-        <button id="stop" title="정지">■</button>
-        <button id="next" title="다음 곡">⏭</button>
-        <button id="loop" title="반복 / 랜덤">반복 끔</button>
-        <label class="volume">음량 <input id="volume" type="range" min="0" max="100" value="80"></label>
-      </div>
-      <div id="status" class="status" role="status"></div>
-    </section>
-
-    <section class="list" aria-label="재생 목록">
-      <div class="toolbar">
-        <label class="button">파일 열기<input id="pickFiles" type="file" multiple hidden></label>
-        <label class="button">폴더 열기<input id="pickFolder" type="file" webkitdirectory multiple hidden></label>
-        <button id="clear">목록 비우기</button>
-      </div>
-      <ol id="playlist" class="playlist"></ol>
-      <p class="hint">PCM·PDX·음색·리듬 WAV처럼 곡이 쓰는 파일은 곡과 함께 고르거나 폴더째 열어야 합니다.</p>
-    </section>
-
-    <section class="drivers" aria-label="드라이버 파일">
-      <h2>드라이버 파일</h2>
-      <p class="hint">MGSDRV.COM, KINROU5.DRV, NDP.BIN, FMP.COM, ZMUSIC.X, yrw801.rom 같은 원본 드라이버·ROM이 필요한 형식에 씁니다.
-        추가한 파일은 이 브라우저에만 저장되며 서버로 보내지 않습니다.</p>
-      <div class="toolbar">
-        <label class="button">드라이버 파일 추가<input id="pickDrivers" type="file" multiple hidden></label>
-        <button id="clearDrivers">모두 지우기</button>
-      </div>
-      <ul id="driverList" class="driver-list"></ul>
-    </section>
-  </main>
-
-  <div id="dropOverlay" class="drop-overlay" hidden>여기에 놓으면 재생 목록에 추가합니다</div>
-  <footer>MDPlayer4Mac 프로젝트의 일부 · GPLv3 · 원본 MDPlayer © kuma4649</footer>
-  <script type="module" src="app.js"></script>
+  <div id="out"><div id="splash">MDPlayer4Web 불러오는 중…</div></div>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
