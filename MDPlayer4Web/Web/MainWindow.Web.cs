@@ -116,6 +116,8 @@ namespace MDPlayer.UI
             openButton = webOpenButton;
             dashboardKeyBindings[Avalonia.Input.Key.A] = webOpenButton;
             UpdateTransportButtons();
+            // In a page, dropping files or folders onto the player is the main way in.
+            FileLabel.Text = "폴더나 파일들을 드래그해서 플레이어에 드롭해 주세요.";
         }
 
         // OnOpenClick
