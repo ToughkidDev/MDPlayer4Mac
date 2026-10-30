@@ -28,6 +28,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <WasmBuildNative>true</WasmBuildNative>
+    <!-- Publish compiles the .NET code ahead of time to WebAssembly. The interpreter
+         otherwise spends about three times the CPU on the emulators and channel views,
+         which the page cannot afford on its single UI thread. Costs a ~20-minute
+         publish and a larger download. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
     <InvariantGlobalization>true</InvariantGlobalization>
     <NoWarn>$(NoWarn);NU1701;CA1416;IL2026;IL2104;IL3050</NoWarn>
   </PropertyGroup>

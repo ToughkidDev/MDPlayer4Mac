@@ -32,6 +32,8 @@ dotnet workload install wasm-tools
 dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
 ```
 
+빠른 실행을 위해 .NET 코드를 WebAssembly로 미리 컴파일(AOT)하므로 publish에 20분가량 걸립니다.
+
 `MDPlayer4Web/publish/wwwroot`가 사이트 루트입니다. 정적 파일만 있으므로 아무 웹 서버로 배포할 수 있습니다.
 
 ```sh
@@ -64,7 +66,7 @@ Mac 버전과 같습니다.
 - MIDI/RCP/RCS는 macOS의 시스템 신시사이저(AudioToolbox)를 쓰므로 웹 버전에서는 재생할 수 없습니다.
 - 설정 창의 "Open Drivers Folder"(Finder 열기)와 "Choose…" 버튼은 브라우저에서 동작하지 않습니다. 드라이버 파일은 페이지에 끌어다 놓으세요.
 - 엔진과 화면이 브라우저의 한 스레드에서 함께 돌기 때문에, 곡을 불러올 때나 무거운 곡을 느린 기기에서 재생할 때 소리가 잠깐 끊길 수 있습니다(약 0.5초 분량을 미리 버퍼링합니다).
-- 처음 열 때 엔진·화면·글꼴 파일을 압축 기준 약 15–20 MB 내려받습니다.
+- 처음 열 때 엔진·화면·글꼴 파일을 압축 기준 약 25–30 MB 내려받습니다(다음부터는 브라우저 캐시 사용).
 - Mac에서 고정폭 글꼴(Menlo)로 표시되는 설정 창의 드라이버 목록은 웹에서는 일반 글꼴로 표시됩니다.
 
 ## 라이선스
