@@ -30,7 +30,18 @@ internal static class MsxMucCompiler
         string ascii=Encoding.Latin1.GetString(source);
         return NativeLine.IsMatch(ascii) || SccLine.IsMatch(ascii) || Extended(ascii);
     }
+    // Output follows the MucoMSX toolchain (muc2mub), the reference for MUC output:
+    // MucoMSX compiles a score that mixes OPNA rows with MSX/SCC rows in its wide
+    // format. Every part of the directory (22, or 27 with SCC) keeps all ten pages,
+    // SCC pages start with F0 00 (empty ones too), part A starts with the last tempo
+    // compiled (FA 26 n), only the first OPNA refers to instrument 0 and PCM 0, and
+    // the tag block is MucoMSX's (MucoMsxMubWriter).
     public static byte[] Compile(byte[] source,string path,Func<string,Stream> sibling)
+    {
+        int[] lastTempo={0xe1};
+        return mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(()=>CompileCore(source,path,sibling,lastTempo),lastTempo);
+    }
+    private static byte[] CompileCore(byte[] source,string path,Func<string,Stream> sibling,int[] lastTempo)
     {
         string ascii=Encoding.Latin1.GetString(source);
         bool native=NativeLine.IsMatch(ascii), extended=Extended(ascii);
@@ -96,13 +107,13 @@ internal static class MsxMucCompiler
                 // Work initializes the D prototype's envelope independently of @wave.
                 foreach(var page in dedicated[ch])
                 {
-                    if(page.length<=1)continue;
                     page.data=new[]{new MmlDatum(0xf0),new MmlDatum(0)}.Concat(page.data).ToArray();
                     page.length+=2;if(page.loopPoint>=0)page.loopPoint+=2;
                 }
             }
         }
-        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated,header.tagdata,header.tagsize);
+        return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated,
+            MDPlayer.MucoNative.MucoMsxMubWriter.ExtendedTags(source),(byte)lastTempo[0]);
     }
     private static readonly Regex SccLine=new(@"(?m)^SCC((?:[A-E][0-9]?)+)(?=[ \t])",RegexOptions.CultureInvariant);
     private static string ExtractScc(string source,Func<string,Stream> sibling,Dictionary<int,byte[]> waves,List<string>[] tracks)
@@ -215,7 +226,7 @@ internal static class MsxMucCompiler
         }
         return string.Join("\r\n",output);
     }
-    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps,List<MupbInfo.PageDefine>[] dedicated=null,uint tagOffsetIn=0,uint tagSizeIn=0)
+    private static byte[] Pack(MupbInfo input,MmlDatum[] output,byte caps,List<MupbInfo.PageDefine>[] dedicated,byte[] tags,byte tempo)
     {
         // Canonical MUCOMSX five-descriptor directory. Copy streams unchanged so repeat
         // distances/loop offsets remain valid. The driver handles upstream SSG opcodes.
@@ -243,24 +254,25 @@ internal static class MsxMucCompiler
         }
         if(inst.Count==0)inst.Add(new byte[]{0});
         for(int p=0;p<11*((caps&1)!=0?2:1);p++)
-            if(parts[p].Count==0)parts[p].Add(new(){length=1,loopPoint=-1,data=new[]{new MmlDatum(0)}});
-        if(dedicated!=null)for(int ch=0;ch<5;ch++)parts[22+ch].AddRange(dedicated[ch]);
-        // Upstream allocates ten empty pages even for a single-page score.
-        // Keep authored page numbers, but trim only unused trailing pages so
-        // their 00 terminators cannot consume the music budget.
-        for(int part=0;part<parts.Length;part++)
+            while(parts[p].Count<10)parts[p].Add(new(){length=1,loopPoint=-1,data=new[]{new MmlDatum(0)}});
+        if(dedicated!=null)for(int ch=0;ch<5;ch++)
         {
-            int minimum=part<22?1:0;
-            while(parts[part].Count>minimum)
-            {
-                var page=parts[part][^1];
-                if(page.length!=1 || page.loopPoint!=-1 || page.data[0].dat!=0)break;
-                parts[part].RemoveAt(parts[part].Count-1);
-            }
+            parts[22+ch].AddRange(dedicated[ch]);
+            // An unused SCC channel still has ten empty pages (F0 00, then end).
+            while(parts[22+ch].Count<10)
+                parts[22+ch].Add(new(){length=3,loopPoint=-1,data=new[]{new MmlDatum(0xf0),new MmlDatum(0),new MmlDatum(0)}});
+        }
+        // MucoMSX keeps all ten pages of every part, as the upstream compiler allocates them.
+        // Part A starts with the last tempo compiled; replace the Timer-B 225 prime.
+        var head=parts[0][0];
+        if(head.length>=3 && head.data[0].dat==0xfa && head.data[1].dat==0x26)head.data[2]=new MmlDatum(tempo);
+        else
+        {
+            head.data=new[]{new MmlDatum(0xfa),new MmlDatum(0x26),new MmlDatum(tempo)}.Concat(head.data).ToArray();
+            head.length+=3;if(head.loopPoint>=0)head.loopPoint+=3;
         }
         byte[] pcm=Array.Empty<byte>();
         if(input.chips[0].pcmNumber.Length>0)pcm=input.pcms[input.chips[0].pcmNumber[0]].data;
-        byte[] tags=output.Skip((int)tagOffsetIn).Take((int)tagSizeIn).Select(x=>(byte)x.dat).ToArray();
         writer.Write(Encoding.ASCII.GetBytes((caps&4)!=0?"msPb0102":(caps&2)!=0?"msPb0101":"msPb0100"));
         writer.Write((byte)5);writer.Write((byte)5);writer.Write((ushort)55);writer.Write((ushort)parts.Sum(p=>p.Count));
         writer.Write((ushort)inst.Count);writer.Write((ushort)1);writer.Write(0u);writer.Write((uint)tags.Length);
@@ -269,7 +281,7 @@ internal static class MsxMucCompiler
         {
             writer.Write((ushort)c);writer.Write(c<2?72u:c<4?76u:48u);writer.Write(c<2?7_987_200u:c<4?8_000_000u:3_579_545u);
             writer.Write(0u);writer.Write(1u);writer.Write(0u);writer.Write((byte)11);
-            writer.Write((byte)(c<2 && instRef[c]>=0?1:0));if(c<2 && instRef[c]>=0)writer.Write((ushort)instRef[c]);
+            writer.Write((byte)(c==0?1:0));if(c==0)writer.Write((ushort)0);   // MucoMSX: instrument 0 on the first OPNA
             writer.Write((byte)(c==0?1:0));if(c==0)writer.Write((ushort)0);
         }
         foreach(var part in parts)writer.Write((byte)part.Count);

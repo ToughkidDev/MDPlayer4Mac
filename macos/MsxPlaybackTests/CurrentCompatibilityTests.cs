@@ -84,7 +84,10 @@ internal static class CurrentCompatibilityTests
    check(raw!=null,rawError);
    check(RhythmWrites(raw,Path.Combine(fixtures,"raw-mask.mub")).SequenceEqual(new[]{63,191}),"Raw rhythm register bypass/key-off changed for mask "+mask);
   }
-  byte[] MusicData(byte[] packet)=>packet.AsSpan(BitConverter.ToInt32(packet,4),BitConverter.ToInt32(packet,8)).ToArray();
+  // A mucomDotNET-mode MUC compiles to muPb (MucoMSX layout); both scores below share
+  // the same header, so the whole container compares the music. MUB8: its DATA block.
+  byte[] MusicData(byte[] packet)=>Encoding.ASCII.GetString(packet,0,4)=="MUB8"
+   ?packet.AsSpan(BitConverter.ToInt32(packet,4),BitConverter.ToInt32(packet,8)).ToArray():packet;
   for(int mask=0;mask<64;mask++)for(int pan=4;pan<=6;pan++)foreach(int? wait in new int?[]{null,1,2,255})
   {
    string tail=wait.HasValue?","+wait.Value:"";

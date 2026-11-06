@@ -28,8 +28,7 @@ public static class NativeMucCompiler
             if(score!=null)return PackedMubContainer.Compile(score,asset,sourcePath);
         }
         if (MsxMucCompiler.IsNativeSource(source)) return MsxMucCompiler.Compile(source, sourcePath, asset);
-        byte[] output = MucomCompileMode.Compile(MucSourceNormalization.NormalizeTrackDeclarationIndentation(source),
-            name => asset(name), out string error);
+        byte[] output = MucomCompileMode.Compile(source, name => asset(name), out string error);
         if (output == null)
             throw new FormatException(string.IsNullOrEmpty(error) ? "MUCOM88 compilation failed." : error);
         return output;

@@ -20,6 +20,19 @@ namespace mucomDotNET.Compiler
             try { sccWaves.Value=waves; return compile(); }
             finally { sccWaves.Value=previous; }
         }
+        // MucoMSX extended output (muPb): tempo on chip-0 non-SSG tracks stays FA 26 n
+        // and only SSG tracks use the FF F7 register event, as the MucoMSX compiler does.
+        // The caller converts the resulting one-OPNA MUB8 into MucoMSX's muPb layout.
+        // lastTempo[0] receives the value of the last t/T compiled in the scope (the
+        // classic header tempo, which MucoMSX places at the head of part A).
+        private static readonly System.Threading.AsyncLocal<bool> mucoMsxExtended = new();
+        private static readonly System.Threading.AsyncLocal<int[]> mucoMsxTempo = new();
+        public static T CompileMucoMsxExtended<T>(Func<T> compile, int[] lastTempo = null)
+        {
+            bool previous=mucoMsxExtended.Value; int[] previousTempo=mucoMsxTempo.Value;
+            try { mucoMsxExtended.Value=true; if(lastTempo!=null)mucoMsxTempo.Value=lastTempo; return compile(); }
+            finally { mucoMsxExtended.Value=previous; mucoMsxTempo.Value=previousTempo; }
+        }
         private int lastMergeNoteEnd = -1, lastMergeChip = -1, lastMergePart = -1, lastMergePage = -1;
         private void MarkMergeNote()
         {
@@ -567,7 +580,8 @@ namespace mucomDotNET.Compiler
             //}
             TCLKSUB(clk);// ﾄｰﾀﾙｸﾛｯｸ ｶｻﾝ
 
-            if (work.beforeQuantize != q)
+            // MucoMSX (PTM_EXTENDED) writes FF F9 and the note only; the part's q stays.
+            if (work.beforeQuantize != q && !mucoMsxExtended.Value)
             {
                 msub.MWRITE(new MmlDatum(0xf3), new MmlDatum(q));// COM OF 'q'
                 work.beforeQuantize = q;
@@ -1380,6 +1394,7 @@ namespace mucomDotNET.Compiler
 
         private EnmFCOMPNextRtn TIMEB2(byte n)
         {
+            if (mucoMsxTempo.Value != null) mucoMsxTempo.Value[0] = n;
             if (!mucInfo.isExtendFormat)
             {
                 mucInfo.bufDst.Set(work.DATTBL - 1, new MmlDatum(n));// TIMER_B ﾆ ｱﾜｾﾙ
@@ -1419,6 +1434,12 @@ namespace mucomDotNET.Compiler
 
         private EnmFCOMPNextRtn TIMEB2ex(byte n)
         {
+            if (mucoMsxExtended.Value && work.ChipIndex == 0 && (work.CHIP_CH < 3 || work.CHIP_CH >= 6))
+            {
+                msub.MWRITE(new MmlDatum(0xfa), new MmlDatum(0x26));
+                msub.MWRIT2(new MmlDatum(n));
+                return EnmFCOMPNextRtn.fcomp1;
+            }
             //if (work.ChipIndex == 0)
             //{
             //    if (work.CHIP_CH < 3 || work.CHIP_CH >= 6)
@@ -5748,7 +5769,13 @@ namespace mucomDotNET.Compiler
             // merge ("c&l8c" keeps two notes joined by FD); only the direct count % is
             // transparent. The FD itself was already written by '&'.
             if (work.TIEFG != 0 && act.Method.Name != nameof(SETDCO) && act.Method.Name != nameof(SETTIE))
+            {
+                // MucoMSX resumes after a macro body with its tie flag cleared (MAC_SET
+                // returns through FCOMP1), so a tie still pending at the end of a macro
+                // is dropped without an FD; remove the FD '&' wrote.
+                if (act.Method.Name == nameof(ENDMAC) && CanMergeNote()) work.MDATA--;
                 work.TIEFG = 0;
+            }
 
             return act();
         }

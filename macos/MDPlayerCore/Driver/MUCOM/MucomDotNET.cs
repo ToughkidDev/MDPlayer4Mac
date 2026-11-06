@@ -185,8 +185,7 @@ namespace MDPlayer.Driver.MUCOM
                 // Indentation is kept: like MUCOM88, a track label must start in column 1.
                 if (MsxMucCompiler.IsNativeSource(source))
                     return NativeMucCompiler.Compile(source, name => OpenSiblingFile(sourcePath,name), sourcePath);
-                byte[] normalizedSource = NormalizeTrackDeclarationIndentation(source);
-                return MDPlayer.MucoNative.MucomCompileMode.Compile(normalizedSource,
+                return MDPlayer.MucoNative.MucomCompileMode.Compile(source,
                     requestedName => OpenSiblingFile(sourcePath, requestedName), out error);
             }
             catch (Exception exception)

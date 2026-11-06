@@ -61,20 +61,31 @@ public static class MucomCompileMode
         return true;
     }
 
-    // Compile with the upstream compiler using the MucoMSX mode rule above.
+    // Compile with the upstream compiler using the MucoMSX mode rule above and write
+    // the MUB in MucoMSX's layout (MucoMsxMubWriter). `source` is the score as read
+    // (BOM and CP/M EOF removed); its header text becomes the MUB tag block.
     // Returns null and the compiler's messages when the source does not compile.
     public static byte[] Compile(byte[] source, Func<string, Stream> asset, out string error)
     {
-        if (PrefersClassic(source))
+        byte[] normalized = MucSourceNormalization.NormalizeTrackDeclarationIndentation(source);
+        if (PrefersClassic(normalized))
         {
-            byte[] classic = CompileOnce(ClassicTag.Concat(source).ToArray(), asset, out _);
-            if (classic != null)
+            byte[] classic = CompileOnce(ClassicTag.Concat(normalized).ToArray(), asset, out _);
+            // MucoMSX leaves the classic layout once DATA passes its legacy limit
+            // and recompiles in its extended (wide) format; do the same.
+            if (classic != null && !(MucoMsxMubWriter.IsMub8(classic) && MucoMsxMubWriter.ExceedsLegacyData(classic)))
             {
                 error = string.Empty;
-                return RemoveClassicTag(classic);
+                return MucoMsxMubWriter.IsMub8(classic) ? MucoMsxMubWriter.Classic(classic, source) : RemoveClassicTag(classic);
             }
         }
-        return CompileOnce(source, asset, out error);
+        // Extended (mucomDotNET-mode) scores: MucoMSX always writes them as muPb.
+        // A score the upstream compiler itself writes in its paged format (pages,
+        // parts beyond K) keeps that format.
+        string message = string.Empty;
+        byte[] result = mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(() => CompileOnce(normalized, asset, out message));
+        error = message;
+        return MucoMsxMubWriter.IsMub8(result) ? MucoMsxMubWriter.Extended(result, source) : result;
     }
 
     private static byte[] CompileOnce(byte[] source, Func<string, Stream> asset, out string error)
