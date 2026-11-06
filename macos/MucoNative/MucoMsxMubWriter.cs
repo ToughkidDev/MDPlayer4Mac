@@ -15,16 +15,17 @@ namespace MDPlayer.MucoNative;
 //    part A (FA 26 n) unless part A already starts with it. Voices are instrument 0
 //    and the ADPCM data (possibly empty) is PCM 0.
 //
-// The tag block is the source's header text (the leading '#', ';' and blank rows,
-// with bare LF written as CRLF), for muPb followed by "#driver mucomDotNET", then a
-// NUL and MucoMSX's fixed reproducibility block (no hash is computed).
+// The tag block is the '#' rows of the source's whole header, each ending in CRLF
+// (blank and ';' comment rows are not tags), for muPb followed by
+// "#driver mucomDotNET", then a NUL and MucoMSX's fixed reproducibility block (no
+// hash is computed).
 public static class MucoMsxMubWriter
 {
     private const int LegacyDataLimit = 60000;   // MucoMSX DATA_LIMIT
     private static readonly byte[] Trailer = Encoding.ASCII.GetBytes(
         "\0#mucver 1.7d\r\n#mmlhash 00000000000000000000000000000000\r\n" +
         "#uuid e494355c-68d1-40bb-b836-07b23ae0fb8f\r\n\0\0\0\0");
-    private static readonly byte[] DriverTag = Encoding.ASCII.GetBytes("\r\n#driver mucomDotNET\r\n");
+    private static readonly byte[] DriverTag = Encoding.ASCII.GetBytes("#driver mucomDotNET\r\n");
 
     // Chip descriptors: OPNA x2, OPNB x2, OPM; only the first refers to instrument 0
     // and PCM 0. Each: index16, identify32, clock32, option32, heartbeat32 x2,
@@ -52,26 +53,30 @@ public static class MucoMsxMubWriter
         return chips.ToArray();
     }
 
-    // MucoMSX FIND_HDR_END: rows that are blank, blank-indented ';' comments or
-    // start with '#' in column 1 form the header text.
+    // MucoMSX tag text (TAG_WALK): the initial header is the leading rows that are
+    // blank, ';' comments (after spaces/tabs) or start with '#' in column 1, read to
+    // its end. Only its '#' rows are tags, each written as the row text and CRLF;
+    // blank and comment rows are left out. Rows end at CR, LF or CRLF.
     public static byte[] HeaderText(byte[] source)
     {
+        var text = new List<byte>();
         int position = 0;
         while (position < source.Length)
         {
             int end = position;
-            while (end < source.Length && source[end] != '\n') end++;
+            while (end < source.Length && source[end] != '\n' && source[end] != '\r') end++;
             int first = position;
             while (first < end && (source[first] == ' ' || source[first] == '\t')) first++;
-            bool header = first >= end || source[first] == ';' || source[first] == '\r' || source[position] == '#';
-            if (!header) break;
-            position = Math.Min(end + 1, source.Length);
-        }
-        var text = new List<byte>(position + 64);
-        for (int i = 0; i < position; i++)
-        {
-            if (source[i] == '\n' && (i == 0 || source[i - 1] != '\r')) text.Add((byte)'\r');
-            text.Add(source[i]);
+            if (first < end && source[first] != ';')
+            {
+                if (source[position] != '#') break;
+                text.AddRange(source.AsSpan(position, end - position).ToArray());
+                text.Add((byte)'\r');
+                text.Add((byte)'\n');
+            }
+            position = end;
+            if (position < source.Length && source[position] == '\r') position++;
+            if (position < source.Length && source[position] == '\n') position++;
         }
         return text.ToArray();
     }

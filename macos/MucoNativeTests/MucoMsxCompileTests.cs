@@ -42,14 +42,22 @@ internal static class MucoMsxCompileTests
         int dataSize=(int)BitConverter.ToUInt32(tagged,8),tagOffset=(int)BitConverter.ToUInt32(tagged,12);
         check(tagged[0x50+dataSize-1]==0 && tagOffset==0x50+dataSize,"Classic DATA lacks its final byte.");
         string tagText=Encoding.ASCII.GetString(tagged,tagOffset,(int)BitConverter.ToUInt32(tagged,16));
-        check(tagText.StartsWith("#title layout\r\n; note\r\n\0#mucver 1.7d\r\n",StringComparison.Ordinal),"Classic tag block differs from MucoMSX.");
-        byte[] mupb=Compile("A t200 o4 {cg}4\n");
+        check(tagText.StartsWith("#title layout\r\n\0#mucver 1.7d\r\n",StringComparison.Ordinal),"Classic tag block differs from MucoMSX.");
+        byte[] mupb=Compile("#title x\n\nA t200 o4 {cg}4\n");
         check(Encoding.ASCII.GetString(mupb,0,8)=="muPb0100" && BitConverter.ToUInt16(mupb,12)==11,"Extended score is not an 11-page muPb0100.");
-        check(Encoding.ASCII.GetString(mupb).Contains("#driver mucomDotNET\r\n\0#mucver 1.7d",StringComparison.Ordinal),"muPb tag block differs from MucoMSX.");
+        check(Encoding.ASCII.GetString(mupb).Contains("#title x\r\n#driver mucomDotNET\r\n\0#mucver 1.7d",StringComparison.Ordinal),"muPb tag block differs from MucoMSX.");
+        // Tag text is the '#' rows of the whole header (any length), without blank or
+        // comment rows; an indented '#' row ends the header.
+        string Header(string source)=>Encoding.ASCII.GetString(MucoMsxMubWriter.HeaderText(Encoding.ASCII.GetBytes(source)));
+        check(Header("; c\r\n\r\n#title T\n  ;x\n\t\n#*1{c}\r\nA c\n#memo late\n")=="#title T\r\n#*1{c}\r\n","Blank or comment rows are in the tag text.");
+        check(Header("#title T\n #memo X\n#memo Y\n")=="#title T\r\n","Indented # row did not end the header.");
+        check(Header("#title end")=="#title end\r\n","Header at EOF lacks its CRLF.");
+        string longHeader=string.Concat(Enumerable.Range(0,1100).Select(i=>$"#memo {i:00000} {new string('x',40)}\n"));
+        check(Header(longHeader+"A c\n")==longHeader.Replace("\n","\r\n"),"Long header was cut.");
         // A tie still pending at the end of a macro body is dropped (no FD), as in MucoMSX.
         byte[] Data(byte[] mub)=>mub.AsSpan(BitConverter.ToInt32(mub,4),BitConverter.ToInt32(mub,8)).ToArray();
         check(Data(Compile("#*1{c4&}\nA t200 o4 *1 d4\n")).SequenceEqual(Data(Compile("#*1{c4}\nA t200 o4 *1 d4\n"))),"Tie at a macro end was kept.");
         check(!Data(Compile("#*1{c4& d4}\nA t200 o4 *1\n")).SequenceEqual(Data(Compile("#*1{c4 d4}\nA t200 o4 *1\n"))),"Tie inside a macro body was dropped.");
-        Console.WriteLine("PASS MucoMSX MUC output: classic/extended mode, column-1 rows, rest merging, ties");
+        Console.WriteLine("PASS MucoMSX MUC output: classic/extended mode, column-1 rows, rest merging, ties, header tags");
     }
 }

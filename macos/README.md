@@ -20,7 +20,7 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   보정함. 컴파일 결과는 MucoMSX 툴체인(muc2mub)을 기준으로 맞춤: mucomDotNET 확장 문법이 없는 곡은
   원본 MUCOM88 v1.7과 같은 클래식 MUB8로 컴파일해 클래식 드라이버로 재생하고, 원본처럼 1열에서
   시작하는 트랙 선언만 연주 행으로 읽음(들여쓴 행은 무시). 확장 문법이 있는 곡은 MucoMSX와 같은
-  muPb·msPb 형식으로, 클래식 곡은 MucoMSX와 같은 MUB8 형식으로 써서 MUB 파일도 MucoMSX 출력과 같음. 일반 MUB의 YM2608(음원·SSG·리듬·ADPCM)과 확장 `muPb` MUB의
+  muPb·msPb 형식으로, 클래식 곡은 MucoMSX와 같은 MUB8 형식으로 써서 MUB 파일도 MucoMSX 출력과 같음. MUB 태그에는 헤더 전체(길이 제한 없음)의 `#` 행만 넣고 빈 행과 `;` 주석 행은 넣지 않음. 일반 MUB의 YM2608(음원·SSG·리듬·ADPCM)과 확장 `muPb` MUB의
   2×YM2608, 2×YM2610, YM2151 구성을 파일에 실제로 들어 있는 파트만큼 초기화함. 볼륨 뷰와
   채널 뷰는 기존 칩 레지스터 경로를 그대로 사용함.
 - 공식 `kuma4649/mucomDotNET` 소스를 Git 서브모듈로 연결했음. GitHub Release 빌드도 서브모듈을
