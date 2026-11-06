@@ -4,9 +4,13 @@ namespace MDPlayer.MucoNative;
 // depend on MDPlayerCore, its audio devices, or any MSX build products.
 public static class MucSourceNormalization
 {
+        // Line framing for the compiler. Indentation is left exactly as written:
+        // like the original MUCOM88 (and MucoMSX), a track label must start in
+        // column 1, so an indented row such as " G c4" is not a track row and is
+        // ignored. Removing the indentation used to turn such rows, and indented
+        // header comments, into music and made otherwise valid MUCs fail.
         public static byte[] NormalizeTrackDeclarationIndentation(byte[] source)
         {
-            const string trackCharacters = "ABCDEFGHIJKLMNOPQRSTUVabcdefghijklmnopqrstuvWXYZwxyz";
             using MemoryStream result = new(source.Length);
 
             for (int position = 0; position < source.Length;)
@@ -14,14 +18,7 @@ public static class MucSourceNormalization
                 int lineEnd = position;
                 while (lineEnd < source.Length && source[lineEnd] != '\r' && source[lineEnd] != '\n') lineEnd++;
 
-                int contentStart = position;
-                while (contentStart < lineEnd && (source[contentStart] == (byte)' ' || source[contentStart] == (byte)'\t')) contentStart++;
-                bool isTrackDeclaration = contentStart < lineEnd
-                    && source[contentStart] < 0x80
-                    && trackCharacters.IndexOf((char)source[contentStart]) >= 0;
-
-                int copyStart = isTrackDeclaration ? contentStart : position;
-                byte[] line = source.AsSpan(copyStart, lineEnd - copyStart).ToArray();
+                byte[] line = source.AsSpan(position, lineEnd - position).ToArray();
                 MovePortamentoLengths(line);
                 result.Write(line, 0, line.Length);
 

@@ -27,6 +27,18 @@ namespace mucomDotNET.Compiler
         }
         private bool CanMergeNote() => lastMergeNoteEnd==work.MDATA-1 && lastMergeChip==work.ChipIndex
             && lastMergePart==work.CHIP_CH && lastMergePage==work.pageNow;
+        // Rest merging follows MucoMSX: only a rest that directly follows the previous
+        // rest on the same source line (blanks only in between) continues it.
+        private object lastRestLine;
+        private int lastRestEnd = -1;
+        private void MarkRest() { lastRestLine = mucInfo.lin; lastRestEnd = mucInfo.srcCPtr; }
+        private bool RestFollowsRest(int restStart)
+        {
+            if (!ReferenceEquals(lastRestLine, mucInfo.lin) || lastRestEnd < 0 || lastRestEnd > restStart) return false;
+            for (int i = lastRestEnd; i < restStart; i++)
+                if (mucInfo.lin.Item2[i] != ' ' && mucInfo.lin.Item2[i] != '\t') return false;
+            return true;
+        }
         public Msub msub = null;
         public expand expand = null;
 
@@ -2122,6 +2134,7 @@ namespace mucomDotNET.Compiler
             int ptr;
             int kotae;
 
+            int restStart = mucInfo.srcCPtr;
             mucInfo.srcCPtr++;
             char c = mucInfo.srcCPtr < mucInfo.lin.Item2.Length
                 ? mucInfo.lin.Item2[mucInfo.srcCPtr]
@@ -2214,14 +2227,13 @@ namespace mucomDotNET.Compiler
 
             work.tcnt[work.ChipIndex][work.CHIP_CH][work.pageNow] += kotae;
 
+            // MucoMSX merges only rests that follow each other directly (blanks only
+            // between them); any command in between ends the merge.
+            if (work.BEFRST != 0 && !RestFollowsRest(restStart)) work.BEFRST = 0;
             if (work.BEFRST != 0)// ｾﾞﾝｶｲｶｳﾝﾀ ﾜｰｸ(ﾌﾗｸﾞ)
             {
+                // The merged total is split into 111-clock rests below (16-bit, as MucoMSX).
                 kotae += work.BEFRST;
-                if (kotae < 0 || kotae > 255)
-                {
-                    WriteWarning(string.Format(msg.get("W0403"), kotae), mucInfo.row, mucInfo.col);
-                }
-                kotae = (byte)kotae;
                 work.MDATA--;
             }
 
@@ -2270,6 +2282,7 @@ namespace mucomDotNET.Compiler
                     ));// SET REST FLAG
 
             work.latestNote = 2;//KUMA:チェック用(休符)
+            MarkRest();
 
             return EnmFCOMPNextRtn.fcomp12;
         }
@@ -2279,6 +2292,7 @@ namespace mucomDotNET.Compiler
             int ptr;
             int kotae;
 
+            int restStart = mucInfo.srcCPtr;
             mucInfo.srcCPtr++;
             char c = mucInfo.srcCPtr < mucInfo.lin.Item2.Length
                 ? mucInfo.lin.Item2[mucInfo.srcCPtr]
@@ -2371,6 +2385,9 @@ namespace mucomDotNET.Compiler
 
             work.tcnt[work.ChipIndex][work.CHIP_CH][work.pageNow] += kotae;
 
+            // MucoMSX merges only rests that follow each other directly (blanks only
+            // between them); any command in between ends the merge.
+            if (work.BEFRST != 0 && !RestFollowsRest(restStart)) work.BEFRST = 0;
             if (work.BEFRST != 0)// ｾﾞﾝｶｲｶｳﾝﾀ ﾜｰｸ(ﾌﾗｸﾞ)
             {
                 kotae += work.BEFRST;
@@ -2422,6 +2439,7 @@ namespace mucomDotNET.Compiler
                     ));// SET REST FLAG
 
             work.latestNote = 2;//KUMA:チェック用(休符)
+            MarkRest();
 
             return EnmFCOMPNextRtn.fcomp12;
         }
@@ -5313,7 +5331,11 @@ namespace mucomDotNET.Compiler
             } while (c != ' ' && c!='\t');//ONE SPACE?
 
             mucInfo.ErrSign = false;
-            EnmFCOMPNextRtn ret = EnmFCOMPNextRtn.fcomp1;
+            // Row start (MucoMSX FMCOMP): clear only the rest-merge state. A tie (&) at
+            // the end of a row continues into the next row of the same part, so a tied
+            // note there is merged with it exactly as within one row.
+            work.BEFRST = 0;
+            EnmFCOMPNextRtn ret = EnmFCOMPNextRtn.fcomp12;
 
             do
             {
@@ -5721,6 +5743,12 @@ namespace mucomDotNET.Compiler
             }
 
             Log.WriteLine(LogLevel.TRACE, act.Method.ToString());
+
+            // MucoMSX (COMPRC): a command between a tie and the next note ends the tie
+            // merge ("c&l8c" keeps two notes joined by FD); only the direct count % is
+            // transparent. The FD itself was already written by '&'.
+            if (work.TIEFG != 0 && act.Method.Name != nameof(SETDCO) && act.Method.Name != nameof(SETTIE))
+                work.TIEFG = 0;
 
             return act();
         }

@@ -25,6 +25,7 @@ WaveGateTests.Run(Check);
 ToolchainSyncTests.Run(Check);
 CompactRowTests.Run(Check);
 MixedTagTests.Run(Check);
+MucoMsxCompileTests.Run(Check);
 var names=typeof(NativeMucomSession).Assembly.GetReferencedAssemblies().Select(x=>x.Name).ToArray();
 Check(!names.Any(x=>x is "MDPlayerCore" or "MDSound" or "Z80dotNet"),"Native core depends on a host or CPU emulator.");
 var results=new List<object>();

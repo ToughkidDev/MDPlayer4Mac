@@ -28,15 +28,10 @@ public static class NativeMucCompiler
             if(score!=null)return PackedMubContainer.Compile(score,asset,sourcePath);
         }
         if (MsxMucCompiler.IsNativeSource(source)) return MsxMucCompiler.Compile(source, sourcePath, asset);
-        var compiler = new mucomDotNET.Compiler.Compiler();
-        compiler.Init();
-        using var input = new MemoryStream(MucSourceNormalization.NormalizeTrackDeclarationIndentation(source), false);
-        MmlDatum[] output = compiler.Compile(input, name => asset(name));
-        var info = compiler.GetCompilerInfo();
-        if (output == null || info?.errorList?.Count > 0)
-            throw new FormatException(info?.errorList?.Count > 0
-                ? string.Join(Environment.NewLine, info.errorList.Select(x => x.Item3))
-                : "MUCOM88 compilation failed.");
-        return output.Select(x => x == null ? (byte)0 : (byte)x.dat).ToArray();
+        byte[] output = MucomCompileMode.Compile(MucSourceNormalization.NormalizeTrackDeclarationIndentation(source),
+            name => asset(name), out string error);
+        if (output == null)
+            throw new FormatException(string.IsNullOrEmpty(error) ? "MUCOM88 compilation failed." : error);
+        return output;
     }
 }

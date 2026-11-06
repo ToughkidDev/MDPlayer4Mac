@@ -179,32 +179,15 @@ namespace MDPlayer.Driver.MUCOM
 
             try
             {
-                // The upstream compiler's extended-chip scan only examines column zero of
-                // each source line.  Traditional MUC files commonly indent a track label
-                // (for example "  WXYZ" for OPM), which otherwise makes it emit a normal
-                // one-OPNA MUB and silently discard those tracks.  Remove indentation only
-                // when the first non-space byte is a legal MUCOM track label; all ordinary
-                // MML, tags, comments, and Japanese Shift-JIS text remain byte-identical.
+                // MSX sources use the native compiler. Everything else goes to the upstream
+                // compiler under the MucoMSX output-mode rule (MucomCompileMode): classic
+                // scores compile as MUCOM88 v1.7 MUB8, extended scores in DotNet mode.
+                // Indentation is kept: like MUCOM88, a track label must start in column 1.
                 if (MsxMucCompiler.IsNativeSource(source))
                     return NativeMucCompiler.Compile(source, name => OpenSiblingFile(sourcePath,name), sourcePath);
                 byte[] normalizedSource = NormalizeTrackDeclarationIndentation(source);
-
-                mucomDotNET.Compiler.Compiler compiler = new();
-                compiler.Init();
-                using MemoryStream input = new(normalizedSource, writable: false);
-                MmlDatum[] compiled = compiler.Compile(input,
-                    requestedName => OpenSiblingFile(sourcePath, requestedName));
-
-                CompilerInfo info = compiler.GetCompilerInfo();
-                if (compiled == null || info?.errorList?.Count > 0)
-                {
-                    error = info?.errorList?.Count > 0
-                        ? string.Join(Environment.NewLine, info.errorList.Select(item => item.Item3))
-                        : "MUCOM88 compilation failed.";
-                    return null;
-                }
-
-                return compiled.Select(item => item == null ? (byte)0 : (byte)item.dat).ToArray();
+                return MDPlayer.MucoNative.MucomCompileMode.Compile(normalizedSource,
+                    requestedName => OpenSiblingFile(sourcePath, requestedName), out error);
             }
             catch (Exception exception)
             {

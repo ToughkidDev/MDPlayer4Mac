@@ -8,8 +8,8 @@ namespace MDPlayer.Driver.MUCOM;
 
 internal static class MsxMucCompiler
 {
-    private static readonly Regex NativeLine = new(@"(?m)^[ \t]*MSX([A-K0-9]+)(?=[ \t])",RegexOptions.CultureInvariant);
-    private static readonly Regex MusicLine = new(@"(?m)^[ \t]*(?:(?:MSX)?(?:[A-Va-z][0-9]*)+|SCC(?:[A-E][0-9]?)+)[ \t]",RegexOptions.CultureInvariant);
+    private static readonly Regex NativeLine = new(@"(?m)^MSX([A-K0-9]+)(?=[ \t])",RegexOptions.CultureInvariant);
+    private static readonly Regex MusicLine = new(@"(?m)^(?:(?:MSX)?(?:[A-Va-z][0-9]*)+|SCC(?:[A-E][0-9]?)+)[ \t]",RegexOptions.CultureInvariant);
     private static bool Extended(string source)
     {
         bool result=false;
@@ -104,7 +104,7 @@ internal static class MsxMucCompiler
         }
         return Pack(header.mupb,output,(byte)((native?1:0)|(extended?2:0)|(scc?4:0)),dedicated,header.tagdata,header.tagsize);
     }
-    private static readonly Regex SccLine=new(@"(?m)^[ \t]*SCC((?:[A-E][0-9]?)+)(?=[ \t])",RegexOptions.CultureInvariant);
+    private static readonly Regex SccLine=new(@"(?m)^SCC((?:[A-E][0-9]?)+)(?=[ \t])",RegexOptions.CultureInvariant);
     private static string ExtractScc(string source,Func<string,Stream> sibling,Dictionary<int,byte[]> waves,List<string>[] tracks)
     {
         Match first=MusicLine.Match(source);
@@ -173,7 +173,8 @@ internal static class MsxMucCompiler
                     tracks[selector.Groups[1].Value[0]-'A'].Add("D"+selector.Groups[2].Value+body);
                 continue;
             }
-            if(Regex.IsMatch(row,@"^[ \t]*SCC"))throw new FormatException("Invalid SCC track selector.");
+            // Indented rows are not track rows (column-1 rule); only a column-1 SCC label must be valid.
+            if(Regex.IsMatch(row,@"^SCC"))throw new FormatException("Invalid SCC track selector.");
             output.Add(row);
         }
         return string.Join("\r\n",output);

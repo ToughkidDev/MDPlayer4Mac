@@ -16,8 +16,10 @@ WinForms 코드는 저장소의 `MDPlayer/`에 그대로 두고, macOS 쪽 코�
   파형 보간을 처리함. OPNA A~K 문법은 기존 경로를 유지함.
   [코어 구성과 지원 범위](MucoNative/README.md)를 참고하면 됨.
 - MUCOM88의 컴파일된 `.mub`와 소스 `.muc`를 재생 경로에 추가했음. `.muc`는 재생 전에
-  메모리에서 MUB로 컴파일하며, macOS/Git의 LF 줄바꿈과 들여쓴 확장 트랙 선언도 MUCOM 컴파일러가
-  올바르게 해석하도록 보정함. 일반 MUB의 YM2608(음원·SSG·리듬·ADPCM)과 확장 `muPb` MUB의
+  메모리에서 MUB로 컴파일하며, macOS/Git의 LF 줄바꿈도 MUCOM 컴파일러가 올바르게 해석하도록
+  보정함. 컴파일 결과는 MucoMSX 툴체인(muc2mub)을 기준으로 맞춤: mucomDotNET 확장 문법이 없는 곡은
+  원본 MUCOM88 v1.7과 같은 클래식 MUB8로 컴파일해 클래식 드라이버로 재생하고, 원본처럼 1열에서
+  시작하는 트랙 선언만 연주 행으로 읽음(들여쓴 행은 무시). 일반 MUB의 YM2608(음원·SSG·리듬·ADPCM)과 확장 `muPb` MUB의
   2×YM2608, 2×YM2610, YM2151 구성을 파일에 실제로 들어 있는 파트만큼 초기화함. 볼륨 뷰와
   채널 뷰는 기존 칩 레지스터 경로를 그대로 사용함.
 - 공식 `kuma4649/mucomDotNET` 소스를 Git 서브모듈로 연결했음. GitHub Release 빌드도 서브모듈을

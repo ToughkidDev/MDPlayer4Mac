@@ -12,7 +12,10 @@ Last updated: 2026-10-20
 
 - Added compiled MUCOM88 `.mub` and source `.muc` files to the playback path. `.muc` files are
   compiled to MUB in memory before playback, with fixes so the MUCOM compiler correctly
-  interprets macOS/Git LF line endings and indented extended track declarations. YM2608
+  interprets macOS/Git LF line endings. The output follows the MucoMSX toolchain (muc2mub):
+  a score without mucomDotNET extensions compiles to a classic MUCOM88 v1.7 MUB8 and plays on
+  the classic driver, and, as in the original, only a track label in column 1 starts a music
+  row (indented rows are ignored). YM2608
   (FM, SSG, rhythm, ADPCM) for regular MUB, and the 2×YM2608, 2×YM2610 and YM2151
   configurations of extended `muPb` MUB, are initialized only for the parts actually present in
   the file. The volume view and channel view use the existing chip register path unchanged.
