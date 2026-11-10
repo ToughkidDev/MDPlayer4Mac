@@ -818,11 +818,9 @@ namespace mucomDotNET.Driver
             WriteRegister(work.soundWork.currentChip, dat);
 
 
-            for (int b = 0; b < 7; b++)
-            {
-                for (int c = 0; c < 10; c++)
-                    work.soundWork.PALDAT[b * 10 + c] = 0xc0;
-            }
+            // Every chip keeps its own pan/LFO bytes (all L+R, LFO off).
+            foreach (byte[] chipPan in panData)
+                Array.Fill(chipPan, (byte)0xc0);
 
             for(int c=0;c<4;c++)
             work.soundWork.PCMLR[c] = 3;
@@ -1142,12 +1140,17 @@ namespace mucomDotNET.Driver
         {
             if(work.SSGExtend) PANNING();
             SSGSUB();
-            if (work.isDotNET)
-            {
-                AddEffect();
-                return;
-            }
-            PLLFO();
+            if (work.isDotNET) AddEffect();
+            else PLLFO();
+            EndLfoAfterLastTick();
+        }
+
+        // MucoMSX still runs the software LFO on the tick an SSG part reaches its end,
+        // then never again. (Upstream reset the SSG LFO flag before that step. An ended
+        // FM part keeps its LFO in mucomDotNET mode in both players.)
+        private void EndLfoAfterLastTick()
+        {
+            if (work.pg.musicEnd) work.pg.lfoflg = false;
         }
 
         public void AddEffect()
@@ -1920,14 +1923,11 @@ namespace mucomDotNET.Driver
                 return;
             }
 
-            if (work.isDotNET)
-            {
-                hl = AddDetuneToFNum((ushort)hl, (short)(ushort)bc);
-            }
-            else
-            {
-                hl += bc;// BLOCK/FNUM1&2 DETUNE PLUS(for SE MODE)
-            }
+            // MucoMSX (and MUCOM88 v1.7 FMGFQ) adds the detune to the 16-bit
+            // block<<11 | F-number value in every mode. mucomDotNET's DotNet mode moved
+            // the block when the F-number passed 0x26A*2 or fell below 0x26A, which
+            // raised such notes by about 12 cents.
+            hl += bc;// BLOCK/FNUM1&2 DETUNE PLUS(for SE MODE)
 
             byte e = (byte)(hl >> 8);// BLOCK/F-NUMBER2 DATA
                                      //FPORT:
@@ -1946,6 +1946,8 @@ namespace mucomDotNET.Driver
 
         public void FMSUB6ex(uint hl, uint bc)
         {
+            // FM3 extended (S) slots: MucoMSX keeps mucomDotNET's AddDetuneToFNum here
+            // (FM3Pages FM3_AddDetune), unlike ordinary FM notes.
             if (work.isDotNET)
             {
                 hl = AddDetuneToFNum((ushort)hl, (short)(ushort)bc);
@@ -3053,6 +3055,20 @@ namespace mucomDotNET.Driver
 
         // **	STEREO**
 
+        // Pan/LFO byte of the current FM channel and page. MUCOM88 keeps one byte per
+        // channel (FMPORT + channel: 0-2 and 4-6) and the extension gives each one ten
+        // pages, so the index is (FMPORT + channel) * 10 + page, as MucoMSX does.
+        // (FMPORT + channel * 10 + page made FM 4-6 and FM 1-3 overwrite each other
+        // whenever a song used more than page 0.)
+        private int PanIndex() => (work.soundWork.FMPORT + work.pg.channelNumber) * 10 + work.pg.pageNo;
+
+        // The upstream SoundWork.PALDAT is one table for all five chips, so in a song
+        // with two FM chips (an MSX-MUSIC score drives the second one) the parts of one
+        // chip read the pan bytes another chip wrote. MucoMSX keeps the pan per channel
+        // of each chip; so does this table.
+        private readonly byte[][] panData = Enumerable.Range(0, 5).Select(_ => Enumerable.Repeat((byte)0xc0, 70).ToArray()).ToArray();
+        private byte[] PanData => panData[work.soundWork.currentChip];
+
         public void STEREO()
         {
             if (work.soundWork.DRMF1 != 0)
@@ -3067,9 +3083,9 @@ namespace mucomDotNET.Driver
             //STER2:
             byte a = (byte)work.pg.mData[work.hl++].dat;
             byte c = (byte)(((a >> 2) & 0x3f) | (a << 6));
-            byte d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+            byte d = PanData[PanIndex()];
             d = (byte)((d & 0b0011_1111) | c);
-            work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+            PanData[PanIndex()] = d;
             a = (byte)(0x0B4 + work.pg.channelNumber);
 
             if (CheckCh3SpecialMode() || work.cd.currentPageNo == work.pg.pageNo)
@@ -3124,9 +3140,9 @@ namespace mucomDotNET.Driver
             {
                 //既存処理
                 c = (byte)(((a >> 2) & 0x3f) | (a << 6));//右ローテート2回(左6回のほうがC#的にはシンプル)
-                d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+                d = PanData[PanIndex()];
                 d = (byte)((d & 0b0011_1111) | c);
-                work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+                PanData[PanIndex()] = d;
                 a = (byte)(0x0B4 + work.pg.channelNumber);
 
                 if (CheckCh3SpecialMode() || work.cd.currentPageNo == work.pg.pageNo)
@@ -3184,9 +3200,9 @@ namespace mucomDotNET.Driver
                 else
                 {
                     c = (byte)(a << 6);
-                    d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+                    d = PanData[PanIndex()];
                     d = (byte)((d & 0b0011_1111) | c);
-                    work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+                    PanData[PanIndex()] = d;
                     a = (byte)(0x0B4 + work.pg.channelNumber);
 
                     if (CheckCh3SpecialMode() || work.cd.currentPageNo == work.pg.pageNo)
@@ -3368,9 +3384,9 @@ namespace mucomDotNET.Driver
 
             //既存処理
             c = (byte)(((a >> 2) & 0x3f) | (a << 6));//右ローテート2回(左6回のほうがC#的にはシンプル)
-            d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+            d = PanData[PanIndex()];
             d = (byte)((d & 0b0011_1111) | c);
-            work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+            PanData[PanIndex()] = d;
             a = (byte)(0x0B4 + work.pg.channelNumber);
             PSGOUT(a, d);
             work.pg.panEnable = 0;//パーン禁止
@@ -3395,9 +3411,9 @@ namespace mucomDotNET.Driver
             a = (byte)autoPantable[a];
 
             c = (byte)(a << 6);
-            d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+            d = PanData[PanIndex()];
             d = (byte)((d & 0b0011_1111) | c);
-            work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+            PanData[PanIndex()] = d;
             a = (byte)(0x0B4 + work.pg.channelNumber);
 
             PSGOUT(a, d);
@@ -3552,9 +3568,9 @@ namespace mucomDotNET.Driver
                 else if (work.soundWork.PCMFLG == 0)
                 {
                     c = (byte)(((a >> 2) & 0x3f) | (a << 6));//右ローテート2回(左6回のほうがC#的にはシンプル)
-                    d = work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo];
+                    d = PanData[PanIndex()];
                     d = (byte)((d & 0b0011_1111) | c);
-                    work.soundWork.PALDAT[work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo] = d;
+                    PanData[PanIndex()] = d;
                     a = (byte)(0x0B4 + work.pg.channelNumber);
 
                     if (CheckCh3SpecialMode() || work.cd.currentPageNo == work.pg.pageNo)
@@ -3794,9 +3810,9 @@ namespace mucomDotNET.Driver
 
             byte c = (byte)work.pg.mData[work.hl++].dat;// PMS
             c = (byte)(c | (work.pg.mData[work.hl++].dat << 4));// AMS+PMS
-            int de = work.soundWork.FMPORT + work.pg.channelNumber * 10 + work.pg.pageNo; // PALDAT;
-            a = (byte)((work.soundWork.PALDAT[de] & 0b1100_0000) | c);
-            work.soundWork.PALDAT[de] = a;
+            int de = PanIndex(); // PALDAT;
+            a = (byte)((PanData[de] & 0b1100_0000) | c);
+            PanData[de] = a;
             PSGOUT((byte)(0xb4 + work.pg.channelNumber), a);
         }
 
@@ -5421,7 +5437,7 @@ namespace mucomDotNET.Driver
             work.pg.musicEnd = true;
             work.pg.dataAddressWork = work.hl;
             SKYOFF();
-            work.pg.lfoflg = false;// RESET LFO FLAG
+            // The LFO flag is reset after this tick's LFO step (EndLfoAfterLastTick).
         }
 
         // **   SSG KEY OFF**

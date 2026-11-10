@@ -18,6 +18,7 @@ if(args.Length>0 && args[0]=="--chip-usage")
     return;
 }
 ModernPlaybackTests.Run(Check,fixtures);
+MucoMsxEngineTests.Run(Check,fixtures);
 Scc5Tests.Run(Check,fixtures);
 MsxChipUsageTests.Run(Check,fixtures);
 CurrentCompatibilityTests.Run(Check,fixtures);
