@@ -179,12 +179,20 @@ namespace MDPlayer.Driver.MUCOM
 
             try
             {
+                // MucoMSX refuses some sources before compiling (a missing #pcm file,
+                // a row over 1023 bytes); see MucoMsxSourceRules. NativeMucCompiler
+                // makes both checks itself.
                 // MSX sources use the native compiler. Everything else goes to the upstream
                 // compiler under the MucoMSX output-mode rule (MucomCompileMode): classic
                 // scores compile as MUCOM88 v1.7 MUB8, extended scores in DotNet mode.
                 // Indentation is kept: like MUCOM88, a track label must start in column 1.
                 if (MsxMucCompiler.IsNativeSource(source))
                     return NativeMucCompiler.Compile(source, name => OpenSiblingFile(sourcePath,name), sourcePath);
+                error = MDPlayer.MucoNative.MucoMsxSourceRules.CheckPcm(source,
+                            requestedName => OpenSiblingFile(sourcePath, requestedName))
+                        ?? MDPlayer.MucoNative.MucoMsxSourceRules.CheckRows(source);
+                if (error != null) return null;
+                error = string.Empty;
                 return MDPlayer.MucoNative.MucomCompileMode.Compile(source,
                     requestedName => OpenSiblingFile(sourcePath, requestedName), out error);
             }

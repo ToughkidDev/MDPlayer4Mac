@@ -58,6 +58,31 @@ internal static class MucoMsxCompileTests
         byte[] Data(byte[] mub)=>mub.AsSpan(BitConverter.ToInt32(mub,4),BitConverter.ToInt32(mub,8)).ToArray();
         check(Data(Compile("#*1{c4&}\nA t200 o4 *1 d4\n")).SequenceEqual(Data(Compile("#*1{c4}\nA t200 o4 *1 d4\n"))),"Tie at a macro end was kept.");
         check(!Data(Compile("#*1{c4& d4}\nA t200 o4 *1\n")).SequenceEqual(Data(Compile("#*1{c4 d4}\nA t200 o4 *1\n"))),"Tie inside a macro body was dropped.");
-        Console.WriteLine("PASS MucoMSX MUC output: classic/extended mode, column-1 rows, rest merging, ties, header tags");
+        // MucoMSX refuses a #pcm tag whose file is missing (code 19) and a row over 1023
+        // bytes (code 17) before compiling.
+        Stream Pcm(string name)=>name=="PCM.BIN"?new MemoryStream(new byte[]{0}):null;
+        string Refused(string score,Func<string,Stream> asset=null)
+        {
+            try{ NativeMucCompiler.Compile(Encoding.ASCII.GetBytes(score),asset??(_=>null)); return null; }
+            catch(FormatException e){ return e.Message; }
+        }
+        check(Refused("#title t\n#pcm PCM.BIN\nA t200 o4 c4\n",Pcm)==null,"Existing #pcm file was refused.");
+        string missing=Refused("#title t\n\n#pcm NONE.BIN\nA t200 o4 c4\n",Pcm);
+        check(missing=="Error line 3 (code 19): PCM file in #pcm tag not found\n> #pcm NONE.BIN","Missing #pcm file was not code 19 on its row.");
+        check(Refused("#PCM  none.bin ; x\nA t200 o4 c4\n")?.Contains("(code 19)")==true,"#PCM tag name is not case-insensitive.");
+        check(Refused("#pcm P*.BIN\nA t200 o4 c4\n",_=>new MemoryStream(new byte[]{0}))?.Contains("(code 19)")==true,"Wildcard #pcm name was accepted.");
+        check(Refused("#pcm\nA t200 o4 c4\n")==null && Refused("#pcm   \nA t200 o4 c4\n")==null,"Empty #pcm value was refused.");
+        check(Refused("#PCMInvert On\nA t200 o4 c4\n")==null,"#PCMInvert was read as #pcm.");
+        check(Refused("A t200 o4 c4\n#pcm NONE.BIN\n")==null && Refused("#title t\n #pcm NONE.BIN\nA t200 o4 c4\n")==null,"#pcm outside the header was checked.");
+        check(Refused("; c\n#pcm NONE.BIN\nA t200 o4 c4\n")?.StartsWith("Error line 2 (code 19)")==true,"Comment row hid the #pcm tag.");
+        string row1023="A t200 o4 c4"+new string(' ',1023-12), row1024=row1023+" ";
+        check(Refused(row1023+"\r\n")==null,"A 1023-byte row was refused.");
+        check(Refused("#title t\r\n"+row1024+"\r\n")?.StartsWith("Error line 2 (code 17): Line/macro exceeds 1023 bytes")==true,"A 1024-byte row was not code 17.");
+        check(Refused("; "+new string('x',1100)+"\nA t200 o4 c4\n")?.Contains("(code 17)")==true,"A long comment row was not code 17.");
+        // muc2mub's MSX grammar (here the packed path) has no such row check.
+        string notes=string.Concat(Enumerable.Repeat("c8",560));
+        check(Refused("MSXA t200 o4 ?DB1 "+notes+"\n")==null,"A long packed MSX row was refused.");
+        check(Refused("MSXA t200 o4 "+notes+"\n")?.Contains("(code 17)")==true,"A long plain MSX row was not code 17.");
+        Console.WriteLine("PASS MucoMSX MUC output: classic/extended mode, column-1 rows, rest merging, ties, header tags, source refusals");
     }
 }

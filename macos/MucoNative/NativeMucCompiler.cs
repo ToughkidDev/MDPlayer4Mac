@@ -21,12 +21,17 @@ public static class NativeMucCompiler
         // Shift-JIS is also used by compiler diagnostics and FM-bank tags.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         asset ??= _ => null;
+        string refused = MucoMsxSourceRules.CheckPcm(source, asset);
+        if (refused != null) throw new FormatException(refused);
         string text=Encoding.Latin1.GetString(source);
         if(MsxMusicalCompiler.HasExtensions(text))
         {
             var score=MsxMusicalCompiler.Parse(text,asset);
             if(score!=null)return PackedMubContainer.Compile(score,asset,sourcePath);
         }
+        // Like muc2mub's legacy-grammar preflight: not for packed (MSX grammar) scores.
+        refused = MucoMsxSourceRules.CheckRows(source);
+        if (refused != null) throw new FormatException(refused);
         if (MsxMucCompiler.IsNativeSource(source)) return MsxMucCompiler.Compile(source, sourcePath, asset);
         byte[] output = MucomCompileMode.Compile(source, name => asset(name), out string error);
         if (output == null)
