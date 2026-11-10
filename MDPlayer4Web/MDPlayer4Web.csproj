@@ -22,7 +22,7 @@
     <!-- avares://MDPlayer4Mac/... URIs in the shared sources resolve against this name. -->
     <AssemblyName>MDPlayer4Mac</AssemblyName>
     <RootNamespace>MDPlayer.UI</RootNamespace>
-    <Version>0.2.9</Version>
+    <Version>0.3.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

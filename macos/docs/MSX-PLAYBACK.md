@@ -315,6 +315,27 @@ Declare global resources before musical channel rows. Existing supported
 an independent managed implementation; these controls require no MSX runtime,
 ROM, disk, Python process or CPU emulator at playback.
 
+### MucoMSX 2026-11-10 synchronization
+
+MUC output follows the MucoMSX toolchain of 2026-11-10; all 1,458 test MUCs
+compile to the same MUB bytes as its muc2mub. Sources MucoMSX refuses before
+compiling are refused with its code and message (`MucoMsxSourceRules`):
+
+* code 19: a header `#pcm` tag names a PCM file that does not exist (also a
+  name with `?` or `*`). An empty value only warns in MucoMSX and is accepted.
+* code 17: a physical row longer than 1023 bytes. muc2mub checks this in its
+  legacy grammar only, so packed MSX scores (PSGS/OPLS rows, MSX/SCC rows with
+  `?`/`@` commands) are not checked here either.
+
+Playback in the mucomDotNET driver follows MucoMSX's MUBPLAY: each chip keeps
+its own FM pan/LFO bytes (`(FMPORT + channel) * 10 + page`; one shared table
+let an MSX-MUSIC score's second FM chip overwrite OPNA pans after `H`), an
+ordinary FM note adds its detune to the 16-bit block/F-number value as
+MUCOM88 v1.7 does (FM3 extended slots keep mucomDotNET's octave carry, as
+MucoMSX does), and an SSG part takes its last software-LFO step on the tick it
+ends. Tick-by-tick chip output of the 1,458 songs (3,600 ticks) now matches
+MucoMSX except for start-up initialization writes in 265 songs.
+
 ### MucoMSX 2026-10-26 synchronization
 
 The native core accepts the current toolchain's musical msPb profiles through
