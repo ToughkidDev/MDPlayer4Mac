@@ -20,6 +20,7 @@ namespace mucomDotNET.Driver
         public static readonly uint cOPMMasterClock_Normal = 3579545;
 
         public byte[][] pcm = new byte[6][];
+        private bool noAdpcmBank = false;
         public int[] pcmStartPos = new int[6];
 
         private MUBHeader header = null;
@@ -152,6 +153,7 @@ namespace mucomDotNET.Driver
                 work.pcmTables[i] = GetPCMTable(i);
             }
 
+            noAdpcmBank = pcm[0] == null;
             if (pcm[2] != null && pcmType[2] == "") { TransformOPNAPCMtoOPNBPCM(2); pcmStartPos[2] = 0; }
             if (pcm[3] != null && pcmType[3] == "") { TransformOPNAPCMtoOPNBPCM(3); pcmStartPos[3] = 0; }
             if (pcm[4] != null && pcmType[4] == "") { TransformOPNAPCMtoOPNBPCM(4); pcmStartPos[4] = 0; }
@@ -354,7 +356,13 @@ namespace mucomDotNET.Driver
         public byte[] GetPCMFromSrcBuf(int id)
         {
             if (header.mupb == null)
-                return header.GetPCM(id);
+            {
+                // MUB8 with a PCM offset but PCM size 0 (older MucoMSX output: the offset is
+                // the end of the file) has no embedded PCM, as offset 0 has. The empty array
+                // made GetPCMTable index past its end and the load failed.
+                byte[] embedded = header.GetPCM(id);
+                return (embedded == null || embedded.Length < 1) ? null : embedded;
+            }
             else
             {
                 if (header.mupb.pcms.Length <= id) return null;
@@ -540,6 +548,9 @@ namespace mucomDotNET.Driver
 
         public void WriteOPNAPRegister(ChipDatum reg)
         {
+            // MucoMSX rule: a song whose PCM bank is not in the chip (no embedded PCM and no
+            // #pcm file) sends no ADPCM-B register write at all (port 1, registers 00h-10h).
+            if (noAdpcmBank && reg != null && reg.port == 1 && reg.address >= 0 && reg.address <= 0x10) return;
             lock (lockObjWriteReg)
             {
                 if (reg.port == 0)
@@ -758,6 +769,10 @@ namespace mucomDotNET.Driver
         {
             try
             {
+                // MucoMSX rule for a MUB without embedded PCM (MUBScope, MUBPLAY): the bank is
+                // the file its #pcm tag names, in the MUB's own folder; without the tag there
+                // is no bank (mucompcm.bin is the compiler's default, embedded at compile time).
+                if (id == 0 && string.IsNullOrEmpty(fnPcm[id])) return null;
                 fnPcm[id] = string.IsNullOrEmpty(fnPcm[id]) ? defaultPCMFileName[id] : fnPcm[id]; 
 
                 using (Stream pd = appendFileReaderCallback?.Invoke(fnPcm[id]))
