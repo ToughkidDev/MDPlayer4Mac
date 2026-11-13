@@ -24,12 +24,14 @@ Mac 앱의 화면이 바뀌면 웹 버전도 다음 배포 때 함께 바뀝니�
 
 ## 빌드
 
-.NET 10 SDK와 `wasm-tools` 워크로드가 필요합니다(SkiaSharp의 WebAssembly 네이티브 라이브러리를 링크하기 위함). 저장소 루트에서:
+.NET 10 SDK와 `wasm-tools` 워크로드가 필요합니다(SkiaSharp의 WebAssembly 네이티브 라이브러리를 링크하기 위함).
+`MDPlayer4Web/global.json`이 .NET 10 SDK를 고르므로, 더 새로운 SDK가 함께 설치돼 있어도 `MDPlayer4Web` 폴더 안에서 실행하세요:
 
 ```sh
 git submodule update --init --recursive
+cd MDPlayer4Web
 dotnet workload install wasm-tools
-dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
+dotnet publish MDPlayer4Web.csproj -c Release -o publish
 ```
 
 빠른 실행을 위해 .NET 코드를 WebAssembly로 미리 컴파일(AOT)하므로 publish에 20분가량 걸립니다.

@@ -12,9 +12,10 @@
       * file pickers       - picked files are placed in the in-memory file system so the
                              drivers find companion files beside the song (Web/WebStorage.cs)
 
-    Build (needs the wasm-tools workload for SkiaSharp's native library):
+    Build from this folder, where global.json selects the .NET 10 SDK (needs the
+    wasm-tools workload for SkiaSharp's native library):
       dotnet workload install wasm-tools
-      dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
+      dotnet publish MDPlayer4Web.csproj -c Release -o publish
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

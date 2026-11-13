@@ -42,11 +42,15 @@ jobs:
           dotnet-version: "10.0.x"
 
       # Avalonia.Browser links SkiaSharp's native WebAssembly library into the runtime.
+      # Both steps run in MDPlayer4Web so its global.json selects the .NET 10 SDK even
+      # when the runner's default SDK is newer.
       - name: Install wasm-tools workload
+        working-directory: MDPlayer4Web
         run: dotnet workload install wasm-tools
 
       - name: Publish MDPlayer4Web
-        run: dotnet publish MDPlayer4Web/MDPlayer4Web.csproj -c Release -o MDPlayer4Web/publish
+        working-directory: MDPlayer4Web
+        run: dotnet publish MDPlayer4Web.csproj -c Release -o publish
 
       - name: Assemble site
         run: |
