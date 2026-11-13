@@ -119,10 +119,12 @@ Playback follows the MucoMSX players of 2026-11-13 in three more places:
   checked both sides on every step.
 
 MucoMSX changed on its side as well: the software LFO of an SSG or SCC part
-now runs on across tied notes, as it already did here. Of the 1,077 MSX-format
-test songs the write trace changes in 210; in those, the SCC volume, the order
-of SCC volume changes inside a tick and the FM pitch now match MucoMSX tick by
-tick (3,000 ticks). The 417 MUB8 songs trace the same as before.
+now runs on across tied notes, as it already did here. The sequencer's write
+trace changes in the 210 msPb0102 test songs and in no other (867 further
+MSX-format songs, 417 MUB8 songs). In those 210 the SCC volume, the order of
+SCC volume changes inside a tick and the FM pitch now match MucoMSX tick by
+tick (3,000 ticks). The native streams of msPb0103-0109 scores are not touched
+by these changes.
 
 ### MucoMSX 2026-11-10 synchronization
 
