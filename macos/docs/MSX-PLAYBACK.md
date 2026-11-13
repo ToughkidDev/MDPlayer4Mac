@@ -315,6 +315,28 @@ Declare global resources before musical channel rows. Existing supported
 an independent managed implementation; these controls require no MSX runtime,
 ROM, disk, Python process or CPU emulator at playback.
 
+### MucoMSX 2026-11-13 synchronization
+
+Playback follows the MucoMSX players of 2026-11-13 in three more places:
+
+* A MUB without embedded PCM reads the file its `#pcm` tag names from the
+  MUB's own folder. When that file is missing too, the song sends no ADPCM-B
+  register write and every other channel plays as before. `mucompcm.bin` is no
+  longer looked up for a MUB without a `#pcm` tag.
+* An SCC part writes its volume at the `v` command itself (the envelope level
+  it has now, scaled by the new volume). OPNA SSG parts keep MUCOM88's timing,
+  where the next note or envelope tick writes it.
+* An FM software-LFO or portamento step, and the FM3 SE-mode slot detune,
+  check the octave only on the side the step moves to (`AddFmPitchDelta`,
+  MucoMSX's `FM3_AddDetune` + `FM3_LFOBoundary`). mucomDotNET's `GetFnum`
+  checked both sides on every step.
+
+MucoMSX changed on its side as well: the software LFO of an SSG or SCC part
+now runs on across tied notes, as it already did here. Of the 1,077 MSX-format
+test songs the write trace changes in 210; in those, the SCC volume, the order
+of SCC volume changes inside a tick and the FM pitch now match MucoMSX tick by
+tick (3,000 ticks). The 417 MUB8 songs trace the same as before.
+
 ### MucoMSX 2026-11-10 synchronization
 
 MUC output follows the MucoMSX toolchain of 2026-11-10; all 1,458 test MUCs
