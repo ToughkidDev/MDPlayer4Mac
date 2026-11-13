@@ -3974,6 +3974,27 @@ namespace mucomDotNET.Driver
             byte e = (byte)(work.pg.volume & 0b1111_0000);
             byte c = (byte)work.pg.mData[work.hl].dat;
             PV1(c, e);
+            if (IsDedicatedScc) SccVolumeAtCommand();
+        }
+
+        // MucoMSX writes the volume of an SCC part at the v command itself (Player.asm
+        // Cmd_VolumeSet -> KX_Volume -> Player_SSGEnvelopeOutput): the level the envelope
+        // has now, scaled by the new volume. OPNA SSG parts keep MUCOM88's timing, where
+        // the new volume is first heard when the next note or envelope tick writes it, so
+        // v in the middle of tied notes reaches the SCC one tick earlier than the SSG.
+        private void SccVolumeAtCommand()
+        {
+            if (work.pg.pageNo != work.cd.currentPageNo) return;
+
+            int level = ((byte)work.pg.softEnvelopeCounter * ((work.pg.volume & 0x0f) + 1)) >> 8;
+            if (!work.pg.keyoffflg && work.pg.reverbFlg)
+                level = (byte)(level + work.pg.reverbVol) >> 1;
+            if (work.pg.SSGTremoloFlg)
+                level = Math.Max(Math.Min(level + work.pg.SSGTremoloVol, 15), 0);
+
+            byte e = (byte)level;
+            if (work.soundWork.READY == 0) e = 0;
+            if (work.soundWork.KEY_FLAG != 0xff) PSGOUT((byte)work.pg.volReg, e);
         }
 
         public void PV1(byte c, byte e)
@@ -4179,16 +4200,8 @@ namespace mucomDotNET.Driver
             {
                 //KUMA:FMの時はリミットチェック処理
 
-                int num;
                 short dlt = (short)(ushort)hl;
-                //Console.Write("b:{0} num:{1:x} -> +{2}", blk, num, dlt);
-
-                num = work.pg.fnum & 0x7ff;
-                int blk = work.pg.fnum >> 11;
-                num += dlt;
-                GetFnum(ref blk, ref num);
-                ////Console.WriteLine(" -> b:{0} num:{1:x}",blk,num);
-                hl = (blk << 11) | num;
+                hl = AddFmPitchDelta(work.pg.fnum, dlt);
             }
             else
             {
@@ -4231,29 +4244,54 @@ namespace mucomDotNET.Driver
             PSGOUT(d, e);
         }
 
-        private void GetFnum(ref int blk,ref int num)
+        // Software LFO, portamento and the FM3 SE-mode slot detune move an FM pitch the
+        // way MucoMSX does (FM3Pages.asm FM3_AddDetune + FM3_LFOBoundary): the octave is
+        // checked only on the side the step moves to. A rising step carries into the next
+        // block once the F-number reaches 0x26A*2, a falling step borrows from the block
+        // below once it drops under 0x26A. (mucomDotNET's GetFnum checked both sides on
+        // every step, so a note whose detune had put it under 0x26A lost a block on the
+        // first rising step and played 6 to 16 cents sharp until the LFO turned.)
+        private static int AddFmPitchDelta(int fnum, int delta)
         {
-            int NoteC = 0x26a;
-            while (num < NoteC)
-            {
-                if (blk == 0)
-                {
-                    break;
-                }
-                blk--;
-                num = NoteC * 2 - (NoteC - num);
-            }
-            while (num >= NoteC * 2)
-            {
-                if (blk == 7)
-                {
-                    break;
-                }
-                blk++;
-                num = num - NoteC * 2 + NoteC;
-            }
-            num = Math.Min(Math.Max(num, 0), 0x7ff);
+            const int NoteC = 0x26a;
+            int blk = (fnum >> 11) & 7;
+            int num = (fnum & 0x7ff) + delta;
 
+            if (delta < 0)
+            {
+                while (num < NoteC)
+                {
+                    if (blk == 0)
+                    {
+                        if (num < 0) num = 0;
+                        break;
+                    }
+                    num += NoteC;
+                    blk--;
+                }
+            }
+            else
+            {
+                while (num > NoteC * 2)
+                {
+                    if (blk == 7)
+                    {
+                        if (num > 0x7ff) num = 0x7ff;
+                        break;
+                    }
+                    num -= NoteC;
+                    blk++;
+                }
+            }
+
+            // Exactly 0x26A*2 belongs to the next block.
+            if (num == NoteC * 2 && blk != 7)
+            {
+                blk++;
+                num = NoteC;
+            }
+
+            return (blk << 11) | num;
         }
 
         // ---	FOR FM LFO	---
@@ -4299,10 +4337,7 @@ namespace mucomDotNET.Driver
             do
             {
                 //int fnum = work.soundWork.NEWFNM + work.soundWork.DETDAT[work.soundWork.currentChip][hl++];
-                int blk = (work.soundWork.NEWFNM >> 11) & 0x7;
-                int num = (work.soundWork.NEWFNM & 0x7ff) + work.soundWork.DETDAT[work.soundWork.currentChip][hl++];
-                GetFnum(ref blk, ref num);
-                int fnum = (blk << 11) | num;
+                int fnum = AddFmPitchDelta(work.soundWork.NEWFNM, work.soundWork.DETDAT[work.soundWork.currentChip][hl++]);
 
                 byte d = work.soundWork.OP_SEL[iy++];
                 byte e = (byte)(fnum >> 8);
@@ -4479,12 +4514,7 @@ namespace mucomDotNET.Driver
 
                 if (work.soundWork.currentChip != 4)
                 {
-                    num = work.pg.fnum & 0x7ff;
-                    int blk = work.pg.fnum >> 11;
-                    num += dlt;
-                    GetFnum(ref blk, ref num);
-                    ////Console.WriteLine(" -> b:{0} num:{1:x}",blk,num);
-                    hl = (blk << 11) | num;
+                    hl = AddFmPitchDelta(work.pg.fnum, dlt);
                 }
                 else
                 {
@@ -4628,11 +4658,7 @@ namespace mucomDotNET.Driver
 
             if (work.soundWork.currentChip != 4)
             {
-                num = work.pg.fnum & 0x7ff;
-                int blk = work.pg.fnum >> 11;
-                num += dlt;
-                GetFnum(ref blk, ref num);
-                delta = (blk << 11) | num;
+                delta = AddFmPitchDelta(work.pg.fnum, dlt);
             }
             else
             {

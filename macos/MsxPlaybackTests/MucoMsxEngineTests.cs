@@ -5,8 +5,9 @@ using musicDriverInterface;
 
 // Playback rules where the mucomDotNET driver is made to follow MucoMSX (MUBPLAY), the
 // reference player: the detune is added to the 16-bit block/F-number value without
-// moving the block, and an SSG part still takes its last software-LFO step on the tick
-// it ends.
+// moving the block, an SSG part still takes its last software-LFO step on the tick it
+// ends, an FM software-LFO or portamento step checks the octave only on the side it
+// moves to, and an SCC part writes its volume at the v command.
 internal static class MucoMsxEngineTests
 {
     private const BindingFlags F = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
@@ -38,6 +39,68 @@ internal static class MucoMsxEngineTests
         check(Freq(end - 1) && Freq(end), "SSG part skipped its last LFO step on the end tick.");
         check(Enumerable.Range(end + 1, ssg.Count - end - 1).All(t => !Freq(t)), "SSG LFO continued after the part ended.");
         Console.WriteLine("PASS MucoMSX engine: FM detune at the octave edge, last SSG LFO step");
+
+        // FM software LFO on a note the detune put under the octave's first F-number
+        // (c 618 - 15 = 603). The first step rises (+5 = 608) and stays in the block; the
+        // next one falls under 618 again and borrows from the block below (603 + 618 =
+        // 1221). GetFnum dropped the block on the first step already (1226).
+        List<(int Block, int Fnum)> Pitches(List<List<Write>> ticks)
+        {
+            var result = new List<(int, int)>();
+            int high = 0, block = -1, fnum = -1;
+            foreach (var tick in ticks)
+            {
+                foreach (var w in tick.Where(w => w.Port == 0))
+                {
+                    if (w.Address == 0xa4) high = w.Value;
+                    else if (w.Address == 0xa0) { block = high >> 3 & 7; fnum = (high & 7) << 8 | w.Value; }
+                }
+                result.Add((block, fnum));
+            }
+            return result;
+        }
+        int octave = Pitches(Play(check, fixtures, "#driver mucomDotNET\nA t200 o4 l2 c\n", 2))[0].Block;
+        var lfo = Pitches(Play(check, fixtures, "#driver mucomDotNET\nA t200 o4 l2 M0,1,5,3 D-15 c\n", 4));
+        check(lfo.SequenceEqual(new[] { (octave, 608), (octave - 1, 1221), (octave - 1, 1216), (octave - 1, 1211) }),
+            "FM LFO on a detuned c: " + string.Join(" ", lfo));
+
+        // Portamento from the same detuned c rises inside its block.
+        var porta = Pitches(Play(check, fixtures, "#driver mucomDotNET\nA t200 o4 D-15 {ce}2\n", 4));
+        check(porta.All(p => p.Block == octave) && porta[0].Fnum == 603 && porta[1].Fnum == 605,
+            "FM portamento from a detuned c: " + string.Join(" ", porta));
+        Console.WriteLine("PASS MucoMSX engine: FM LFO and portamento at the octave edge");
+
+        // v between tied notes: the SCC takes the new volume on the tick of the command
+        // (tick 32, where the second quarter note starts), the OPNA SSG one tick later.
+        const string tied = "E255,0,0,255,0,255 q0 o4 v9 c4&v4c4\n";
+        var scc = PlayMsx(check, fixtures, "; Requires current MucoMSX MSX PSG/SCC extensions (msPb0102).\n\n  @W0:{ " +
+            string.Join(',', Enumerable.Repeat(100, 32)) + " }\n\nD T144 " + tied + "SCCA @0 T144 " + tied, 40);
+        int FirstTick(Func<MDPlayer.MucoNative.NativeChipWrite, bool> match) => scc.FindIndex(t => t.Any(match));
+        int sccTick = FirstTick(w => w.Chip == MDPlayer.MucoNative.NativeChip.Scc && w.Port == 2 && w.Address == 0 && (w.Value & 15) == 4);
+        int ssgTick = FirstTick(w => w.Chip == MDPlayer.MucoNative.NativeChip.Opna1 && w.Port == 0 && w.Address == 8 && (w.Value & 31) == 4);
+        check(sccTick == 32 && ssgTick == 33, $"v between tied notes: SCC tick {sccTick}, SSG tick {ssgTick}.");
+        Console.WriteLine("PASS MucoMSX engine: SCC volume at the v command");
+    }
+
+    // An MSX-format score through the native session, one list of chip writes per tick.
+    private static List<List<MDPlayer.MucoNative.NativeChipWrite>> PlayMsx(Action<bool, string> check, string fixtures, string score, int count)
+    {
+        string path = Path.Combine(fixtures, "engine-msx.muc");
+        byte[] mub = MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes(score), path, out string error);
+        check(mub != null, "Engine MSX test compile: " + error);
+        var ticks = new List<List<MDPlayer.MucoNative.NativeChipWrite>>();
+        var current = new List<MDPlayer.MucoNative.NativeChipWrite>();
+        using var session = new MDPlayer.MucoNative.NativeMucomSession(mub, 44100, w => current.Add(w), _ => null, null, Path.ChangeExtension(path, ".mub"));
+        object sequencer = session.GetType().GetProperty("Sequencer", F)!.GetValue(session)!;
+        object music = sequencer.GetType().GetField("music2", F)!.GetValue(sequencer)!;
+        MethodInfo tick = music.GetType().GetMethod("PL_SND", F)!;
+        for (int t = 0; t < count; t++)
+        {
+            current = new List<MDPlayer.MucoNative.NativeChipWrite>();
+            tick.Invoke(music, null);
+            ticks.Add(current);
+        }
+        return ticks;
     }
 
     private sealed record Write(int Port, int Address, int Value);
