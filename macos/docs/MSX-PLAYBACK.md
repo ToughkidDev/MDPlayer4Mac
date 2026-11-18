@@ -175,7 +175,8 @@ ordinary MUCOM88 MUBs. Opening a `.mub` or `.muc` uses the existing player UI.
 Native MUC `MSXA..J` declarations are compiled through the second sequencing group,
 then explicitly routed to MSX targets. Ordinary dual-OPNA MUC remains on its
 original route. `MSXK` has no ADPCM target and is rejected. Native FM3 special mode
-is rejected. External `#voice` / `#pcm` files must be available alongside the MUC.
+is rejected. External `#voice` / `#pcm` files must be available alongside the MUC,
+and a K part with notes needs a `#pcm` tag (see the 2026-11-18 synchronization).
 
 The mapper follows the current toolchain's integer rounding, ROM preset selection,
 drum retriggering and I/O mask preservation. This reproduces the **toolchain's MSX
@@ -315,6 +316,57 @@ Declare global resources before musical channel rows. Existing supported
 an independent managed implementation; these controls require no MSX runtime,
 ROM, disk, Python process or CPU emulator at playback.
 
+### MucoMSX 2026-11-18 synchronization
+
+MUC output follows the MucoMSX toolchain of 2026-11-18 (MSX-DOS2 build of the
+v1.5 line with the `#pcm` rules of 2026-11-17). Of 1,955 test MUCs, the 1,953
+MucoMSX compiles give the same MUB bytes as `MUC2MUB /P`, and the two it refuses
+are refused with its codes.
+
+`#pcm` rules (`MucoMsxSourceRules`):
+
+* code 20: the K part has a note but the header has no `#pcm` tag. MucoMSX
+  finds this at the end of the compile, so the message has no line
+  (`Error, line unknown (code 20): K part needs a #pcm tag`). A K part with
+  rests and controls only is accepted.
+* A `#pcm` tag without a name selects `MUCOMPCM.BIN`; when that file is missing
+  the source is refused with code 19, like any named file.
+* Without a `#pcm` tag `MUCOMPCM.BIN` is never opened.
+* The PCM file is attached to the MUB only when the K part has a note (an `@n`
+  alone does not attach it). MDPlayer4Mac always attaches it then, which is
+  `MUC2MUB /P`; MUC2MUB without `/P` leaves it out of the file.
+* A MUB without embedded PCM whose tag block has a `#pcm` row without a name
+  reads `MUCOMPCM.BIN` from the MUB's folder. When the `#pcm` file of such a MUB
+  is missing, the song plays without PCM as before and the session carries a
+  notice (`MusicEngineSession.Notice`, shown in the status line), as MUBPLAY
+  prints "PCM file not found".
+* Companion files (`#pcm`, `#voice`, ...) that are not in the folder under the
+  exact name are looked up in any letter case and then under the name cut to
+  8.3, which is how MucoMSX opens a long name the folder does not have.
+
+Output corrections found by comparing the larger test set:
+
+* A score without any `t`/`T` gets Timer-B 225: the header tempo of a MUB8, the
+  `FA 26 n` at the head of part A of a muPb. It was 0.
+* In a mixed score, a `t`/`T` on an MSX-group row (`MSXA`...) is written as on
+  the first OPNA, which owns the only tempo timer: `FA 26 n` on FM-type tracks,
+  `FF F7 00 00 26 n` on the SSG tracks. It was `FF F7 01 00 26 n`.
+* In a packed mixed score (msPb0104/0106/0108/010A) the OPNA rows keep their
+  own tempo commands (`FA 26 n`); the `FA 26 n` in front of the packed object is
+  the last tempo of the OPNA rows, or 225 when they have none.
+* A track row that calls macros nested more than four deep makes the score
+  extended (muPb), as in MucoMSX. Nine or more deep is refused with code 16
+  (`Invalid macro definition`) on the first such row in the file.
+* An MSX-grammar score (the packed path) that does not fit one input window of
+  the MucoMSX loader is refused with code 9. The loader reads 128-byte records
+  and ends a window after the last CR/LF of the record that brings it to 15,000
+  bytes, so the largest accepted source is 14,976 bytes; `SourceWindows`
+  reproduces this. Any other error of the MSX grammar is reported with
+  MucoMSX's code 9 line followed by the reason found here.
+
+Not changed: the sequencers. A missing `#voice` file is still an error here;
+MucoMSX compiles such a source without a message.
+
 ### MucoMSX 2026-11-13 synchronization
 
 Playback follows the MucoMSX players of 2026-11-13 in three more places:
@@ -346,7 +398,8 @@ compile to the same MUB bytes as its muc2mub. Sources MucoMSX refuses before
 compiling are refused with its code and message (`MucoMsxSourceRules`):
 
 * code 19: a header `#pcm` tag names a PCM file that does not exist (also a
-  name with `?` or `*`). An empty value only warns in MucoMSX and is accepted.
+  name with `?` or `*`). Since 2026-11-18 an empty value means `MUCOMPCM.BIN`
+  (see above).
 * code 17: a physical row longer than 1023 bytes. muc2mub checks this in its
   legacy grammar only, so packed MSX scores (PSGS/OPLS rows, MSX/SCC rows with
   `?`/`@` commands) are not checked here either.
