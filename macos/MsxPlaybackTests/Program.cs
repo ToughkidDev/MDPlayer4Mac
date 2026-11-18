@@ -163,6 +163,31 @@ Check(Body(Compile("#PCMInvert On\nD o4 c > d < e\n")).SequenceEqual(Body(Compil
     }
     finally { Directory.Delete(folder,true); }
 }
+// A song next to a MUCOMPCM.BIN that holds samples: the driver's default banks of the
+// other chips (mucompcm_2nd.bin ...) are not that file under its 8.3 name. Read as theirs,
+// it was converted to an OPNB bank, which read past its end, and the song did not load.
+{
+    string folder=Path.Combine(Path.GetTempPath(),"mdp4mac-bank-"+Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(folder);
+    try
+    {
+        byte[] bank=new byte[0x400+0x1000];        // one 4 KiB sample filling the bank
+        Encoding.ASCII.GetBytes("SAMPLE").CopyTo(bank,0);
+        bank[30]=0x00;bank[31]=0x10;               // its length; start address 0
+        for(int i=0x400;i<bank.Length;i++)bank[i]=0x77;
+        File.WriteAllBytes(Path.Combine(folder,"MUCOMPCM.BIN"),bank);
+        foreach(string text in new[]{"A t200 o4 c4 d4 e4\n","#pcm\nA t200 o4 c4\nK @1 c4\n"})
+        {
+            string song=Path.Combine(folder,"song.muc");
+            File.WriteAllText(song,text);
+            var session=MusicEngine.Load(File.ReadAllBytes(song),song);
+            Check(session!=null,"A song next to a MUCOMPCM.BIN with samples did not load: "+text.Split('\n')[0]);
+            short[] buffer=new short[2048];for(int i=0;i<20&&!session.Driver.Stopped;i++)session.RenderSamplesWithMasterVolume(buffer,0,buffer.Length);
+            Check(string.IsNullOrEmpty(((MucomDotNET)session.Driver).PlaybackError),"Playback error next to MUCOMPCM.BIN: "+((MucomDotNET)session.Driver).PlaybackError);
+        }
+    }
+    finally { Directory.Delete(folder,true); }
+}
 foreach(string source in new[]{"#SSGExtend Wrong\nD c\n","#SSGExtend On\nMSXK c\n","D c\n#SSGExtend On\n","#SSGExtend On\nD @W256 c\n"})
 {
     byte[] result=MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes(source),Path.Combine(fixtures,"invalid.muc"),out string error);

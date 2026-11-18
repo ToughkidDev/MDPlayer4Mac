@@ -39,6 +39,10 @@ public static class MucoMsxSourceRules
     /// name is not in the folder: the same name in any letter case, then the name cut
     /// to 8.3 (MucoMSX opens a long name that way when the folder has no such long
     /// name). Only plain file names are looked up. Returns the full path, or null.
+    /// The driver's own bank names for the chips MucoMSX does not have
+    /// (mucompcm_2nd.bin, mucompcm_3rd_B.bin ...) are found in any letter case only:
+    /// cut to 8.3 they all read MUCOMPCM.BIN, the first OPNA's bank, which would then be
+    /// loaded as theirs.
     /// </summary>
     public static string FindCompanion(string folder, string name)
     {
@@ -47,7 +51,8 @@ public static class MucoMsxSourceRules
         string[] files;
         try { files = Directory.GetFiles(folder); }
         catch { return null; }
-        foreach (string wanted in new[] { name, ShortName(name) })
+        string shortName = IsDriverBankName(name) ? null : ShortName(name);
+        foreach (string wanted in new[] { name, shortName })
         {
             if (wanted == null) continue;
             string found = files.Where(f => string.Equals(Path.GetFileName(f), wanted, StringComparison.OrdinalIgnoreCase))
@@ -56,6 +61,15 @@ public static class MucoMsxSourceRules
         }
         return null;
     }
+
+    // mucomDotNET's default bank files of OPNA #2 and the YM2610s (driver.cs
+    // defaultPCMFileName), which the driver asks for whatever the song names.
+    private static readonly string[] DriverBankNames =
+    {
+        "mucompcm_2nd.bin", "mucompcm_3rd_B.bin", "mucompcm_4th_B.bin", "mucompcm_3rd_A.bin", "mucompcm_4th_A.bin",
+    };
+    private static bool IsDriverBankName(string name)
+        => DriverBankNames.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
 
     // The name as MSX-DOS reads it: eight characters, a dot and three; null when the
     // name already has that form.

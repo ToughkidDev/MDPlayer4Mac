@@ -154,6 +154,9 @@ internal static class MucoMsxCompileTests
             check(Found("mucompcm.bin")=="MUCOMPCM.BIN","A companion file in another letter case was not found.");
             check(Found("bosco_pcm.bin")=="BOSCO_PC.BIN","A companion file under its 8.3 name was not found.");
             check(Found("none.bin")==null && Found("../MUCOMPCM.BIN")==null && Found("MUCO*.BIN")==null,"A companion file was found for a wrong name.");
+            // The driver's default banks of the other chips are not MUCOMPCM.BIN under another name.
+            check(new[]{"mucompcm_2nd.bin","mucompcm_3rd_B.bin","mucompcm_4th_B.bin","mucompcm_3rd_A.bin","mucompcm_4th_A.bin"}.All(n=>Found(n)==null),
+                "A driver default bank name was found as MUCOMPCM.BIN.");
         }
         finally { Directory.Delete(folder,true); }
     }
