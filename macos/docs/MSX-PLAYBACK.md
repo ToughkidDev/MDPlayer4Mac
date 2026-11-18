@@ -365,7 +365,8 @@ Output corrections found by comparing the larger test set:
   MucoMSX's code 9 line followed by the reason found here.
 
 Not changed: the sequencers. A missing `#voice` file is still an error here;
-MucoMSX compiles such a source without a message.
+MucoMSX prints `Warning: voice not found:` and compiles the source without
+those voices.
 
 ### MucoMSX 2026-11-13 synchronization
 
