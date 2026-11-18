@@ -27,15 +27,43 @@ namespace mucomDotNET.Compiler
         // classic header tempo, which MucoMSX places at the head of part A).
         private static readonly System.Threading.AsyncLocal<bool> mucoMsxExtended = new();
         private static readonly System.Threading.AsyncLocal<int[]> mucoMsxTempo = new();
-        public static T CompileMucoMsxExtended<T>(Func<T> compile, int[] lastTempo = null)
+        // Runs a compile and records in lastTempo[0] the value of the last t/T it
+        // compiled (lastTempo[0] is left alone when the score has none).
+        public static T CaptureTempo<T>(int[] lastTempo, Func<T> compile)
         {
-            bool previous=mucoMsxExtended.Value; int[] previousTempo=mucoMsxTempo.Value;
-            try { mucoMsxExtended.Value=true; if(lastTempo!=null)mucoMsxTempo.Value=lastTempo; return compile(); }
-            finally { mucoMsxExtended.Value=previous; mucoMsxTempo.Value=previousTempo; }
+            int[] previous=mucoMsxTempo.Value;
+            try { mucoMsxTempo.Value=lastTempo; return compile(); }
+            finally { mucoMsxTempo.Value=previous; }
+        }
+        // msxGroup: the score's second group (L..V) is the MSX group of a MucoMSX mixed
+        // score (MSXA.. rows), not a second OPNA. MucoMSX has one tempo, the first OPNA's
+        // Timer-B, so a t/T there is written as on the first group: FA 26 n on FM-type
+        // tracks, FF F7 00 00 26 n on the SSG tracks.
+        private static readonly System.Threading.AsyncLocal<bool> mucoMsxGroup = new();
+        public static T CompileMucoMsxExtended<T>(Func<T> compile, int[] lastTempo = null, bool msxGroup = false)
+        {
+            bool previous=mucoMsxExtended.Value, previousGroup=mucoMsxGroup.Value; int[] previousTempo=mucoMsxTempo.Value;
+            try { mucoMsxExtended.Value=true; mucoMsxGroup.Value=msxGroup; if(lastTempo!=null)mucoMsxTempo.Value=lastTempo; return compile(); }
+            finally { mucoMsxExtended.Value=previous; mucoMsxGroup.Value=previousGroup; mucoMsxTempo.Value=previousTempo; }
         }
         private int lastMergeNoteEnd = -1, lastMergeChip = -1, lastMergePart = -1, lastMergePage = -1;
+        // MucoMSX PCM_USED: set when the first OPNA's K part compiles a note. The PCM
+        // file is attached for such a score only (a K part with rests and controls
+        // alone does not attach it), and the caller needs it for the #pcm tag check.
+        private static readonly System.Threading.AsyncLocal<int[]> pcmNote = new();
+        public static T CapturePcmNote<T>(int[] flag, Func<T> compile)
+        {
+            int[] previous=pcmNote.Value;
+            try { pcmNote.Value=flag; return compile(); }
+            finally { pcmNote.Value=previous; }
+        }
         private void MarkMergeNote()
         {
+            if (work.ChipIndex == 0 && CHCHK() == ChannelType.ADPCM)
+            {
+                work.pcmFlag = 1;
+                if (pcmNote.Value != null) pcmNote.Value[0] = 1;
+            }
             lastMergeNoteEnd=work.MDATA;lastMergeChip=work.ChipIndex;lastMergePart=work.CHIP_CH;lastMergePage=work.pageNow;
         }
         private bool CanMergeNote() => lastMergeNoteEnd==work.MDATA-1 && lastMergeChip==work.ChipIndex
@@ -1434,10 +1462,18 @@ namespace mucomDotNET.Compiler
 
         private EnmFCOMPNextRtn TIMEB2ex(byte n)
         {
-            if (mucoMsxExtended.Value && work.ChipIndex == 0 && (work.CHIP_CH < 3 || work.CHIP_CH >= 6))
+            bool firstTimer = work.ChipIndex == 0 || (mucoMsxGroup.Value && work.ChipIndex == 1);
+            if (mucoMsxExtended.Value && firstTimer && (work.CHIP_CH < 3 || work.CHIP_CH >= 6))
             {
                 msub.MWRITE(new MmlDatum(0xfa), new MmlDatum(0x26));
                 msub.MWRIT2(new MmlDatum(n));
+                return EnmFCOMPNextRtn.fcomp1;
+            }
+            if (mucoMsxExtended.Value && firstTimer)
+            {
+                msub.MWRITE(new MmlDatum(0xff), new MmlDatum(0xf7));
+                msub.MWRITE(new MmlDatum(0x00), new MmlDatum(0x00)); // chip:0  port:0
+                msub.MWRITE(new MmlDatum(0x26), new MmlDatum(n));
                 return EnmFCOMPNextRtn.fcomp1;
             }
             //if (work.ChipIndex == 0)
@@ -4184,7 +4220,7 @@ namespace mucomDotNET.Compiler
             msub.MWRITE(new MmlDatum(enmMMLType.Instrument, args, lp, 0xf0), new MmlDatum((byte)num));
 
             if (tp == ChannelType.RHYTHM) work.rhythmInstNum = num;
-            if (tp == ChannelType.ADPCM) work.pcmFlag = 1;
+            if (tp == ChannelType.ADPCM && work.ChipIndex != 0) work.pcmFlag = 1;   // first OPNA: a note sets it (MarkMergeNote)
             if (work.ChipIndex > 1 && tp == ChannelType.RHYTHM) work.pcmFlag = 1;
 
             return EnmFCOMPNextRtn.fcomp1;

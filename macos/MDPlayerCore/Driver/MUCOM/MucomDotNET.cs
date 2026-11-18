@@ -17,6 +17,11 @@ namespace MDPlayer.Driver.MUCOM
         private MsxMubProfile msxProfile;
         private NativeMucomSession native;
         public string PlaybackError { get; private set; } = string.Empty;
+        // Not an error: the song plays, but the listener should know (MucoMSX's MUBPLAY
+        // prints "PCM file not found" and plays without PCM).
+        public string PlaybackNotice => string.IsNullOrEmpty(driver?.MissingPcmFile)
+            ? string.Empty
+            : "PCM file not found: " + driver.MissingPcmFile + " (playing without PCM)";
         public string SourcePath { get; set; }
         public uint OpmClock { get; private set; } = OPMBaseClock;
 
@@ -190,7 +195,8 @@ namespace MDPlayer.Driver.MUCOM
                     return NativeMucCompiler.Compile(source, name => OpenSiblingFile(sourcePath,name), sourcePath);
                 error = MDPlayer.MucoNative.MucoMsxSourceRules.CheckPcm(source,
                             requestedName => OpenSiblingFile(sourcePath, requestedName))
-                        ?? MDPlayer.MucoNative.MucoMsxSourceRules.CheckRows(source);
+                        ?? MDPlayer.MucoNative.MucoMsxSourceRules.CheckRows(source)
+                        ?? MDPlayer.MucoNative.MucoMsxSourceRules.CheckMacroDepth(source);
                 if (error != null) return null;
                 error = string.Empty;
                 return MDPlayer.MucoNative.MucomCompileMode.Compile(source,
@@ -273,9 +279,12 @@ namespace MDPlayer.Driver.MUCOM
                     : sourceDirectory + Path.DirectorySeparatorChar;
                 if (!candidate.StartsWith(sourcePrefix, StringComparison.Ordinal) && !string.Equals(candidate, sourceDirectory, StringComparison.Ordinal)) return null;
 
-                return File.Exists(candidate)
-                    ? new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read)
-                    : null;
+                if (!File.Exists(candidate))
+                {
+                    candidate = MDPlayer.MucoNative.MucoMsxSourceRules.FindCompanion(sourceDirectory, requestedName);
+                    if (candidate == null) return null;
+                }
+                return new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read);
             }
             catch { return null; }
         }

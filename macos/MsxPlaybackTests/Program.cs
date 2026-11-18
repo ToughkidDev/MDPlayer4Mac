@@ -123,9 +123,46 @@ byte[] Compile(string text)
     Check(result!=null,"Inline MUC failed: "+error);return result;
 }
 byte[] Body(byte[] data) => data.AsSpan(BitConverter.ToInt32(data,4),BitConverter.ToInt32(data,8)).ToArray();
-Check(Body(Compile("#PCMInvert On\nK o4 c > d < e\n")).SequenceEqual(Body(Compile("K o4 c < d > e\n"))),"PCMInvert K relative octave");
-Check(!Body(Compile("#PCMInvert On\nK o4 c > d < e\n")).SequenceEqual(Body(Compile("K o4 c > d < e\n"))),"PCMInvert K must change note stream");
+// A K part with notes needs a #pcm tag (MucoMSX code 20); inline-pcm.bin is an empty bank.
+const string Bank="#pcm inline-pcm.bin\n";
+Check(Body(Compile(Bank+"#PCMInvert On\nK o4 c > d < e\n")).SequenceEqual(Body(Compile(Bank+"K o4 c < d > e\n"))),"PCMInvert K relative octave");
+Check(!Body(Compile(Bank+"#PCMInvert On\nK o4 c > d < e\n")).SequenceEqual(Body(Compile(Bank+"K o4 c > d < e\n"))),"PCMInvert K must change note stream");
 Check(Body(Compile("#PCMInvert On\nD o4 c > d < e\n")).SequenceEqual(Body(Compile("D o4 c > d < e\n"))),"PCMInvert leaked to D");
+// A MUB without embedded PCM reads the file of its #pcm tag from its own folder; a tag
+// without a name means MUCOMPCM.BIN (found in any letter case). When the file is
+// missing the song still plays and the session says so (MucoMSX MUBPLAY, 2026-11-17).
+{
+    string folder=Path.Combine(Path.GetTempPath(),"mdp4mac-pcm-"+Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(folder);
+    try
+    {
+        File.WriteAllBytes(Path.Combine(folder,"mucompcm.bin"),new byte[0x400]);
+        byte[] WithoutPcm(string text)
+        {
+            byte[] mub=MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes(text),Path.Combine(folder,"song.muc"),out string error);
+            Check(mub!=null && Encoding.ASCII.GetString(mub,0,4)=="MUB8","PCM-less fixture did not compile: "+error);
+            int offset=BitConverter.ToInt32(mub,20);Check(offset>0 && BitConverter.ToInt32(mub,24)==0x400,"PCM-less fixture has no PCM to remove.");
+            byte[] cut=mub.AsSpan(0,offset).ToArray();Array.Clear(cut,20,8);return cut;
+        }
+        string NoticeOf(byte[] mub)
+        {
+            var session=MusicEngine.Load(mub,Path.Combine(folder,"song.mub"));Check(session!=null,"PCM-less MUB was rejected.");
+            short[] buffer=new short[2048];for(int i=0;i<40&&!session.Driver.Stopped;i++)session.RenderSamplesWithMasterVolume(buffer,0,buffer.Length);
+            Check(string.IsNullOrEmpty(((MucomDotNET)session.Driver).PlaybackError),"PCM-less MUB playback error: "+((MucomDotNET)session.Driver).PlaybackError);
+            Check(session.DescribeStatus().EndsWith(session.Notice,StringComparison.Ordinal) && !session.DescribeActiveChips().Contains("PCM file"),"Notice is not in the status text only.");
+            return session.Notice;
+        }
+        byte[] bare=WithoutPcm("#pcm\nA t200 o4 c4\nK c4\n");
+        Check(NoticeOf(bare)=="","A #pcm tag without a name did not read MUCOMPCM.BIN.");
+        File.Move(Path.Combine(folder,"mucompcm.bin"),Path.Combine(folder,"OTHER.BIN"));
+        Check(NoticeOf(bare)=="PCM file not found: MUCOMPCM.BIN (playing without PCM)","A missing MUCOMPCM.BIN gave no notice: "+NoticeOf(bare));
+        byte[] named=WithoutPcm("#pcm other.bin\nA t200 o4 c4\nK c4\n");
+        Check(NoticeOf(named)=="","A #pcm file in another letter case was not read.");
+        File.Delete(Path.Combine(folder,"OTHER.BIN"));
+        Check(NoticeOf(named)=="PCM file not found: other.bin (playing without PCM)","A missing #pcm file gave no notice.");
+    }
+    finally { Directory.Delete(folder,true); }
+}
 foreach(string source in new[]{"#SSGExtend Wrong\nD c\n","#SSGExtend On\nMSXK c\n","D c\n#SSGExtend On\n","#SSGExtend On\nD @W256 c\n"})
 {
     byte[] result=MucomDotNET.CompileMuc(Encoding.ASCII.GetBytes(source),Path.Combine(fixtures,"invalid.muc"),out string error);

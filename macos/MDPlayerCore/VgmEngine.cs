@@ -71,6 +71,10 @@ namespace MDPlayer
         // doesn't need per-format knowledge of internal driver fields.
         public string ActiveChips = "(no supported chip)";
         public string DescribeActiveChips() => ActiveChips;
+        // Something the listener should know about this load although it plays (a MUB
+        // whose #pcm file is missing). The status line shows it after the chip summary.
+        public string Notice = string.Empty;
+        public string DescribeStatus() => string.IsNullOrEmpty(Notice) ? ActiveChips : ActiveChips + " - " + Notice;
 
         // K052539/SCC+ is encoded as a variant flag on VGM's K051649 header clock field.
         // The underlying mixer identity intentionally remains K051649, because MDSound's

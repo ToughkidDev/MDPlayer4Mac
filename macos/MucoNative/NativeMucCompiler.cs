@@ -26,16 +26,35 @@ public static class NativeMucCompiler
         string text=Encoding.Latin1.GetString(source);
         if(MsxMusicalCompiler.HasExtensions(text))
         {
-            var score=MsxMusicalCompiler.Parse(text,asset);
-            if(score!=null)return PackedMubContainer.Compile(score,asset,sourcePath);
+            // MucoMSX reports every error of the MSX grammar as code 9 without a line;
+            // the reason found here follows on the next row.
+            MsxMusicalCompiler.Compilation score;
+            try { score=MsxMusicalCompiler.Parse(text,asset); }
+            catch(FormatException e) { throw new FormatException(MucoMsxSourceRules.MsxGrammarError+"\n"+e.Message,e); }
+            if(score!=null)
+            {
+                // MucoMSX reads an MSX-grammar score into one input window only, and
+                // its OPNA rows keep the macro nesting limit.
+                refused = MucoMsxSourceRules.CheckSourceWindow(source) ?? MucoMsxSourceRules.CheckMacroDepth(source);
+                if (refused != null) throw new FormatException(refused);
+                return WithPcmRules(source, asset, files => PackedMubContainer.Compile(score,files,sourcePath));
+            }
         }
         // Like muc2mub's legacy-grammar preflight: not for packed (MSX grammar) scores.
-        refused = MucoMsxSourceRules.CheckRows(source);
+        refused = MucoMsxSourceRules.CheckRows(source) ?? MucoMsxSourceRules.CheckMacroDepth(source);
         if (refused != null) throw new FormatException(refused);
-        if (MsxMucCompiler.IsNativeSource(source)) return MsxMucCompiler.Compile(source, sourcePath, asset);
+        if (MsxMucCompiler.IsNativeSource(source))
+            return WithPcmRules(source, asset, files => MsxMucCompiler.Compile(source, sourcePath, files));
         byte[] output = MucomCompileMode.Compile(source, name => asset(name), out string error);
         if (output == null)
             throw new FormatException(string.IsNullOrEmpty(error) ? "MUCOM88 compilation failed." : error);
+        return output;
+    }
+
+    private static byte[] WithPcmRules(byte[] source, Func<string, Stream> asset, Func<Func<string, Stream>, byte[]> compile)
+    {
+        byte[] output = MucoMsxSourceRules.CompileWithPcmRules(source, asset, compile, out string refused);
+        if (refused != null) throw new FormatException(refused);
         return output;
     }
 }

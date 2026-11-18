@@ -395,6 +395,7 @@ namespace MDPlayer
             var session = CreateSession(setting, chipRegister, mds, sampleRate, driver, chips,
                 format, string.Join(" + ", names));
             session.UsesK052539SccPlus = msx?.UsesSccPlus == true;
+            session.Notice = driver.PlaybackNotice;
             return session;
         }
 

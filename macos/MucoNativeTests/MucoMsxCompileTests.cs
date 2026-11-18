@@ -71,7 +71,11 @@ internal static class MucoMsxCompileTests
         check(missing=="Error line 3 (code 19): PCM file in #pcm tag not found\n> #pcm NONE.BIN","Missing #pcm file was not code 19 on its row.");
         check(Refused("#PCM  none.bin ; x\nA t200 o4 c4\n")?.Contains("(code 19)")==true,"#PCM tag name is not case-insensitive.");
         check(Refused("#pcm P*.BIN\nA t200 o4 c4\n",_=>new MemoryStream(new byte[]{0}))?.Contains("(code 19)")==true,"Wildcard #pcm name was accepted.");
-        check(Refused("#pcm\nA t200 o4 c4\n")==null && Refused("#pcm   \nA t200 o4 c4\n")==null,"Empty #pcm value was refused.");
+        // A #pcm tag without a name selects MUCOMPCM.BIN, which must exist (MucoMSX 2026-11-17).
+        Stream Default(string name)=>name.Equals("MUCOMPCM.BIN",StringComparison.OrdinalIgnoreCase)?new MemoryStream(new byte[0x400]):null;
+        check(Refused("#title t\n#pcm\nA t200 o4 c4\n")=="Error line 2 (code 19): PCM file in #pcm tag not found\n> #pcm"
+            && Refused("#pcm   \nA t200 o4 c4\n")?.Contains("(code 19)")==true,"#pcm without a name was accepted without MUCOMPCM.BIN.");
+        check(Refused("#pcm\nA t200 o4 c4\n",Default)==null && Refused("#pcm \t\nA t200 o4 c4\nK @1 c4\n",Default)==null,"#pcm without a name did not take MUCOMPCM.BIN.");
         check(Refused("#PCMInvert On\nA t200 o4 c4\n")==null,"#PCMInvert was read as #pcm.");
         check(Refused("A t200 o4 c4\n#pcm NONE.BIN\n")==null && Refused("#title t\n #pcm NONE.BIN\nA t200 o4 c4\n")==null,"#pcm outside the header was checked.");
         check(Refused("; c\n#pcm NONE.BIN\nA t200 o4 c4\n")?.StartsWith("Error line 2 (code 19)")==true,"Comment row hid the #pcm tag.");
@@ -83,6 +87,74 @@ internal static class MucoMsxCompileTests
         string notes=string.Concat(Enumerable.Repeat("c8",560));
         check(Refused("MSXA t200 o4 ?DB1 "+notes+"\n")==null,"A long packed MSX row was refused.");
         check(Refused("MSXA t200 o4 "+notes+"\n")?.Contains("(code 17)")==true,"A long plain MSX row was not code 17.");
+        MucoMsx20261118(check,Refused);
         Console.WriteLine("PASS MucoMSX MUC output: classic/extended mode, column-1 rows, rest merging, ties, header tags, source refusals");
+    }
+
+    // Rules of the MucoMSX toolchain of 2026-11-18. The expected errors and hashes were
+    // taken from MUC2MUB itself (MSX-DOS 2.20, and the toolchain's host harness).
+    private static void MucoMsx20261118(Action<bool,string> check,Func<string,Func<string,Stream>,string> Refused)
+    {
+        byte[] Bytes(string score)=>Encoding.ASCII.GetBytes(score);
+        string Sha(byte[] data)=>Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
+        var opened=new List<string>();
+        Stream Bank(string name){ opened.Add(name); return name.Equals("PCM.BIN",StringComparison.OrdinalIgnoreCase)?new MemoryStream(new byte[0x440]):null; }
+        byte[] Compile(string score)=>NativeMucCompiler.Compile(Bytes(score),Bank);
+        uint PcmSize(byte[] mub8)=>BitConverter.ToUInt32(mub8,24);
+        const string K20="Error, line unknown (code 20): K part needs a #pcm tag";
+
+        // #pcm rules: a K part with a note needs the tag (code 20); without the tag the
+        // default PCM file is never opened; the file is attached only for a K note.
+        check(Refused("A t200 o4 c4\nK @1 c4\n",Bank)==K20,"A K note without #pcm was not code 20.");
+        check(Refused("A t200 o4 c4\nK {cd}4\n",Bank)==K20,"A K portamento without #pcm was not code 20.");
+        check(Refused("#PCMInvert on\nA t200 o4 c4\nK @1 c4\n",Bank)==K20,"#PCMInvert counted as a #pcm tag.");
+        check(Refused("A t200 o4 c4\nMSXD o4 c4\nK @1 c4\n",Bank)==K20,"A K note in a mixed MSX score without #pcm was not code 20.");
+        opened.Clear();
+        check(Refused("A t200 o4 c4\nK r4\n",Bank)==null && Refused("A t200 o4 c4\nK @1 r4\n",Bank)==null,"A K part without notes was refused.");
+        check(!opened.Any(name=>name.Equals("MUCOMPCM.BIN",StringComparison.OrdinalIgnoreCase)),"A score without #pcm opened MUCOMPCM.BIN.");
+        check(PcmSize(Compile("#pcm PCM.BIN\nA t200 o4 c4\nK @1 c4\n"))==0x440 && PcmSize(Compile("#pcm PCM.BIN\nA t200 o4 c4\nK c4\n"))==0x440,"The PCM file was not attached for a K note.");
+        check(PcmSize(Compile("#pcm PCM.BIN\nA t200 o4 c4\nK @1 r4\n"))==0 && PcmSize(Compile("#pcm PCM.BIN\nA t200 o4 c4\n"))==0,"The PCM file was attached without a K note.");
+
+        // A score without t/T has Timer-B 225; t0 stays 0.
+        check(Sha(Compile("A o4 c4 d4\r\n"))=="32d9d59191e7fc0fe45567264edde316b892cde8100ac4ca89967007c4e7e023","Classic score without tempo differs from MucoMSX.");
+        check(Sha(Compile("A o4 c4 {cd}4\r\n"))=="fa46027ae9b597664d447d06add8e8b880f4117e3eb1e0c6db96cbb9f34370e6","muPb score without tempo differs from MucoMSX.");
+        byte[] zero=Compile("A t0 o4 c4\r\n");
+        check(zero[BitConverter.ToInt32(zero,4)+5]==0,"t0 was replaced by the default tempo.");
+
+        // Tempo in the MSX group of a mixed score: FA 26 n on FM-type tracks, FF F7 00 00 26 n on SSG tracks.
+        check(Sha(Compile("A o4 c4\r\nMSXA t150 o4 c4 d4 t140 e4\r\n"))=="912dce37ee03c5cc453715d4d213a8dc4d816dd21fb8e761531f8716706639a4","MSXA tempo differs from MucoMSX.");
+        check(Sha(Compile("A o4 c4\r\nMSXD t150 o4 c4 d4 t140 e4\r\n"))=="9578183bd5c679a62a44930f910785d9c0e7fff03e534d24a67050165c5c623a","MSXD tempo differs from MucoMSX.");
+
+        // Macro nesting: four deep is classic, five to eight deep is muPb, nine is code 16.
+        string macros=string.Concat(Enumerable.Range(1,10).Select(i=>"#*"+i+"{ "+(i==1?"c":"*"+(i-1))+" }\r\n"));
+        check(Sha(Compile(macros+"A o4 *4\r\n"))=="d318888b09edbea893fcf2f47cd537676c98cb71d3ba8cadd80c09d7408710d9","Four nested macros differ from MucoMSX.");
+        check(Sha(Compile(macros+"A o4 *5\r\n"))=="4427f65f1ba71e9c30d07871bf932365214bc8064cdc1bba688cfa9d504f8bfd","Five nested macros differ from MucoMSX.");
+        check(Sha(Compile(macros+"A o4 *8\r\n"))=="4427f65f1ba71e9c30d07871bf932365214bc8064cdc1bba688cfa9d504f8bfd","Eight nested macros differ from MucoMSX.");
+        check(Refused(macros+"A o4 *9\r\n",null)=="Error line 11 (code 16): Invalid macro definition\n> A o4 *9","Nine nested macros were not code 16.");
+        check(Refused(macros+"A o4 c4\r\nMSXD o4 *9\r\n",null)?.StartsWith("Error line 12 (code 16)")==true,"Nine nested macros on an MSX row were not code 16.");
+        check(Refused(macros+"A o4 c4 ; *9\r\nB @\"*9\" c4\r\n",null)?.Contains("(code 16)")!=true,"A macro id in a comment or a voice name was counted.");
+
+        // An MSX-grammar score must fit one input window of the MucoMSX loader.
+        string packed="MSXA t200 o4 ?DB1 c8c8\r\n";
+        string Sized(int size)=>";"+new string('x',size-packed.Length-3)+"\r\n"+packed;
+        check(MucoMsxSourceRules.SourceWindows(Bytes(Sized(14976)))==1 && MucoMsxSourceRules.SourceWindows(Bytes(Sized(14978)))==2
+            && MucoMsxSourceRules.SourceWindows(Bytes(Sized(14976)+";xx"))==1,"Input windows differ from the MucoMSX loader.");
+        check(Refused(Sized(14976),null)==null,"An MSX-grammar score of one window was refused.");
+        check(Refused(Sized(14978),null)=="Error, line unknown (code 9): Command not valid for this channel","An MSX-grammar score of two windows was not code 9.");
+        check(Refused("A t200 o4 c4\r\n;"+new string('x',900)+string.Concat(Enumerable.Repeat("\r\n;"+new string('x',900),20))+"\r\n",null)==null,"A long score in the ordinary grammar was refused.");
+
+        // Companion files are found like MSX-DOS finds them: any letter case, then the name cut to 8.3.
+        string folder=Path.Combine(Path.GetTempPath(),"mdp4mac-companion-"+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(folder,"MUCOMPCM.BIN"),new byte[1]);
+            File.WriteAllBytes(Path.Combine(folder,"BOSCO_PC.BIN"),new byte[1]);
+            string Found(string name)=>Path.GetFileName(MucoMsxSourceRules.FindCompanion(folder,name));
+            check(Found("mucompcm.bin")=="MUCOMPCM.BIN","A companion file in another letter case was not found.");
+            check(Found("bosco_pcm.bin")=="BOSCO_PC.BIN","A companion file under its 8.3 name was not found.");
+            check(Found("none.bin")==null && Found("../MUCOMPCM.BIN")==null && Found("MUCO*.BIN")==null,"A companion file was found for a wrong name.");
+        }
+        finally { Directory.Delete(folder,true); }
     }
 }

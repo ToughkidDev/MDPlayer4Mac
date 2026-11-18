@@ -21,11 +21,15 @@ internal static class PackedMubContainer
         if(!mixed)return Write(score.Object,score.Title,score.Timer);
         legacy=InlineFmDefinitions.NormalizeBraces(legacy);
         var compiler=new mucomDotNET.Compiler.Compiler();compiler.Init();
-        Match first=Regex.Match(legacy,@"(?m)^\s*[A-K][A-K0-9]*[ \t]+");
-        string primed=first.Success?legacy.Insert(first.Index,"A t"+score.Timer+"\r\n"):legacy+"\r\nA t"+score.Timer+"\r\n";
-        string text="#driver mucomDotNET\r\n"+primed+"\r\nL ; preserve five-group directory\r\n";
+        // Tempo as MucoMSX writes it: a t/T on an FM-type OPNA track is FA 26 n, on an
+        // SSG track FF F7 00 00 26 n. Nothing is added to part A. The FA 26 n in front
+        // of the packed object (Write) is the last tempo of the OPNA rows, or 225 when
+        // they have none.
+        string text="#driver mucomDotNET\r\n"+legacy+"\r\nL ; preserve five-group directory\r\n";
         using var input=new MemoryStream(MucSourceNormalization.NormalizeTrackDeclarationIndentation(Encoding.Latin1.GetBytes(text)),false);
-        MmlDatum[] output=compiler.Compile(input,name=>asset?.Invoke(name));var info=compiler.GetCompilerInfo();
+        int[] lastTempo={-1};
+        MmlDatum[] output=mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(()=>compiler.Compile(input,name=>asset?.Invoke(name)),lastTempo);var info=compiler.GetCompilerInfo();
+        int timer=lastTempo[0]<0?MucoMsxMubWriter.DefaultTempo:lastTempo[0];
         if(output==null||info?.errorList?.Count>0)throw new FormatException(info?.errorList?.Count>0?string.Join('\n',info.errorList.Select(x=>x.Item3)):"OPNA compilation failed.");
         var header=new MUBHeader(output,myEncoding.Default);header.GetTags();if(header.mupb==null)throw new FormatException("Mixed packed score requires an OPNA directory.");
         var parts=Enumerable.Range(0,55).Select(_=>new List<Page>()).ToArray();
@@ -44,7 +48,7 @@ internal static class PackedMubContainer
         byte[] pcm=header.mupb.chips[0].pcmNumber.Length>0?header.mupb.pcms[header.mupb.chips[0].pcmNumber[0]].data:Array.Empty<byte>();
         string tags="";if(header.CarrierCorrection)tags+="#CarrierCorrection Yes\r\n";
         if(header.RhythmMute[0]!=63)tags+="#OPNA1RhythmMute "+new string("BSCHTR".Where((_,i)=>(header.RhythmMute[0]&(1<<i))==0).ToArray())+"\r\n";
-        return Write(score.Object,score.Title,score.Timer,parts,instruments,pcm,inst,tags);
+        return Write(score.Object,score.Title,timer,parts,instruments,pcm,inst,tags);
     }
     internal static byte[] Write(byte[] obj,string title,int timer,List<Page>[] parts=null,List<byte[]> instruments=null,byte[] pcm=null,int instrument=0,string extraTags="")
     {

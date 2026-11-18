@@ -16,7 +16,8 @@ namespace MDPlayer.MucoNative;
 // A source stays in DotNet mode when it
 //  * names a driver itself (#driver ...), or uses a DotNet-only header tag;
 //  * has a track label beyond MUCOM88's A-K, or a page digit (A0, B1, ...);
-//  * uses portamento braces on a pitched track (MucoMSX: PTM_EXTENDED); or
+//  * uses portamento braces on a pitched track (MucoMSX: PTM_EXTENDED);
+//  * calls macros nested more than four deep; or
 //  * does not compile in classic mode at all (the upstream compiler rejects
 //    DotNet-only commands there).
 public static class MucomCompileMode
@@ -32,6 +33,7 @@ public static class MucomCompileMode
 
     public static bool PrefersClassic(byte[] source)
     {
+        if (MucoMsxSourceRules.MacroCallDepth(source) > MucoMsxSourceRules.ClassicMacroDepth) return false;
         string text = Encoding.Latin1.GetString(source);
         foreach (string raw in text.Split('\n'))
         {
@@ -67,25 +69,37 @@ public static class MucomCompileMode
     // Returns null and the compiler's messages when the source does not compile.
     public static byte[] Compile(byte[] source, Func<string, Stream> asset, out string error)
     {
+        string message = string.Empty;
+        byte[] output = MucoMsxSourceRules.CompileWithPcmRules(source, asset,
+            files => CompileScore(source, files, out message), out string refused);
+        error = refused ?? message;
+        return output;
+    }
+
+    private static byte[] CompileScore(byte[] source, Func<string, Stream> asset, out string error)
+    {
         byte[] normalized = MucSourceNormalization.NormalizeTrackDeclarationIndentation(source);
         if (PrefersClassic(normalized))
         {
-            byte[] classic = CompileOnce(ClassicTag.Concat(normalized).ToArray(), asset, out _);
+            int[] classicTempo = { -1 };
+            byte[] classic = mucomDotNET.Compiler.Muc88.CaptureTempo(classicTempo,
+                () => CompileOnce(ClassicTag.Concat(normalized).ToArray(), asset, out _));
             // MucoMSX leaves the classic layout once DATA passes its legacy limit
             // and recompiles in its extended (wide) format; do the same.
             if (classic != null && !(MucoMsxMubWriter.IsMub8(classic) && MucoMsxMubWriter.ExceedsLegacyData(classic)))
             {
                 error = string.Empty;
-                return MucoMsxMubWriter.IsMub8(classic) ? MucoMsxMubWriter.Classic(classic, source) : RemoveClassicTag(classic);
+                return MucoMsxMubWriter.IsMub8(classic) ? MucoMsxMubWriter.Classic(classic, source, classicTempo[0] < 0) : RemoveClassicTag(classic);
             }
         }
         // Extended (mucomDotNET-mode) scores: MucoMSX always writes them as muPb.
         // A score the upstream compiler itself writes in its paged format (pages,
         // parts beyond K) keeps that format.
         string message = string.Empty;
-        byte[] result = mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(() => CompileOnce(normalized, asset, out message));
+        int[] tempo = { -1 };
+        byte[] result = mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(() => CompileOnce(normalized, asset, out message), tempo);
         error = message;
-        return MucoMsxMubWriter.IsMub8(result) ? MucoMsxMubWriter.Extended(result, source) : result;
+        return MucoMsxMubWriter.IsMub8(result) ? MucoMsxMubWriter.Extended(result, source, tempo[0] < 0) : result;
     }
 
     private static byte[] CompileOnce(byte[] source, Func<string, Stream> asset, out string error)

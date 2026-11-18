@@ -2319,8 +2319,8 @@ namespace MDPlayer.UI
                 RefreshInformationView(session);
                 RestoreActiveView();
                 StatusLabel.Text = showSpeedReset
-                    ? $"재생 중 - {session.DescribeActiveChips()} - 재생 속도 1x"
-                    : $"재생 중 - {session.DescribeActiveChips()}";
+                    ? $"재생 중 - {session.DescribeStatus()} - 재생 속도 1x"
+                    : $"재생 중 - {session.DescribeStatus()}";
 
                 // Poll for completion off the UI thread; only hop back to update labels/buttons.
                 CoreAudioQueue? watchedQueue = queue;
@@ -2521,7 +2521,7 @@ namespace MDPlayer.UI
                 ActiveViewMode.Information => "정보 뷰",
                 _ => "채널 뷰",
             };
-            StatusLabel.Text = $"로드됨 - {readyViewName} 대기 ({session.DescribeActiveChips()})";
+            StatusLabel.Text = $"로드됨 - {readyViewName} 대기 ({session.DescribeStatus()})";
             UpdateTransportButtons();
         }
 

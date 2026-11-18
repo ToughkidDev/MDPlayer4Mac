@@ -39,7 +39,7 @@ internal static class MsxMucCompiler
     public static byte[] Compile(byte[] source,string path,Func<string,Stream> sibling)
     {
         int[] lastTempo={0xe1};
-        return mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(()=>CompileCore(source,path,sibling,lastTempo),lastTempo);
+        return mucomDotNET.Compiler.Muc88.CompileMucoMsxExtended(()=>CompileCore(source,path,sibling,lastTempo),lastTempo,msxGroup:true);
     }
     private static byte[] CompileCore(byte[] source,string path,Func<string,Stream> sibling,int[] lastTempo)
     {

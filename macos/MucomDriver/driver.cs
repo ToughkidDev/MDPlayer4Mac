@@ -21,6 +21,8 @@ namespace mucomDotNET.Driver
 
         public byte[][] pcm = new byte[6][];
         private bool noAdpcmBank = false;
+        /// <summary>Name of the #pcm file a MUB without embedded PCM asked for and did not get; empty otherwise.</summary>
+        public string MissingPcmFile { get; private set; } = string.Empty;
         public int[] pcmStartPos = new int[6];
 
         private MUBHeader header = null;
@@ -141,6 +143,9 @@ namespace mucomDotNET.Driver
             work.header = header;
             tags = GetTags();
             GetFileNameFromTag();
+            // MucoMSX: a #pcm tag without a name selects MUCOMPCM.BIN (the upstream tag
+            // reader drops a tag that has no value).
+            if (string.IsNullOrEmpty(fnPcm[0]) && HasBarePcmTag(srcBuf)) fnPcm[0] = "MUCOMPCM.BIN";
             for (int i = 0; i < 4; i++)
             {
                 work.fmVoice[i] = GetFMVoiceFromFile(i, appendFileReaderCallback);
@@ -154,6 +159,8 @@ namespace mucomDotNET.Driver
             }
 
             noAdpcmBank = pcm[0] == null;
+            // MucoMSX (MUBPLAY): "PCM file not found" and the song plays without PCM.
+            MissingPcmFile = noAdpcmBank && !string.IsNullOrEmpty(fnPcm[0]) ? fnPcm[0] : string.Empty;
             if (pcm[2] != null && pcmType[2] == "") { TransformOPNAPCMtoOPNBPCM(2); pcmStartPos[2] = 0; }
             if (pcm[3] != null && pcmType[3] == "") { TransformOPNAPCMtoOPNBPCM(3); pcmStartPos[3] = 0; }
             if (pcm[4] != null && pcmType[4] == "") { TransformOPNAPCMtoOPNBPCM(4); pcmStartPos[4] = 0; }
@@ -765,13 +772,35 @@ namespace mucomDotNET.Driver
             "mucompcm_4th_A.bin"
         };
 
+        // True when the MUB's tag block has a "#pcm" row without a value.
+        private bool HasBarePcmTag(MmlDatum[] srcBuf)
+        {
+            try
+            {
+                if (header == null || header.tagdata == 0 || srcBuf == null) return false;
+                long end = Math.Min((long)header.tagdata + header.tagsize, srcBuf.Length);
+                var row = new System.Text.StringBuilder();
+                for (long i = header.tagdata; i <= end; i++)
+                {
+                    int c = i < end && srcBuf[i] != null ? srcBuf[i].dat & 0xff : 0;
+                    if (c != 0 && c != 13 && c != 10) { row.Append((char)c); continue; }
+                    string text = row.ToString().TrimEnd(' ', '\t');
+                    if (text.Equals("#pcm", StringComparison.OrdinalIgnoreCase)) return true;
+                    row.Clear();
+                    if (c == 0) break;      // MucoMSX's own block follows the NUL
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private byte[] GetPCMDataFromFile(int id,Func<string, Stream> appendFileReaderCallback)
         {
             try
             {
                 // MucoMSX rule for a MUB without embedded PCM (MUBScope, MUBPLAY): the bank is
-                // the file its #pcm tag names, in the MUB's own folder; without the tag there
-                // is no bank (mucompcm.bin is the compiler's default, embedded at compile time).
+                // the file its #pcm tag names (MUCOMPCM.BIN for a tag without a name), in the
+                // MUB's own folder; without the tag there is no bank.
                 if (id == 0 && string.IsNullOrEmpty(fnPcm[id])) return null;
                 fnPcm[id] = string.IsNullOrEmpty(fnPcm[id]) ? defaultPCMFileName[id] : fnPcm[id]; 
 

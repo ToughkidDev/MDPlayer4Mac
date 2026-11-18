@@ -8,6 +8,8 @@ namespace MDPlayer.MucoNative;
 //
 //  * Classic score: MUB8 with jump line 0, the DATA block's final SSG-count byte
 //    (00), and MucoMSX's tag block.
+//  * A score without any t/T command gets MucoMSX's default Timer-B value, 225
+//    (the header tempo of a MUB8, the FA 26 n at the head of part A of a muPb).
 //  * Extended score: muPb0100 with five chip descriptors and 55 parts of which the
 //    first OPNA's 11 parts carry data. Each part is one page, or ten pages (page 0
 //    holds the data) when the classic-layout DATA would pass 60,000 bytes, where
@@ -22,6 +24,7 @@ namespace MDPlayer.MucoNative;
 public static class MucoMsxMubWriter
 {
     private const int LegacyDataLimit = 60000;   // MucoMSX DATA_LIMIT
+    public const byte DefaultTempo = 0xe1;       // Timer-B of a score without t/T
     private static readonly byte[] Trailer = Encoding.ASCII.GetBytes(
         "\0#mucver 1.7d\r\n#mmlhash 00000000000000000000000000000000\r\n" +
         "#uuid e494355c-68d1-40bb-b836-07b23ae0fb8f\r\n\0\0\0\0");
@@ -102,9 +105,10 @@ public static class MucoMsxMubWriter
     public static bool ExceedsLegacyData(byte[] mub8) =>
         BinaryPrimitives.ReadUInt32LittleEndian(mub8.AsSpan(8)) + 1 > LegacyDataLimit;
 
-    public static byte[] Classic(byte[] mub8, byte[] source)
+    public static byte[] Classic(byte[] mub8, byte[] source, bool noTempo = false)
     {
         var (data, pcm, pcmOffset) = Sections(mub8);
+        if (noTempo && data.Length > 5) data[5] = DefaultTempo;
         byte[] tags = HeaderText(source).Concat(Trailer).ToArray();
         int dataSize = data.Length + 1;                    // final SSG-count byte
         int tagOffset = 0x50 + dataSize;
@@ -122,9 +126,10 @@ public static class MucoMsxMubWriter
         return result;
     }
 
-    public static byte[] Extended(byte[] mub8, byte[] source)
+    public static byte[] Extended(byte[] mub8, byte[] source, bool noTempo = false)
     {
         var (data, pcm, _) = Sections(mub8);
+        if (noTempo && data.Length > 5) data[5] = DefaultTempo;
         // DATA: tempo at +5, then 11 x (start16, loop16), addresses relative to -5.
         // Addresses are 16-bit; a song past 64 KiB wraps, so rebuild them in order.
         long[] start = new long[11];
