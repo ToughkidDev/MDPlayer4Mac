@@ -342,7 +342,10 @@ are refused with its codes.
   prints "PCM file not found".
 * Companion files (`#pcm`, `#voice`, ...) that are not in the folder under the
   exact name are looked up in any letter case and then under the name cut to
-  8.3, which is how MucoMSX opens a long name the folder does not have.
+  8.3, which is how MucoMSX opens a long name the folder does not have. The
+  driver's own default banks of OPNA #2 and the YM2610s (`mucompcm_2nd.bin`,
+  `mucompcm_3rd_B.bin`, ...) are looked up in any letter case only: cut to 8.3
+  they would all read `MUCOMPCM.BIN`, the first OPNA's bank (v0.3.3).
 
 Output corrections found by comparing the larger test set:
 
