@@ -35,6 +35,11 @@ internal static class MucoMsxCompileTests
         check(Same("A t200 o4 c4&\nA c4\n","A t200 o4 c4&c4\n"),"Tie across rows was not merged.");
         check(!Same("A t200 o4 c4&l4c\n","A t200 o4 c4&c4\n"),"Tie through a command was merged.");
         check(Same("A t200 o4 c4&%32c\n","A t200 o4 c4&c4\n"),"Direct count % ended the tie.");
+        // The note a slide plays is not one a tied note is joined to: "{ff+}%3&f%9" keeps
+        // the slide, the FD and the tied note, as it does with a command in between.
+        check(Same("A t200 o4 {ff+}%3&f%9\n","A t200 o4 {ff+}%3&o4f%9\n"),"A note tied on to a slide's first note was joined to the slide.");
+        check(Compile("A t200 o4 {ff+}%3&f%9\n").AsSpan().IndexOf(new byte[]{0xff,0xf9,0x35,0x36,3,0,3,0x35,0xfd,9,0x35})>=0,"A slide tied on to its first note is not written as it reads.");
+        check(Compile("A t200 o4 {ff+}%3&f+%9\n").AsSpan().IndexOf(new byte[]{0xff,0xf9,0x35,0x36,3,0,3,0x35,0xfd,9,0x36})>=0,"A slide tied on to its last note changed.");
         // MucoMSX layout: classic MUB8 keeps jump line 0, the final SSG-count byte and
         // MucoMSX's tag block; an extended score is muPb0100 with the tempo at A's head.
         byte[] tagged=Compile("#title layout\n; note\nA t200 o4 c4\n");

@@ -408,6 +408,12 @@ namespace mucomDotNET.Compiler
             msub.MWRIT2(new MmlDatum((byte)(clk >> 8)));
 
             FC162p_write(before_note, (byte)clk, (byte)q, false, true);
+            // The note a slide plays is not one a tied note is joined to. "{ff+}32 &f16."
+            // names the slide's first note again, and joining the two (rewinding over
+            // the note and the FD, FCOMP13) made the slide's note 12 clocks long with the
+            // pitch left where the slide stopped. The tied note is written after the FD,
+            // as it is when any command stands between the & and the note.
+            lastMergeNoteEnd = -1;
         }
 
         private void PortamentMain(byte before_note, byte after_note, int befco, int qbefco)
