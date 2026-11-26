@@ -467,3 +467,37 @@ Newly accepted source (previously compile errors):
 * Messages name the two-letter commands (`?IR`, `?WM` …) instead of internal letters.
 
 `macos/MucoNativeTests/CompactRowTests.cs` covers these cases.
+
+### OPNA rows and MSX chip rows in phase (v0.3.5)
+
+MUBPLAY runs the OPNA rows and the MSX chip rows of a mixed song (msPb0104, 0106, 0108,
+010A) in one `Player_Tick`. `NativeMucomSession` ran the first tick of the MSX chip player
+one whole tick after the OPNA sequencer's (914 samples at `t184`), so MSX-MUSIC, SCC and PSG
+notes sounded about 21 ms after the OPNA notes of the same clock for the whole song. Both
+start on the first sample now and stay on the same samples across tempo changes written in
+either kind of row. A song with MSX chip rows only starts one tick earlier and is otherwise
+the same.
+
+With one MUB played by both (A-JAX "CONGRATULATION", 9,000 ticks), the MSX-MUSIC, PSG and SCC
+register writes are the same tick by tick as those of MUBPLAY's code run on a Z80 model. Two
+differences are left as they are, neither of them a change of chip state at the end of a
+tick: MUBPLAY's real-chip writer skips a 20-28H byte equal to the last one it sent, and it
+does not install an FM voice again when `@` names the voice already installed.
+
+The tick itself was already MucoMSX's: a song with MSX chip rows counts
+`2*floor((203N+16)/32)` samples per tick (N = 256 - Timer-B; 914 at `t184`), where an
+OPNA-only song counts 1323/104 samples per N (915.92). Such a song is 0.2-0.3 % faster than
+an OPNA-only song with the same tempo value on the MSX too. A tie or `M` vibrato on an
+MSX-MUSIC row rewrites the low F-number byte only, in MUBPLAY as here; a tie that crosses
+the block (`c& g`: the block changes between f+ and g) sounds an octave off until the key-off.
+
+Compiled bytes: in a song with extension commands, an MSX chip row in ordinary MML that
+has a song loop `L` ends with the jump alone, as
+MUC2MUB writes it (an unused `end` followed it, one byte per row); a braced FM voice may end
+with its quoted name next to MSX chip rows; a source without `#title` gets an empty title
+instead of "Packed note score". `macos/MucoNativeTests/MucoMsxParityTests.cs` holds the
+sizes and SHA-256 of MUC2MUB's files for these cases and the phase check.
+
+Compile comparison for v0.3.5: of 1,955 campaign MUCs, 1,953 compile to the same bytes as
+with v0.3.4 and as MUC2MUB's files (two stop with an error in both); of 115 X68000 conversion
+MUCs, 114 are unchanged, one is two bytes shorter, and all 115 equal MUC2MUB's files.
