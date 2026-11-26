@@ -18,7 +18,8 @@ internal static class InlineFmDefinitions
             if(id>255)throw new FormatException("FM voice number outside 0..255.");
             int start=header.Index+header.Length,end=clean.IndexOf('}',start);
             if(end<0)throw new FormatException("Incomplete braced FM voice "+id);
-            string body=clean[start..end];var numbers=Regex.Matches(body,@"\$[0-9a-fA-F]+|[+-]?\d+");
+            // MUCOM88 writes the voice name last, in quotes (@7:{ ... ,"BASS"}); MUC2MUB reads the numbers and skips it.
+            string body=Regex.Replace(clean[start..end],"\"[^\"\r\n]*\"","");var numbers=Regex.Matches(body,@"\$[0-9a-fA-F]+|[+-]?\d+");
             if(Regex.Replace(body,@"\$[0-9a-fA-F]+|[+-]?\d+|[\s,]","").Length!=0||numbers.Count!=(header.Groups[1].Value=="%"?25:38))
                 throw new FormatException("Invalid parameter list for braced FM voice "+id);
             int[] values=numbers.Select(m=>(m.Value[0]=='$'?Convert.ToInt32(m.Value[1..],16):int.Parse(m.Value))&255).ToArray();

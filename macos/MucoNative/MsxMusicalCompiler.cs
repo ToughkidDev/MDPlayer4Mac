@@ -33,7 +33,7 @@ internal static class MsxMusicalCompiler
         internal readonly HashSet<int> ProgramLabels=new(),TablePrograms=new();
         internal readonly HashSet<string> Standard=new();
         internal readonly Dictionary<string,(int Default,int Octave,int Clock)> Defaults=new();
-        internal byte[] Voice=new byte[8192];internal string Title="Packed note score";
+        internal byte[] Voice=new byte[8192];internal string Title="";// MUC2MUB writes an empty #title when the source has none
         internal bool InBlock,Stage1,Pn6,HasWave,Carrier,Pn6Source,NeedsWave;internal int Timer=198,Serial,BlockLoops;
         // Compact rows are parsed line by line: their [ ] repeats and L loop carry over to the next line.
         internal readonly Dictionary<string,(List<(string Target,int? Escape)> Loops,string LoopPoint)> Compact=new();
@@ -332,7 +332,11 @@ internal static class MsxMusicalCompiler
             if(normal)
             {
                 if(loops.Count!=0)Error("Unclosed repeat");if(pendingTie)Error("Tie has no following note");
-                if(!closed&&b.Body.Count>0&&!Regex.IsMatch(b.Body[^1],@"(?:end|return)$")){if(loopPoint!=null)Emit("jump "+loopPoint);Emit("end");}
+                if(!closed&&b.Body.Count>0&&!Regex.IsMatch(b.Body[^1],@"(?:end|return)$")){
+                    // MUC2MUB ends a standard row that has a song loop (L) with the jump alone: nothing follows it
+                    // (NS_End in compiler_msx_standard.asm). An "end" here made the object one byte longer per row.
+                    if(loopPoint!=null)Emit("jump "+loopPoint);else Emit("end");
+                }
             }
             if(!normal)b.Compact[ch]=(loops,loopPoint);
             b.Defaults[ch]=(def,octave,clock);

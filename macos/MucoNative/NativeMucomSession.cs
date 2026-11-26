@@ -100,6 +100,10 @@ public sealed class NativeMucomSession : IDisposable
             bool due=false;
             if(packed!=null && !packed.Ended){packedElapsed+=44100;due=packedElapsed>=oldInterval;if(due)packedElapsed-=oldInterval;}
             if(packed==null || Profile.HasOpnaSequence && Sequencer.GetStatus()>0)Sequencer.Rendering();
+            // MucoMSX runs the OPNA rows and the MSX chip rows in one Player_Tick, so both start on
+            // the first tick. The OPNA sequencer sounds its first tick on the first sample; so does
+            // the MSX chip player, instead of one whole tick (about 21 ms at t184) later.
+            if(Samples==0 && packed!=null && !packed.Ended)packed.Tick();
             if(due)
             {
                 packed.Tick();
