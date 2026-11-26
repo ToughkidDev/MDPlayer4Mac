@@ -488,8 +488,9 @@ The tick itself was already MucoMSX's: a song with MSX chip rows counts
 `2*floor((203N+16)/32)` samples per tick (N = 256 - Timer-B; 914 at `t184`), where an
 OPNA-only song counts 1323/104 samples per N (915.92). Such a song is 0.2-0.3 % faster than
 an OPNA-only song with the same tempo value on the MSX too. A tie or `M` vibrato on an
-MSX-MUSIC row rewrites the low F-number byte only, in MUBPLAY as here; a tie that crosses
-the block (`c& g`: the block changes between f+ and g) sounds an octave off until the key-off.
+MSX-MUSIC row rewrote the low F-number byte only, in MUBPLAY as here; a tie that crosses
+the block (`c& g`: the block changes between f+ and g) sounded an octave off until the key-off.
+Both were corrected on 2026-11-26 (next section).
 
 Compiled bytes: in a song with extension commands, an MSX chip row in ordinary MML that
 has a song loop `L` ends with the jump alone, as
@@ -501,3 +502,19 @@ sizes and SHA-256 of MUC2MUB's files for these cases and the phase check.
 Compile comparison for v0.3.5: of 1,955 campaign MUCs, 1,953 compile to the same bytes as
 with v0.3.4 and as MUC2MUB's files (two stop with an error in both); of 115 X68000 conversion
 MUCs, 114 are unchanged, one is two bytes shorter, and all 115 equal MUC2MUB's files.
+
+### MSX-MUSIC block follows ties and vibrato (v0.3.6)
+
+The MSX-MUSIC note player (msPb0105-010A) computes register 2nH, which carries the block and
+F-number bit 8 beside the key, on every tick, but sent it on a key-on or key-off only. While a
+note was held it sent the low F-number byte (1nH) alone. A tie into another block (`c& g`) kept
+the old block, an octave low until the key-off, and a vibrato on a note at the bottom of the
+F-number range (g is 102H) jumped almost an octave up on every tick where the F-number went
+below 100H. Songs without extension commands (msPb0100-0102) go through the OPNA mapping and
+were right all along.
+
+MUBPLAY and MUCPLAY were corrected on 2026-11-26: 2nH is also sent when its value changes with
+no key event, the key as it stands. `PackedOpll.CommitOpll` does the same; `olHigh` keeps the
+key bit for it. The first sixteen 1nH/2nH writes of a test row are checked against MUBPLAY's in
+`MucoMsxParityTests`. All 465 campaign MUBs with this player send the same chip writes as with
+v0.3.5 (40 s each): none of them holds a note across the block.
