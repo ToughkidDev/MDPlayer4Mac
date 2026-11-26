@@ -211,7 +211,7 @@ internal sealed partial class PackedMusicPlayer
     }
     private void CommitOpll()
     {
-        var changedLow=new bool[6];var changedVolume=new bool[6];
+        var changedLow=new bool[6];var changedVolume=new bool[6];var changedHigh=new bool[6];
         for(int i=0;i<6;i++)
         {
             var c=channels[8+i];int low=c.W[10],block=c.W[9];
@@ -222,7 +222,7 @@ internal sealed partial class PackedMusicPlayer
                 while(number>=512&&octave<7){number>>=1;octave++;}if(number>=512){number=511;octave=7;}low=number&255;block=octave*2|(number>>8);
             }
             changedLow[i]=olLow[i]!=low;olLow[i]=low;
-            int high=(olHigh[i]&240)|block;if((block&128)!=0&&(block&15)!=15)high=B(high+2);if(Bit(c.W[15],0))high|=32;olHigh[i]=high;
+            int high=(olHigh[i]&240)|block;if((block&128)!=0&&(block&15)!=15)high=B(high+2);if(Bit(c.W[15],0))high|=32;changedHigh[i]=olHigh[i]!=high;olHigh[i]=high;
             changedVolume[i]=(olVolume[i]&15)!=c.W[12];olVolume[i]=(olVolume[i]&240)|c.W[12];
             if(Bit(c.W[15],7)){c.W[15]&=127;changedVolume[i]=true;olVolume[i]=(olVolume[i]&15)|c.W[39];}
         }
@@ -238,8 +238,12 @@ internal sealed partial class PackedMusicPlayer
         }
         for(int i=0;i<6;i++)
         {
-            var c=channels[8+i];if(Bit(c.W[15],2)){c.W[15]&=251;Opll(0x20+i,olHigh[i]|16);}
-            else if(Bit(c.W[15],1)){c.W[15]&=253;Opll(0x20+i,olHigh[i]&239);}
+            // 2nH carries the block and F-number bit 8 beside the key. MUBPLAY (2026-11-26) also sends it
+            // when it changes with no key event, the key as it stands: a tie into another block (c& g) and
+            // a vibrato across F-number 100H were an octave off until the key-off. olHigh keeps the key bit.
+            var c=channels[8+i];if(Bit(c.W[15],2)){c.W[15]&=251;olHigh[i]|=16;Opll(0x20+i,olHigh[i]);}
+            else if(Bit(c.W[15],1)){c.W[15]&=253;olHigh[i]&=239;Opll(0x20+i,olHigh[i]);}
+            else if(changedHigh[i])Opll(0x20+i,olHigh[i]);
         }
     }
 }

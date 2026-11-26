@@ -41,6 +41,21 @@ internal static class MucoMsxParityTests
         check(session.Error==""&&fm.Count==6,"The phase song did not play its six FM notes.");
         check(fm.SequenceEqual(opll),"MSX-MUSIC notes do not start with the OPNA notes: FM "+string.Join(',',fm)+" MSX-MUSIC "+string.Join(',',opll));
         check(fm[0]==0&&fm[1]==60*914-1&&fm[3]-fm[2]==60*1344,"The tick is not MucoMSX's 2*floor((203N+16)/32) samples.");
-        Console.WriteLine("PASS MucoMSX parity: looped MSX chip rows, empty title, named FM voice, OPNA and MSX chip rows in phase");
+        // MUBPLAY (2026-11-26) sends 2nH, the block and F-number bit 8, whenever it changes while a note is
+        // held: c& g crosses the block (f+ | g) at the tie, and a vibrato on g dips below F-number 100H.
+        // The list is what MUBPLAY sends to 10H and 20H for this row; its real-chip writer skips a 2nH
+        // byte equal to the last one sent, so the same is skipped here.
+        string held="#title Q1\n"+user+"MSXA C240 l4 ?IU0 v12 o4 c&g r M0,1,8,4 o4 g1 r\n";
+        var pitch=new List<int>();int last20=-1;NativeMucomSession song=null;
+        song=new NativeMucomSession(Compile(held),44_100,w=>
+        {
+            if(song==null||w.Chip!=NativeChip.Opll||w.Address is not (0x10 or 0x20))return;
+            if(w.Address==0x20){if(w.Value==last20)return;last20=w.Value;}
+            pitch.Add(w.Address<<8|w.Value);
+        });
+        using(song)while(song.Status>0&&song.Samples<400_000)song.AdvanceSample();
+        int[] mubplay={0x1059,0x2005,0x2015,0x1002,0x2017,0x2007,0x1005,0x2017,0x1007,0x1005,0x1002,0x1000,0x10fc,0x2015,0x1000,0x2017};
+        check(pitch.Take(mubplay.Length).SequenceEqual(mubplay),"MSX-MUSIC block writes differ from MUBPLAY: "+string.Join(' ',pitch.Take(mubplay.Length).Select(x=>x.ToString("X4"))));
+        Console.WriteLine("PASS MucoMSX parity: looped MSX chip rows, empty title, named FM voice, OPNA and MSX chip rows in phase, block follows ties and vibrato");
     }
 }
