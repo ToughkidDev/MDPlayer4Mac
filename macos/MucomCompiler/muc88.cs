@@ -5279,6 +5279,15 @@ namespace mucomDotNET.Compiler
                     throw new MucException(msg.get("E0519"), -1, -1);
                 }
 
+                // A voice number past the end of the voice file. A file of 68 voices holds
+                // @0 to @67, and "@68" read past the array (reported as an index error);
+                // MucoMSX reads zeros there and plays the part silent. Say which voice.
+                if (mucInfo.Carry && vAdr + 25 > bufVoi.Length)
+                {
+                    throw new MucException(string.Format("{0} (@{1}: the voice file has @0 to @{2})"
+                        , msg.get("E0492"), vn, Math.Max(0, (bufVoi.Length - 26) / 32)), -1, -1);
+                }
+
                 if (!work.usedFMVoiceNumber.Contains(vn)) work.usedFMVoiceNumber.Add(vn);
 
                 ////

@@ -76,6 +76,12 @@ internal static class MucoMsxCompileTests
         check(missing=="Error line 3 (code 19): PCM file in #pcm tag not found\n> #pcm NONE.BIN","Missing #pcm file was not code 19 on its row.");
         check(Refused("#PCM  none.bin ; x\nA t200 o4 c4\n")?.Contains("(code 19)")==true,"#PCM tag name is not case-insensitive.");
         check(Refused("#pcm P*.BIN\nA t200 o4 c4\n",_=>new MemoryStream(new byte[]{0}))?.Contains("(code 19)")==true,"Wildcard #pcm name was accepted.");
+        // A voice number the #voice file does not reach is refused by name, not as an index
+        // error: a file of 68 voices holds @0 to @67.
+        Stream Voices(string name)=>name.Equals("V.DAT",StringComparison.OrdinalIgnoreCase)?new MemoryStream(Enumerable.Range(0,68*32).Select(i=>(byte)(i%32==9||i%32==10||i%32==11||i%32==12?31:0)).ToArray()):null;
+        check(Refused("#voice V.DAT\nA t200 @67 o4 c4\n",Voices)==null,"The last voice of the voice file was refused.");
+        string past=Refused("#voice V.DAT\nA t200 @68 o4 c4\n",Voices);
+        check(past!=null && past.Contains("@68") && past.Contains("@0 to @67") && !past.Contains("outside the bounds"),"A voice past the end of the voice file was not refused by name: "+past);
         // A #pcm tag without a name selects MUCOMPCM.BIN, which must exist (MucoMSX 2026-11-17).
         Stream Default(string name)=>name.Equals("MUCOMPCM.BIN",StringComparison.OrdinalIgnoreCase)?new MemoryStream(new byte[0x400]):null;
         check(Refused("#title t\n#pcm\nA t200 o4 c4\n")=="Error line 2 (code 19): PCM file in #pcm tag not found\n> #pcm"
